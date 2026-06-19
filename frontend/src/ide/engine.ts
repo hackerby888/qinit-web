@@ -4,11 +4,19 @@
 // One IdeEngine instance backs an IDE session; deploy() (re)loads a contract into its slot.
 import { InProcessEngine, initK12 } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
-import { buildSignedTx } from "@qinit/core";
+import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
 
 // A submitted tx lands a few ticks ahead — the auto-ticker processes it when the chain reaches it.
 const TICKS_AHEAD = 3;
+
+const randomSeed = (): string =>
+  Array.from({ length: 55 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
+
+export interface Account {
+  seed: string;
+  id: string;
+}
 
 interface PendingTx {
   targetTick: number;
@@ -30,6 +38,7 @@ export class IdeEngine {
   private k12Ready = false;
   private ticker: ReturnType<typeof setInterval> | null = null;
   private mempool: PendingTx[] = [];
+  private accounts: Account[] = [];
 
   onTick: ((info: { tick: number; epoch: number }) => void) | null = null;
   onTxProcessed: ((e: TxProcessed) => void) | null = null;
@@ -84,16 +93,16 @@ export class IdeEngine {
   // Submit a procedure call as a signed tx into the mempool. NOT applied now — the auto-ticker
   // broadcasts it when the chain reaches its target tick, so the SC invocation runs during that tick
   // (like the real network). Returns the tick it will land on.
-  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string): Promise<{ targetTick: number }> {
-    await this.ensureSigner();
+  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }): Promise<{ targetTick: number }> {
+    await this.ensureK12();
 
     const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
     const ti = await this.engine.tickInfo();
     const targetTick = ti.tick + TICKS_AHEAD;
 
-    const tx = await buildSignedTx(this.seed!, {
+    const tx = await buildSignedTx(caller.seed, {
       destination: contractAddress(slot),
-      amount: 0,
+      amount: caller.amount,
       tick: targetTick,
       inputType: Number(procId),
       payload,
@@ -106,6 +115,41 @@ export class IdeEngine {
   // Current in-process engine time (advances explicitly on invoke/advanceTick).
   async info(): Promise<{ tick: number; epoch: number }> {
     return this.engine.tickInfo();
+  }
+
+  // Dev accounts: the faucet seed + a couple of funded random seeds. A procedure's caller is one of
+  // these — chosen in the UI, used to sign the tx and pay its value.
+  async ensureAccounts(): Promise<Account[]> {
+    if (this.accounts.length) {
+      return this.accounts;
+    }
+    await this.ensureSigner();
+
+    const faucet = this.seed!;
+    this.accounts.push({ seed: faucet, id: (await deriveIdentity(faucet)).identity });
+
+    for (let i = 0; i < 2; i++) {
+      const seed = randomSeed();
+      const { identity } = await deriveIdentity(seed);
+      this.engine.fund(identityToBytes(identity), 1_000_000_000_000n);
+      this.accounts.push({ seed, id: identity });
+    }
+
+    return this.accounts;
+  }
+
+  async balanceOf(id: string): Promise<bigint> {
+    const e = await this.engine.balance(id);
+    try {
+      return BigInt(e.balance);
+    } catch {
+      return 0n;
+    }
+  }
+
+  // A deployed contract's address = id(slot, 0, 0, 0).
+  async addressOf(slot: number): Promise<string> {
+    return bytesToIdentity(contractAddress(slot));
   }
 
   private async ensureK12(): Promise<void> {

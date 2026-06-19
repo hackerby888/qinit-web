@@ -12,6 +12,8 @@ declare module "@qinit/engine" {
     tickInfo(): Promise<{ tick: number; epoch: number }>;
     seedFaucet(amount?: bigint): Promise<void>;
     fundedSeed(): Promise<string | undefined>;
+    balance(id: string): Promise<{ balance: string; [k: string]: unknown }>;
+    fund(id: Uint8Array, amount: bigint): void;
   }
   export function initK12(): Promise<void>;
 }
@@ -36,6 +38,9 @@ declare module "@qinit/core" {
     id: string;
   }
   export function buildSignedTx(seed: string, t: TxInput): Promise<SignedTx>;
+  export function deriveIdentity(seed: string): Promise<{ identity: string; publicKeyHex: string }>;
+  export function identityToBytes(id: string): Uint8Array;
+  export function bytesToIdentity(bytes: Uint8Array): Promise<string>;
 }
 
 declare module "@qinit/build/idl" {

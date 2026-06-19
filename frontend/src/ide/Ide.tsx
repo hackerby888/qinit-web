@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
-import type { IdlEntry } from "@qinit/build/idl";
+import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { CodeEditor } from "./editor";
@@ -13,12 +13,29 @@ import { FileExplorer } from "./FileExplorer";
 import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine } from "./engine";
+import type { IdeEngine, Account } from "./engine";
 import "../landing/pixel.css";
 
 const FRAME = `3px solid ${color.ink}`;
 const HAIR = `3px solid ${color.hair}`;
-const SLOT = 28; // single active contract per session (multi-slot deploy is a later milestone)
+const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
+
+type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl };
+
+const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
+const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
+
+const assignSlot = (reg: Record<string, DeployedContract>, name: string): number => {
+  if (reg[name]) {
+    return reg[name].slot;
+  }
+  const used = new Set(Object.values(reg).map((d) => d.slot));
+  let s = SLOT_BASE;
+  while (used.has(s)) {
+    s++;
+  }
+  return s;
+};
 
 type Phase = "idle" | "compiling" | "ready" | "error";
 type MonacoNS = Parameters<OnMount>[1];
@@ -115,9 +132,10 @@ function CallRow({ kind, id, entry, busy, output, pending = false, onRun }: {
   busy: boolean;
   output?: string;
   pending?: boolean;
-  onRun: (input: Record<string, string>) => void;
+  onRun: (input: Record<string, string>, value: number) => void;
 }) {
   const [vals, setVals] = useState<Record<string, string>>({});
+  const [value, setValue] = useState("0");
   const accent = kind === "function" ? color.accent : color.secondary;
 
   return (
@@ -127,7 +145,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, onRun }: {
         <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
         <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>#{id} · {kind === "function" ? "read" : "write"}</span>
         <button
-          onClick={() => onRun(vals)}
+          onClick={() => onRun(vals, Number(value) || 0)}
           disabled={busy}
           style={{ marginLeft: "auto", border: `2px solid ${color.ink}`, background: accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 12px", cursor: busy ? "default" : "pointer" }}
         >
@@ -148,6 +166,14 @@ function CallRow({ kind, id, entry, busy, output, pending = false, onRun }: {
         </div>
       ))}
 
+      {kind === "procedure" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk, minWidth: 64 }}>value</span>
+          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk, minWidth: 44 }}>qus</span>
+          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" style={fieldInput} />
+        </div>
+      )}
+
       {output !== undefined && (
         <div style={{ fontFamily: font.mono, fontSize: 11.5, color: pending ? color.yellow : accent, wordBreak: "break-all" }}>{pending ? "⏳" : "→"} {output}</div>
       )}
@@ -164,6 +190,70 @@ function PanelHint() {
   );
 }
 
+const selectStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  background: color.void,
+  color: color.textLight,
+  border: `1px solid ${color.hair2}`,
+  fontFamily: font.mono,
+  fontSize: 11.5,
+  padding: "4px 7px",
+  outline: "none",
+};
+
+// Pick the caller for a write + see its balance (Remix's account dropdown). Dev accounts are funded by
+// the engine faucet.
+function AccountsBar({ accounts, caller, onSelect, balances }: {
+  accounts: Account[];
+  caller: string;
+  onSelect: (id: string) => void;
+  balances: Record<string, string>;
+}) {
+  return (
+    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>ACCOUNTS · caller</div>
+      <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
+        {accounts.map((a, i) => (
+          <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
+        ))}
+      </select>
+      <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
+        balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
+      </div>
+    </div>
+  );
+}
+
+// The deployed-contracts list (Remix's "Deployed Contracts") — each compile&deploy registers one; click
+// to drive its call form.
+function DeployedList({ deployed, selected, onSelect }: {
+  deployed: Record<string, DeployedContract>;
+  selected: string | null;
+  onSelect: (name: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>DEPLOYED CONTRACTS</div>
+      {Object.values(deployed).map((d) => {
+        const on = d.name === selected;
+        return (
+          <div
+            key={d.name}
+            onClick={() => onSelect(d.name)}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 9px", cursor: "pointer", border: `1px solid ${on ? color.accent : color.hair}`, background: on ? `${color.accent}12` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
+          >
+            <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
+            <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
+            <span style={{ color: color.textGhostDk, fontSize: 10 }}>slot {d.slot}</span>
+            <span style={{ marginLeft: "auto", color: color.textGhostDk, fontSize: 10 }}>{shortId(d.address)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Ide() {
   const [ws, setWs] = useState<Workspace>(() => loadWorkspace());
   const [phase, setPhase] = useState<Phase>("idle");
@@ -173,6 +263,11 @@ export default function Ide() {
   const [busy, setBusy] = useState(false);
   const [engineInfo, setEngineInfo] = useState<{ tick: number; epoch: number } | null>(null);
   const [pending, setPending] = useState<Record<string, { name: string; targetTick: number }>>({});
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [caller, setCaller] = useState<string>("");
+  const [balances, setBalances] = useState<Record<string, string>>({});
+  const [deployed, setDeployed] = useState<Record<string, DeployedContract>>({});
+  const [selected, setSelected] = useState<string | null>(null);
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
@@ -206,17 +301,8 @@ export default function Ide() {
     };
   }, []);
 
-  const resetRun = () => {
-    setPhase("idle");
-    setResult(null);
-    setOutputs({});
-    setPending({});
-    clearClangMarkers();
-  };
-
   const selectFile = (name: string) => {
     setWs((w) => ({ ...w, active: name }));
-    resetRun();
   };
 
   const editSource = (src: string) => {
@@ -225,7 +311,6 @@ export default function Ide() {
 
   const createFile = (name: string) => {
     setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
-    resetRun();
   };
 
   const renameFile = (oldName: string, newName: string) => {
@@ -241,7 +326,6 @@ export default function Ide() {
       const active = w.active === name ? (files[0]?.name ?? "") : w.active;
       return { files, active };
     });
-    resetRun();
   };
 
   const share = async () => {
@@ -252,6 +336,20 @@ export default function Ide() {
     } catch {
       appendLog("share link: " + url);
     }
+  };
+
+  const callerSeed = (): string => accounts.find((a) => a.id === caller)?.seed ?? "";
+
+  const refreshBalances = async (accs: Account[]) => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    const next: Record<string, string> = {};
+    for (const a of accs) {
+      next[a.id] = (await eng.balanceOf(a.id)).toString();
+    }
+    setBalances(next);
   };
 
   // Live label for a queued tx — counts down as the chain ticks toward its target.
@@ -266,14 +364,6 @@ export default function Ide() {
     monacoRef.current = monaco;
     setupQpi(monaco, editor);
     import("./qpi/hover").then((m) => m.registerQpiHover(monaco)).catch(() => undefined);
-  };
-
-  const clearClangMarkers = () => {
-    const monaco = monacoRef.current;
-    const model = editorRef.current?.getModel();
-    if (monaco && model) {
-      monaco.editor.setModelMarkers(model, "clang", []);
-    }
   };
 
   const applyClangMarkers = (res: CompileResult) => {
@@ -295,11 +385,10 @@ export default function Ide() {
 
   const compile = async () => {
     setPhase("compiling");
-    setOutputs({});
-    setLog([]);
-    appendLog(`compiling ${contractName}…`);
+    const slot = assignSlot(deployed, contractName);
+    appendLog(`compiling ${contractName} (slot ${slot})…`);
 
-    const res = await compileContract({ source, name: contractName, slot: SLOT });
+    const res = await compileContract({ source, name: contractName, slot });
     setResult(res);
     applyClangMarkers(res);
 
@@ -308,6 +397,7 @@ export default function Ide() {
       appendLog(res.error ?? `compile failed — ${res.diagnostics.length} problem(s)`);
       return;
     }
+    const idlData = res.idl;
 
     try {
       const { IdeEngine } = await import("./engine");
@@ -322,14 +412,25 @@ export default function Ide() {
           });
           setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
           appendLog(`${name}() processed @ tick ${tick} — invocation ran in tickdata`);
+          eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
         };
         eng.start();
         engineRef.current = eng;
+        const accs = await eng.ensureAccounts();
+        setAccounts(accs);
+        setCaller(accs[0]?.id ?? "");
+        void refreshBalances(accs);
       }
-      await engineRef.current.deploy(SLOT, base64ToBytes(res.wasm), res.idl);
-      setEngineInfo(await engineRef.current.info());
+
+      const eng = engineRef.current;
+      await eng.deploy(slot, base64ToBytes(res.wasm), idlData);
+      const address = await eng.addressOf(slot);
+      setDeployed((d) => ({ ...d, [contractName]: { name: contractName, slot, address, idl: idlData } }));
+      setSelected(contractName);
+      setEngineInfo(await eng.info());
       setPhase("ready");
-      appendLog(`deployed ${res.idl.name} → slot ${SLOT} · ${res.size} B · hash ${res.hash?.slice(0, 12)}`);
+      void refreshBalances(await eng.ensureAccounts());
+      appendLog(`deployed ${idlData.name} → slot ${slot} · ${res.size} B · ${shortId(address)}`);
     } catch (e) {
       setPhase("error");
       appendLog("engine error: " + (e as Error).message);
@@ -348,16 +449,19 @@ export default function Ide() {
   const formatOut = (out: unknown): string =>
     JSON.stringify(out, (_k, v) => (typeof v === "bigint" ? v.toString() : v)) ?? String(out);
 
+  const sel = selected ? deployed[selected] : null;
+
   const runFunction = async (id: string, entry: IdlEntry, input: Record<string, string>) => {
-    if (!engineRef.current) {
+    const eng = engineRef.current;
+    if (!eng || !sel) {
       return;
     }
     setBusy(true);
     try {
-      const out = await engineRef.current.callFunction(SLOT, id, entry, coerce(entry, input));
+      const out = await eng.callFunction(sel.slot, id, entry, coerce(entry, input));
       const text = formatOut(out);
-      setOutputs((p) => ({ ...p, [`f:${id}`]: text }));
-      appendLog(`${entry.name}() → ${text}`);
+      setOutputs((p) => ({ ...p, [`${sel.name}:f:${id}`]: text }));
+      appendLog(`${sel.name}.${entry.name}() → ${text}`);
     } catch (e) {
       appendLog(`${entry.name} failed: ${(e as Error).message}`);
     } finally {
@@ -365,20 +469,22 @@ export default function Ide() {
     }
   };
 
-  const runProcedure = async (id: string, entry: IdlEntry, input: Record<string, string>) => {
-    if (!engineRef.current) {
+  const runProcedure = async (id: string, entry: IdlEntry, input: Record<string, string>, value: number) => {
+    const eng = engineRef.current;
+    if (!eng || !sel) {
       return;
     }
     setBusy(true);
     try {
-      const { targetTick } = await engineRef.current.submitProcedure(SLOT, id, entry, coerce(entry, input), `p:${id}`);
-      setPending((p) => ({ ...p, [`p:${id}`]: { name: entry.name, targetTick } }));
+      const key = `${sel.name}:p:${id}`;
+      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, coerce(entry, input), key, { seed: callerSeed(), amount: value });
+      setPending((p) => ({ ...p, [key]: { name: entry.name, targetTick } }));
       setOutputs((o) => {
         const next = { ...o };
-        delete next[`p:${id}`];
+        delete next[key];
         return next;
       });
-      appendLog(`${entry.name}() submitted to mempool → lands @ tick ${targetTick}`);
+      appendLog(`${sel.name}.${entry.name}() from acct ${shortId(caller)}${value ? ` · ${value} qus` : ""} → lands @ tick ${targetTick}`);
     } catch (e) {
       appendLog(`${entry.name} failed: ${(e as Error).message}`);
     } finally {
@@ -386,7 +492,7 @@ export default function Ide() {
     }
   };
 
-  const idl = result?.idl;
+  const idl = sel?.idl ?? null;
   const procedures = idl ? Object.entries(idl.procedures) : [];
   const functions = idl ? Object.entries(idl.functions) : [];
 
@@ -418,7 +524,7 @@ export default function Ide() {
         </div>
       </div>
 
-      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: "210px 1fr 318px", minHeight: 0 }}>
+      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: "210px 1fr 340px", minHeight: 0 }}>
         <FileExplorer
           files={ws.files}
           active={ws.active}
@@ -441,11 +547,10 @@ export default function Ide() {
         <div style={{ borderLeft: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: "12px 14px 8px", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".12em", color: color.textGhostDk, display: "flex", justifyContent: "space-between" }}>
             <span>ENGINE</span>
-            {phase === "ready" && idl && <span style={{ color: color.accent }}>{idl.name} · slot {SLOT}</span>}
+            {sel && <span style={{ color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-            {phase === "idle" && <PanelHint />}
             {phase === "compiling" && <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>compiling on the node toolchain…</div>}
 
             {phase === "error" && (
@@ -454,8 +559,12 @@ export default function Ide() {
               </div>
             )}
 
-            {phase === "ready" && (
+            {accounts.length > 0 && <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} />}
+
+            {Object.keys(deployed).length > 0 ? (
               <>
+                <DeployedList deployed={deployed} selected={selected} onSelect={setSelected} />
+
                 {Object.keys(pending).length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: `1px solid ${color.yellow}`, background: `${color.yellow}14`, fontFamily: font.mono, fontSize: 11, color: color.yellow }}>
                     <span style={{ width: 7, height: 7, flex: "none", background: color.yellow, animation: "nodePulse 1.4s ease-in-out infinite" }} />
@@ -463,11 +572,11 @@ export default function Ide() {
                   </div>
                 )}
 
-                {procedures.length > 0 && (
+                {sel && procedures.length > 0 && (
                   <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>PROCEDURES</div>
                 )}
-                {procedures.map(([id, entry]) => {
-                  const key = `p:${id}`;
+                {sel && procedures.map(([id, entry]) => {
+                  const key = `${sel.name}:p:${id}`;
                   const pend = pending[key];
                   return (
                     <CallRow
@@ -478,18 +587,20 @@ export default function Ide() {
                       busy={busy}
                       pending={!!pend}
                       output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
-                      onRun={(input) => runProcedure(id, entry, input)}
+                      onRun={(input, value) => runProcedure(id, entry, input, value)}
                     />
                   );
                 })}
 
-                {functions.length > 0 && (
+                {sel && functions.length > 0 && (
                   <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, marginTop: 4 }}>FUNCTIONS</div>
                 )}
-                {functions.map(([id, entry]) => (
-                  <CallRow key={`f${id}`} kind="function" id={id} entry={entry} busy={busy} output={outputs[`f:${id}`]} onRun={(input) => runFunction(id, entry, input)} />
+                {sel && functions.map(([id, entry]) => (
+                  <CallRow key={`f${id}`} kind="function" id={id} entry={entry} busy={busy} output={outputs[`${sel.name}:f:${id}`]} onRun={(input) => runFunction(id, entry, input)} />
                 ))}
               </>
+            ) : (
+              phase === "idle" && <PanelHint />
             )}
           </div>
 
