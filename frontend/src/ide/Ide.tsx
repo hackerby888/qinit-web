@@ -9,7 +9,8 @@ import type { IdlEntry } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { CodeEditor } from "./editor";
-import { EXAMPLES, type Example } from "./examples";
+import { FileExplorer } from "./FileExplorer";
+import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
 import type { IdeEngine } from "./engine";
@@ -17,6 +18,7 @@ import "../landing/pixel.css";
 
 const FRAME = `3px solid ${color.ink}`;
 const HAIR = `3px solid ${color.hair}`;
+const SLOT = 28; // single active contract per session (multi-slot deploy is a later milestone)
 
 type Phase = "idle" | "compiling" | "ready" | "error";
 type MonacoNS = Parameters<OnMount>[1];
@@ -94,30 +96,6 @@ function ToolButton({ children, onClick, variant = "ghost", disabled = false }: 
   );
 }
 
-function FileTree({ active, onPick }: { active: string; onPick: (e: Example) => void }) {
-  return (
-    <div style={{ borderRight: HAIR, background: color.panelDeep, padding: "14px 0", fontFamily: font.mono, fontSize: 12.5, overflowY: "auto" }}>
-      <div style={{ padding: "0 14px 10px", color: color.textGhostDk, letterSpacing: ".12em", fontSize: 10.5 }}>EXPLORER</div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px", color: color.textMutedDk }}>
-        <span style={{ width: 8, height: 8, background: color.textGhostDk, flex: "none" }} />my-contract
-      </div>
-      <div style={{ paddingLeft: 26, padding: "2px 0 2px 26px", color: color.textGhostDk, fontSize: 11 }}>contracts</div>
-      {EXAMPLES.map((e) => {
-        const on = e.file === active;
-        return (
-          <div
-            key={e.file}
-            onClick={() => onPick(e)}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 14px", paddingLeft: 40, cursor: "pointer", background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
-          >
-            <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />{e.file}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 const fieldInput: CSSProperties = {
   flex: 1,
   minWidth: 0,
@@ -187,8 +165,7 @@ function PanelHint() {
 }
 
 export default function Ide() {
-  const [active, setActive] = useState<Example>(EXAMPLES[0]);
-  const [source, setSource] = useState<string>(EXAMPLES[0].source);
+  const [ws, setWs] = useState<Workspace>(() => loadWorkspace());
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
@@ -203,6 +180,16 @@ export default function Ide() {
   const consoleRef = useRef<HTMLDivElement | null>(null);
 
   const appendLog = (line: string) => setLog((l) => [...l.slice(-200), line]);
+
+  const activeFile = ws.files.find((f) => f.name === ws.active) ?? ws.files[0];
+  const source = activeFile?.source ?? "";
+  const contractName = baseName(ws.active);
+
+  // Persist the workspace (debounced) on every edit.
+  useEffect(() => {
+    const t = setTimeout(() => saveWorkspace(ws), 400);
+    return () => clearTimeout(t);
+  }, [ws]);
 
   // Keep the console pinned to the newest line.
   useEffect(() => {
@@ -219,14 +206,52 @@ export default function Ide() {
     };
   }, []);
 
-  const pick = (e: Example) => {
-    setActive(e);
-    setSource(e.source);
+  const resetRun = () => {
     setPhase("idle");
     setResult(null);
     setOutputs({});
     setPending({});
     clearClangMarkers();
+  };
+
+  const selectFile = (name: string) => {
+    setWs((w) => ({ ...w, active: name }));
+    resetRun();
+  };
+
+  const editSource = (src: string) => {
+    setWs((w) => ({ ...w, files: w.files.map((f) => (f.name === w.active ? { ...f, source: src } : f)) }));
+  };
+
+  const createFile = (name: string) => {
+    setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
+    resetRun();
+  };
+
+  const renameFile = (oldName: string, newName: string) => {
+    setWs((w) => ({
+      files: w.files.map((f) => (f.name === oldName ? { ...f, name: newName } : f)),
+      active: w.active === oldName ? newName : w.active,
+    }));
+  };
+
+  const deleteFile = (name: string) => {
+    setWs((w) => {
+      const files = w.files.filter((f) => f.name !== name);
+      const active = w.active === name ? (files[0]?.name ?? "") : w.active;
+      return { files, active };
+    });
+    resetRun();
+  };
+
+  const share = async () => {
+    const url = shareUrl(ws);
+    try {
+      await navigator.clipboard.writeText(url);
+      appendLog("share link copied to clipboard");
+    } catch {
+      appendLog("share link: " + url);
+    }
   };
 
   // Live label for a queued tx — counts down as the chain ticks toward its target.
@@ -272,9 +297,9 @@ export default function Ide() {
     setPhase("compiling");
     setOutputs({});
     setLog([]);
-    appendLog(`compiling ${active.name}…`);
+    appendLog(`compiling ${contractName}…`);
 
-    const res = await compileContract({ source, name: active.name, slot: active.slot });
+    const res = await compileContract({ source, name: contractName, slot: SLOT });
     setResult(res);
     applyClangMarkers(res);
 
@@ -301,10 +326,10 @@ export default function Ide() {
         eng.start();
         engineRef.current = eng;
       }
-      await engineRef.current.deploy(active.slot, base64ToBytes(res.wasm), res.idl);
+      await engineRef.current.deploy(SLOT, base64ToBytes(res.wasm), res.idl);
       setEngineInfo(await engineRef.current.info());
       setPhase("ready");
-      appendLog(`deployed ${res.idl.name} → slot ${active.slot} · ${res.size} B · hash ${res.hash?.slice(0, 12)}`);
+      appendLog(`deployed ${res.idl.name} → slot ${SLOT} · ${res.size} B · hash ${res.hash?.slice(0, 12)}`);
     } catch (e) {
       setPhase("error");
       appendLog("engine error: " + (e as Error).message);
@@ -329,7 +354,7 @@ export default function Ide() {
     }
     setBusy(true);
     try {
-      const out = await engineRef.current.callFunction(active.slot, id, entry, coerce(entry, input));
+      const out = await engineRef.current.callFunction(SLOT, id, entry, coerce(entry, input));
       const text = formatOut(out);
       setOutputs((p) => ({ ...p, [`f:${id}`]: text }));
       appendLog(`${entry.name}() → ${text}`);
@@ -346,7 +371,7 @@ export default function Ide() {
     }
     setBusy(true);
     try {
-      const { targetTick } = await engineRef.current.submitProcedure(active.slot, id, entry, coerce(entry, input), `p:${id}`);
+      const { targetTick } = await engineRef.current.submitProcedure(SLOT, id, entry, coerce(entry, input), `p:${id}`);
       setPending((p) => ({ ...p, [`p:${id}`]: { name: entry.name, targetTick } }));
       setOutputs((o) => {
         const next = { ...o };
@@ -375,11 +400,12 @@ export default function Ide() {
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
         </Link>
         <span style={{ width: 1, height: 22, background: color.hair2 }} />
-        <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textMutedDk }}>{active.file}</span>
+        <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textMutedDk }}>{ws.active}</span>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling"}>
             {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
           </ToolButton>
+          <ToolButton onClick={share}>Share</ToolButton>
           <Link to="/docs" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
         </div>
       </div>
@@ -393,22 +419,29 @@ export default function Ide() {
       </div>
 
       <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: "210px 1fr 318px", minHeight: 0 }}>
-        <FileTree active={active.file} onPick={pick} />
+        <FileExplorer
+          files={ws.files}
+          active={ws.active}
+          onSelect={selectFile}
+          onCreate={createFile}
+          onRename={renameFile}
+          onDelete={deleteFile}
+        />
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: color.panel }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 14px", borderBottom: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12 }}>
             <span style={{ width: 8, height: 8, background: color.accent }} />
-            <span style={{ color: color.textLight }}>{active.file}</span>
+            <span style={{ color: color.textLight }}>{ws.active}</span>
           </div>
           <div style={{ flex: 1, minHeight: 0 }}>
-            <CodeEditor value={source} onChange={setSource} onMount={onEditorMount} />
+            <CodeEditor value={source} path={ws.active} onChange={editSource} onMount={onEditorMount} />
           </div>
         </div>
 
         <div style={{ borderLeft: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: "12px 14px 8px", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".12em", color: color.textGhostDk, display: "flex", justifyContent: "space-between" }}>
             <span>ENGINE</span>
-            {phase === "ready" && idl && <span style={{ color: color.accent }}>{idl.name} · slot {active.slot}</span>}
+            {phase === "ready" && idl && <span style={{ color: color.accent }}>{idl.name} · slot {SLOT}</span>}
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -489,7 +522,7 @@ export default function Ide() {
         <span style={{ color: phase === "ready" ? color.accent : phase === "error" ? "#FF8B7E" : color.textFaintDk }}>
           ● {phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
         </span>
-        <span>{active.name}</span>
+        <span>{contractName}</span>
         <span>C++ · qpi.h</span>
         {result?.hash && <span>hash {result.hash.slice(0, 12)}</span>}
         <span style={{ marginLeft: "auto" }}>in-process engine</span>

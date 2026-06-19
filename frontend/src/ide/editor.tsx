@@ -8,16 +8,18 @@ setupMonaco();
 
 export interface CodeEditorProps {
   value: string;
+  path?: string;
   onChange: (value: string) => void;
   onMount?: OnMount;
 }
 
-export function CodeEditor({ value, onChange, onMount }: CodeEditorProps) {
+export function CodeEditor({ value, path, onChange, onMount }: CodeEditorProps) {
   return (
     <Editor
       height="100%"
       language="cpp"
       theme="qinit-dark"
+      path={path}
       value={value}
       onChange={(v) => onChange(v ?? "")}
       onMount={onMount}

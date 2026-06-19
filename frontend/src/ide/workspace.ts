@@ -1,0 +1,139 @@
+// IDE workspace: the set of contract files + the active one, persisted to localStorage and shareable
+// via a URL hash. A file's contract name is its basename (Counter.h -> Counter); slot defaults to 28.
+import { EXAMPLES } from "./examples";
+
+export interface WorkspaceFile {
+  name: string; // file name incl. extension, e.g. "Counter.h"
+  source: string;
+}
+
+export interface Workspace {
+  files: WorkspaceFile[];
+  active: string; // active file name
+}
+
+const KEY = "qinit-ide-workspace.v1";
+
+export const baseName = (file: string): string => file.replace(/\.[^.]+$/, "");
+
+export const NEW_CONTRACT = `using namespace QPI;
+
+struct CONTRACT_STATE2_TYPE
+{
+};
+
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        uint64 value;
+    };
+
+    struct Set_input { uint64 value; };
+    struct Set_output {};
+    struct Get_input {};
+    struct Get_output { uint64 value; };
+
+    PUBLIC_PROCEDURE(Set)
+    {
+        state.mut().value = input.value;
+    }
+
+    PUBLIC_FUNCTION(Get)
+    {
+        output.value = state.get().value;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Set, 1);
+        REGISTER_USER_FUNCTION(Get, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().value = 0;
+    }
+};
+`;
+
+function seed(): Workspace {
+  const files = EXAMPLES.map((e) => ({ name: e.file, source: e.source }));
+  return { files, active: files[0]?.name ?? "Counter.h" };
+}
+
+function sanitize(raw: unknown): Workspace | null {
+  const ws = raw as Workspace | undefined;
+  if (!ws || !Array.isArray(ws.files)) {
+    return null;
+  }
+  const files = ws.files
+    .filter((f) => f && typeof f.name === "string" && typeof f.source === "string")
+    .map((f) => ({ name: f.name, source: f.source }));
+  if (!files.length) {
+    return null;
+  }
+  const active = typeof ws.active === "string" && files.some((f) => f.name === ws.active) ? ws.active : files[0].name;
+  return { files, active };
+}
+
+export function loadWorkspace(): Workspace {
+  const shared = decodeShareFromLocation();
+  if (shared) {
+    saveWorkspace(shared);
+    clearShareFromLocation();
+    return shared;
+  }
+
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const ws = sanitize(JSON.parse(raw));
+      if (ws) {
+        return ws;
+      }
+    }
+  } catch {
+    // corrupt storage — fall through to the seed
+  }
+
+  return seed();
+}
+
+export function saveWorkspace(ws: Workspace): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(ws));
+  } catch {
+    // private mode / quota — best-effort
+  }
+}
+
+export function resetWorkspace(): Workspace {
+  const ws = seed();
+  saveWorkspace(ws);
+  return ws;
+}
+
+// utf8-safe base64 (sources may contain non-ASCII comment glyphs)
+const toB64 = (s: string): string => btoa(unescape(encodeURIComponent(s)));
+const fromB64 = (b: string): string => decodeURIComponent(escape(atob(b)));
+
+export function shareUrl(ws: Workspace): string {
+  return `${location.origin}${location.pathname}#p=${toB64(JSON.stringify(ws))}`;
+}
+
+function decodeShareFromLocation(): Workspace | null {
+  const m = location.hash.match(/[#&]p=([^&]+)/);
+  if (!m) {
+    return null;
+  }
+  try {
+    return sanitize(JSON.parse(fromB64(m[1])));
+  } catch {
+    return null;
+  }
+}
+
+function clearShareFromLocation(): void {
+  history.replaceState(null, "", location.pathname + location.search);
+}
