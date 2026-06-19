@@ -1,0 +1,124 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- theme tokens (RGB channels; flipped by the .dark class) ---- */
+:root {
+  color-scheme: light;
+  --paper: 241 240 235; /* #F1F0EB warm off-white canvas */
+  --card: 255 255 255;  /* #FFFFFF surfaces */
+  --snow: 231 230 224;  /* #E7E6E0 hairline / hover wash */
+  --ink: 11 14 12;      /* #0B0E0C primary text + hairline source */
+  --slate: 106 110 104; /* #6A6E68 secondary */
+  --faint: 154 158 151; /* #9A9E97 tertiary */
+  --accent: 12 156 128; /* #0C9C80 page accent (links, signals) */
+}
+.dark {
+  color-scheme: dark;
+  --paper: 11 14 12;    /* #0B0E0C graphite-green canvas */
+  --card: 22 28 24;     /* #161C18 cards */
+  --snow: 28 36 31;     /* #1C241F hover wash */
+  --ink: 232 234 230;   /* #E8EAE6 bone text */
+  --slate: 138 147 140; /* #8A938C mist */
+  --faint: 90 97 91;    /* #5A615B faint */
+  --accent: 60 232 196; /* #3CE8C4 bright phosphor mint */
+}
+html { scroll-behavior: smooth; }
+body {
+  @apply text-slate antialiased;
+  background-color: rgb(var(--paper));
+  font-family: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+::selection { background: rgb(var(--accent) / 0.2); color: rgb(var(--ink)); }
+
+/* ---- fixed atmosphere: flat warm canvas + one faint top wash + faint grid ---- */
+.bg-fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.bg-fx::before { /* soft light wash at the top */
+  content: ""; position: absolute; top: -360px; left: 50%; transform: translateX(-50%);
+  width: 1100px; height: 760px; border-radius: 9999px; filter: blur(120px);
+  background: radial-gradient(closest-side, rgba(255,255,255,.85), transparent 70%);
+}
+.dark .bg-fx::before { /* mint glow */
+  width: 900px; height: 720px; filter: blur(150px);
+  background: radial-gradient(closest-side, rgba(60,232,196,.20), transparent 70%);
+}
+.dark .bg-fx::after { /* lone amber ember, far + faint */
+  content: ""; position: absolute; bottom: -260px; right: -120px;
+  width: 540px; height: 540px; border-radius: 9999px; filter: blur(170px); opacity: .12;
+  background: radial-gradient(closest-side, #FFB347, transparent 70%);
+}
+.bg-grid { /* hairline lattice, masked to a soft pool at the top */
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    linear-gradient(rgb(var(--ink) / .04) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--ink) / .04) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 55% at 50% 0%, #000 30%, transparent 80%);
+  mask-image: radial-gradient(ellipse 75% 55% at 50% 0%, #000 30%, transparent 80%);
+}
+.dark .bg-grid { background-image:
+    linear-gradient(rgba(232,234,230,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232,234,230,.04) 1px, transparent 1px); }
+
+/* ---- accent (one phrase of colour, like Aleo's lone colour dots) ---- */
+.phosphor { color: rgb(var(--accent)); }
+.dark .phosphor { text-shadow: 0 0 22px rgba(60,232,196,.4); }
+.grad-text { @apply bg-clip-text text-transparent; background-image: linear-gradient(100deg, rgb(var(--accent)), rgb(var(--ink)) 70%); }
+.grad-still { @apply bg-clip-text text-transparent; background-image: linear-gradient(100deg, rgb(var(--accent)), rgb(var(--ink))); }
+
+/* ---- light surfaces (class names preserved so both pages inherit) ---- */
+.glass { @apply rounded-2xl border border-ink/[.08] bg-card shadow-card; }
+.glass-hover { @apply transition duration-300 hover:border-ink/15 hover:shadow-glow; }
+
+/* dark "screen" surface for the terminal + code blocks (dark cards on a light page) */
+.screen { @apply rounded-2xl border border-white/10 bg-ink2 shadow-screen; }
+
+/* subtle teal hairline ring overlay (no layout shift) */
+.gborder { position: relative; }
+.gborder::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+  background: linear-gradient(135deg, rgba(12,156,128,.35), rgba(12,156,128,.04) 50%, transparent 72%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+}
+
+/* ---- buttons: black pill primary, outline secondary (Aleo) ---- */
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition duration-200;
+  box-shadow: 0 10px 26px -14px rgba(11,14,12,.6);
+}
+/* black button on light, inverts to a white button on dark via token flip */
+.btn-primary:hover { transform: translateY(-1px); filter: brightness(1.08); box-shadow: 0 16px 32px -16px rgba(11,14,12,.5); }
+.btn-ghost {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink/20 px-5 py-2.5 text-sm font-medium text-ink transition;
+}
+.btn-ghost:hover { @apply border-ink/40 bg-snow; }
+
+/* mono pill / eyebrow */
+.chip {
+  @apply inline-flex items-center gap-2 rounded-full border border-ink/10 bg-card px-3 py-1 font-mono text-xs text-slate shadow-card;
+}
+.eyebrow { @apply font-mono text-xs uppercase tracking-[0.22em] text-slate; }
+
+/* visible focus for keyboard users */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid #0C9C80; outline-offset: 2px; border-radius: 8px;
+}
+
+/* ---- syntax highlight — phosphor palette (renders on the dark screens) ---- */
+.hljs { color: #E8EAE6; background: transparent; }
+.hljs-comment, .hljs-quote { color: #6b7280; font-style: italic; }
+.hljs-keyword, .hljs-literal, .hljs-built_in, .hljs-name, .hljs-selector-tag { color: #6df2d6; }
+.hljs-string, .hljs-attr, .hljs-symbol, .hljs-bullet, .hljs-addition { color: #3CE8C4; }
+.hljs-number { color: #FFB347; }
+.hljs-title, .hljs-title.function_, .hljs-section, .hljs-type { color: #9fefe0; }
+.hljs-variable, .hljs-template-variable, .hljs-params { color: #FFC97A; }
+.hljs-meta, .hljs-meta .hljs-keyword { color: #8A938C; }
+.hljs-punctuation, .hljs-operator { color: #8A938C; }
+
+/* ---- respect reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

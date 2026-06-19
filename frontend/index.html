@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#F1F0EB" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <script>
+      // Set the theme before first paint (no flash). Honors saved choice, else OS.
+      (function () {
+        try {
+          var q = new URLSearchParams(location.search).get("theme");
+          var t = q === "dark" || q === "light" ? q : localStorage.getItem("theme");
+          var dark = t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) {
+            document.documentElement.classList.add("dark");
+            var m = document.querySelector('meta[name="theme-color"]');
+            if (m) m.setAttribute("content", "#0B0E0C");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <title>qinit — Qubic dynamic contracts framework</title>
+    <meta name="description" content="Anchor-like framework for Qubic dynamic contracts: scaffold → build → deploy → call, as one standalone binary." />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
