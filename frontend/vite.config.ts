@@ -13,7 +13,12 @@ export default defineConfig({
     alias: {
       "@qinit/engine": qinit("engine/src/index.ts"),
       "@qinit/proto": qinit("proto/src/index.ts"),
+      // `@qinit/build/idl` must precede `@qinit/build` (first match wins). The package root pulls node:fs,
+      // so it's redirected to the browser-safe idl module (which is all the inspector needs: extractIdl).
       "@qinit/build/idl": qinit("build/src/idl.ts"),
+      "@qinit/build": qinit("build/src/idl.ts"),
+      // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.
+      "@qinit/inspector": qinit("cli/src/trace-format.ts"),
       "@qinit/core": here("vendor/qinit-core.browser.ts"),
     },
   },

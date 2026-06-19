@@ -14,13 +14,30 @@ import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Wo
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
 import type { IdeEngine, Account } from "./engine";
+import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
+
+// A tx's effect — which StateData fields changed (computed by diffing readState snapshots).
+type StateChange = { name: string; before: string; after: string };
+type TxDetail = { diff: StateChange[] };
+
+const diffStates = (before: StateDump | undefined, after: StateDump): StateChange[] => {
+  const prev = new Map((before?.fields ?? []).map((f) => [f.name, f.value]));
+  const out: StateChange[] = [];
+  for (const f of after.fields) {
+    const b = prev.get(f.name);
+    if (b !== undefined && b !== f.value) {
+      out.push({ name: f.name, before: b, after: f.value });
+    }
+  }
+  return out;
+};
 
 const FRAME = `3px solid ${color.ink}`;
 const HAIR = `3px solid ${color.hair}`;
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 
-type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl };
+type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string };
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
@@ -125,13 +142,14 @@ const fieldInput: CSSProperties = {
   outline: "none",
 };
 
-function CallRow({ kind, id, entry, busy, output, pending = false, onRun }: {
+function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun }: {
   kind: "function" | "procedure";
   id: string;
   entry: IdlEntry;
   busy: boolean;
   output?: string;
   pending?: boolean;
+  detail?: TxDetail;
   onRun: (input: Record<string, string>, value: number) => void;
 }) {
   const [vals, setVals] = useState<Record<string, string>>({});
@@ -177,6 +195,40 @@ function CallRow({ kind, id, entry, busy, output, pending = false, onRun }: {
       {output !== undefined && (
         <div style={{ fontFamily: font.mono, fontSize: 11.5, color: pending ? color.yellow : accent, wordBreak: "break-all" }}>{pending ? "⏳" : "→"} {output}</div>
       )}
+
+      {detail && detail.diff.length > 0 && (
+        <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textFaintDk, lineHeight: 1.6, borderTop: `1px solid ${color.hair}`, paddingTop: 5, display: "flex", flexDirection: "column", gap: 1 }}>
+          <span style={{ color: color.textGhostDk }}>state diff</span>
+          {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.name}: {d.before} → {d.after}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The qinit `state` inspector inline — a deployed contract's decoded StateData (scalars + container
+// columns), refreshed each tick. Reuses the CLI's readState decoder.
+function StatePanel({ dump }: { dump?: StateDump }) {
+  if (!dump || (dump.fields.length === 0 && dump.cols.length === 0)) {
+    return null;
+  }
+  return (
+    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>STATE</div>
+      {dump.fields.map((f) => (
+        <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
+          <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
+          <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
+        </div>
+      ))}
+      {dump.cols.map((c) => (
+        <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
+          <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
+          {c.entries.map((e, i) => (
+            <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{e}</div>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
@@ -268,11 +320,15 @@ export default function Ide() {
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [deployed, setDeployed] = useState<Record<string, DeployedContract>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [stateView, setStateView] = useState<Record<string, StateDump>>({});
+  const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
   const engineRef = useRef<IdeEngine | null>(null);
   const consoleRef = useRef<HTMLDivElement | null>(null);
+  const deployedRef = useRef<Record<string, DeployedContract>>({});
+  const stateRef = useRef<Record<string, StateDump>>({});
 
   const appendLog = (line: string) => setLog((l) => [...l.slice(-200), line]);
 
@@ -352,6 +408,44 @@ export default function Ide() {
     setBalances(next);
   };
 
+  const refreshState = async (name: string) => {
+    const eng = engineRef.current;
+    const d = deployedRef.current[name];
+    if (!eng || !d) {
+      return;
+    }
+    try {
+      const dump = await eng.stateOf(d.slot, d.source, d.name);
+      stateRef.current[name] = dump;
+      setStateView((s) => ({ ...s, [name]: dump }));
+    } catch {
+      // best-effort decode
+    }
+  };
+
+  // After a tx lands: re-read the contract's state and diff it against the prior snapshot — the tx
+  // inspector view (which StateData fields changed). Reuses the same readState decoder as the panel.
+  const applyTxDiff = async (key: string) => {
+    const eng = engineRef.current;
+    const cname = key.split(":")[0];
+    const d = deployedRef.current[cname];
+    if (!eng || !d) {
+      return;
+    }
+    try {
+      const before = stateRef.current[cname];
+      const after = await eng.stateOf(d.slot, d.source, d.name);
+      stateRef.current[cname] = after;
+      setStateView((s) => ({ ...s, [cname]: after }));
+      const diff = diffStates(before, after);
+      if (diff.length) {
+        setTxDetail((t) => ({ ...t, [key]: { diff } }));
+      }
+    } catch {
+      // best-effort
+    }
+  };
+
   // Live label for a queued tx — counts down as the chain ticks toward its target.
   const pendingLabel = (targetTick: number): string => {
     const cur = engineInfo?.tick ?? 0;
@@ -413,6 +507,7 @@ export default function Ide() {
           setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
           appendLog(`${name}() processed @ tick ${tick} — invocation ran in tickdata`);
           eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
+          void applyTxDiff(key);
         };
         eng.start();
         engineRef.current = eng;
@@ -425,11 +520,14 @@ export default function Ide() {
       const eng = engineRef.current;
       await eng.deploy(slot, base64ToBytes(res.wasm), idlData);
       const address = await eng.addressOf(slot);
-      setDeployed((d) => ({ ...d, [contractName]: { name: contractName, slot, address, idl: idlData } }));
+      const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source } };
+      deployedRef.current = reg;
+      setDeployed(reg);
       setSelected(contractName);
       setEngineInfo(await eng.info());
       setPhase("ready");
       void refreshBalances(await eng.ensureAccounts());
+      void refreshState(contractName);
       appendLog(`deployed ${idlData.name} → slot ${slot} · ${res.size} B · ${shortId(address)}`);
     } catch (e) {
       setPhase("error");
@@ -565,6 +663,8 @@ export default function Ide() {
               <>
                 <DeployedList deployed={deployed} selected={selected} onSelect={setSelected} />
 
+                {sel && <StatePanel dump={stateView[sel.name]} />}
+
                 {Object.keys(pending).length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: `1px solid ${color.yellow}`, background: `${color.yellow}14`, fontFamily: font.mono, fontSize: 11, color: color.yellow }}>
                     <span style={{ width: 7, height: 7, flex: "none", background: color.yellow, animation: "nodePulse 1.4s ease-in-out infinite" }} />
@@ -587,6 +687,7 @@ export default function Ide() {
                       busy={busy}
                       pending={!!pend}
                       output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
+                      detail={txDetail[key]}
                       onRun={(input, value) => runProcedure(id, entry, input, value)}
                     />
                   );

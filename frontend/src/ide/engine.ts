@@ -6,6 +6,7 @@ import { InProcessEngine, initK12 } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
+import { readState, type StateDump } from "@qinit/inspector";
 
 // A submitted tx lands a few ticks ahead — the auto-ticker processes it when the chain reaches it.
 const TICKS_AHEAD = 3;
@@ -81,6 +82,11 @@ export class IdeEngine {
     }
 
     this.onTick?.(info);
+  }
+
+  // Decode a deployed contract's CURRENT state (scalars + container columns) — the qinit `state` inspector.
+  async stateOf(slot: number, source: string, name: string): Promise<StateDump> {
+    return readState(this.engine, slot, source, name);
   }
 
   // Read a function's output. No crypto — a direct query against the deployed wasm.

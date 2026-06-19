@@ -14,8 +14,70 @@ declare module "@qinit/engine" {
     fundedSeed(): Promise<string | undefined>;
     balance(id: string): Promise<{ balance: string; [k: string]: unknown }>;
     fund(id: Uint8Array, amount: bigint): void;
+    stateRead(slot: number, off: number, len: number): Promise<{ hex: string; off: number; len: number; stateSize: number }>;
+    setDebug(on: boolean): Promise<{ enabled: boolean }>;
+    debugTrace(): Promise<DebugTrace>;
+  }
+  export interface DebugEntry {
+    seq: number;
+    tick: number;
+    index: number;
+    entry: number;
+    kind: number;
+    ok: boolean;
+    inHex: string;
+    outHex: string;
+    invocator: string;
+    stateDiff: { off: number; before: string; after: string }[];
+    logs: { type: number; size: number; hex: string }[];
+  }
+  export interface DebugTrace {
+    enabled: boolean;
+    entries: DebugEntry[];
   }
   export function initK12(): Promise<void>;
+}
+
+declare module "@qinit/inspector" {
+  export interface Container {
+    kind: "hashmap" | "hashset" | "collection";
+    keyFmt: string;
+    valFmt?: string;
+    capacity: number;
+  }
+  export interface StateField {
+    name: string;
+    off: number;
+    size: number;
+    type: string;
+    container?: Container;
+    bad?: boolean;
+  }
+  export interface ColView {
+    name: string;
+    entries: string[];
+  }
+  export interface StateDump {
+    fields: { name: string; value: string }[];
+    cols: ColView[];
+  }
+  export interface TraceView {
+    inDecoded: string;
+    outDecoded: string;
+    caller: string;
+    fields: StateField[];
+    cols: ColView[];
+    logs: unknown[];
+  }
+  export interface StateReader {
+    stateRead(slot: number, off: number, len: number): Promise<{ hex: string }>;
+  }
+  export function readState(rpc: StateReader, idx: number, source: string, name: string, full?: boolean): Promise<StateDump>;
+  export function describeTrace(e: unknown, source: string | undefined, name: string, rpc: StateReader): Promise<TraceView>;
+  export function stateFieldsOf(idl: unknown): StateField[];
+  export function labelOff(fields: StateField[], off: number): string;
+  export function fmtDiffVal(fields: StateField[], off: number, hex: string): string;
+  export function fmtLog(l: unknown): string;
 }
 
 declare module "@qinit/proto" {
