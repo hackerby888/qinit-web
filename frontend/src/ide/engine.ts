@@ -6,7 +6,7 @@ import { InProcessEngine, initK12 } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
-import { readState, type StateDump } from "@qinit/inspector";
+import { readState, describeTrace, labelOff, fmtDiffVal, fmtLog, type StateDump } from "@qinit/inspector";
 
 // A submitted tx lands a few ticks ahead — the auto-ticker processes it when the chain reaches it.
 const TICKS_AHEAD = 3;
@@ -24,6 +24,16 @@ interface PendingTx {
   bytes: Uint8Array;
   name: string;
   key: string;
+  contractName: string;
+  contractSource: string;
+}
+
+export interface TxDetail {
+  in: string;
+  out: string;
+  caller: string;
+  diff: { label: string; before: string; after: string }[];
+  logs: string[];
 }
 
 export interface TxProcessed {
@@ -31,6 +41,7 @@ export interface TxProcessed {
   name: string;
   tick: number;
   moneyFlew: boolean;
+  detail?: TxDetail;
 }
 
 export class IdeEngine {
@@ -56,6 +67,7 @@ export class IdeEngine {
     if (this.ticker) {
       return;
     }
+    void this.engine.setDebug(true); // capture per-tx debug traces for the inspector
     this.ticker = setInterval(() => {
       void this.tick();
     }, 1000);
@@ -76,12 +88,36 @@ export class IdeEngine {
     if (due.length) {
       this.mempool = this.mempool.filter((t) => info.tick < t.targetTick);
       for (const t of due) {
+        const base = (await this.engine.debugTrace()).entries.length;
         const r = await this.engine.broadcastTx(t.bytes);
-        this.onTxProcessed?.({ key: t.key, name: t.name, tick: info.tick, moneyFlew: !!r.moneyFlew });
+        const detail = await this.traceOf(base, t);
+        this.onTxProcessed?.({ key: t.key, name: t.name, tick: info.tick, moneyFlew: !!r.moneyFlew, detail });
       }
     }
 
     this.onTick?.(info);
+  }
+
+  // Decode the just-processed tx (debug entries added since `base`) into the inspector view — decoded
+  // in/out, caller, named StateData diff, and contract logs. Reuses the CLI's trace decoder; never throws.
+  private async traceOf(base: number, t: PendingTx): Promise<TxDetail | undefined> {
+    try {
+      const entries = (await this.engine.debugTrace()).entries.slice(base);
+      const e = entries.find((x) => x.kind === 1) ?? entries[entries.length - 1];
+      if (!e) {
+        return undefined;
+      }
+      const tv = await describeTrace(e, t.contractSource, t.contractName, this.engine);
+      return {
+        in: tv.inDecoded,
+        out: tv.outDecoded,
+        caller: tv.caller,
+        diff: e.stateDiff.map((d) => ({ label: labelOff(tv.fields, d.off), before: fmtDiffVal(tv.fields, d.off, d.before), after: fmtDiffVal(tv.fields, d.off, d.after) })),
+        logs: tv.logs.map((l) => fmtLog(l)),
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   // Decode a deployed contract's CURRENT state (scalars + container columns) — the qinit `state` inspector.
@@ -99,7 +135,7 @@ export class IdeEngine {
   // Submit a procedure call as a signed tx into the mempool. NOT applied now — the auto-ticker
   // broadcasts it when the chain reaches its target tick, so the SC invocation runs during that tick
   // (like the real network). Returns the tick it will land on.
-  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }): Promise<{ targetTick: number }> {
+  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }, contract: { name: string; source: string }): Promise<{ targetTick: number }> {
     await this.ensureK12();
 
     const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
@@ -114,7 +150,7 @@ export class IdeEngine {
       payload,
     });
 
-    this.mempool.push({ targetTick, bytes: tx.bytes, name: entry.name, key });
+    this.mempool.push({ targetTick, bytes: tx.bytes, name: entry.name, key, contractName: contract.name, contractSource: contract.source });
     return { targetTick };
   }
 

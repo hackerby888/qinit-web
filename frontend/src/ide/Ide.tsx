@@ -13,25 +13,9 @@ import { FileExplorer } from "./FileExplorer";
 import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine, Account } from "./engine";
+import type { IdeEngine, Account, TxDetail } from "./engine";
 import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
-
-// A tx's effect — which StateData fields changed (computed by diffing readState snapshots).
-type StateChange = { name: string; before: string; after: string };
-type TxDetail = { diff: StateChange[] };
-
-const diffStates = (before: StateDump | undefined, after: StateDump): StateChange[] => {
-  const prev = new Map((before?.fields ?? []).map((f) => [f.name, f.value]));
-  const out: StateChange[] = [];
-  for (const f of after.fields) {
-    const b = prev.get(f.name);
-    if (b !== undefined && b !== f.value) {
-      out.push({ name: f.name, before: b, after: f.value });
-    }
-  }
-  return out;
-};
 
 const FRAME = `3px solid ${color.ink}`;
 const HAIR = `3px solid ${color.hair}`;
@@ -196,10 +180,12 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
         <div style={{ fontFamily: font.mono, fontSize: 11.5, color: pending ? color.yellow : accent, wordBreak: "break-all" }}>{pending ? "⏳" : "→"} {output}</div>
       )}
 
-      {detail && detail.diff.length > 0 && (
+      {detail && (
         <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textFaintDk, lineHeight: 1.6, borderTop: `1px solid ${color.hair}`, paddingTop: 5, display: "flex", flexDirection: "column", gap: 1 }}>
-          <span style={{ color: color.textGhostDk }}>state diff</span>
-          {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.name}: {d.before} → {d.after}</div>)}
+          {detail.caller && detail.caller !== "(none)" && <div>caller <span style={{ color: color.textMutedDk }}>{shortId(detail.caller)}</span></div>}
+          {detail.in && detail.in !== "(none)" && <div>in <span style={{ color: color.textMutedDk }}>{detail.in}</span></div>}
+          {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.before} → {d.after}</div>)}
+          {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
         </div>
       )}
     </div>
@@ -423,28 +409,6 @@ export default function Ide() {
     }
   };
 
-  // After a tx lands: re-read the contract's state and diff it against the prior snapshot — the tx
-  // inspector view (which StateData fields changed). Reuses the same readState decoder as the panel.
-  const applyTxDiff = async (key: string) => {
-    const eng = engineRef.current;
-    const cname = key.split(":")[0];
-    const d = deployedRef.current[cname];
-    if (!eng || !d) {
-      return;
-    }
-    try {
-      const before = stateRef.current[cname];
-      const after = await eng.stateOf(d.slot, d.source, d.name);
-      stateRef.current[cname] = after;
-      setStateView((s) => ({ ...s, [cname]: after }));
-      const diff = diffStates(before, after);
-      if (diff.length) {
-        setTxDetail((t) => ({ ...t, [key]: { diff } }));
-      }
-    } catch {
-      // best-effort
-    }
-  };
 
   // Live label for a queued tx — counts down as the chain ticks toward its target.
   const pendingLabel = (targetTick: number): string => {
@@ -498,16 +462,19 @@ export default function Ide() {
       if (!engineRef.current) {
         const eng = new IdeEngine();
         eng.onTick = (info) => setEngineInfo(info);
-        eng.onTxProcessed = ({ key, name, tick, moneyFlew }) => {
+        eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
           setPending((p) => {
             const next = { ...p };
             delete next[key];
             return next;
           });
           setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
+          if (detail) {
+            setTxDetail((t) => ({ ...t, [key]: detail }));
+          }
           appendLog(`${name}() processed @ tick ${tick} — invocation ran in tickdata`);
           eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
-          void applyTxDiff(key);
+          void refreshState(key.split(":")[0]);
         };
         eng.start();
         engineRef.current = eng;
@@ -575,7 +542,7 @@ export default function Ide() {
     setBusy(true);
     try {
       const key = `${sel.name}:p:${id}`;
-      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, coerce(entry, input), key, { seed: callerSeed(), amount: value });
+      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, coerce(entry, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
       setPending((p) => ({ ...p, [key]: { name: entry.name, targetTick } }));
       setOutputs((o) => {
         const next = { ...o };
