@@ -469,10 +469,14 @@ export default function Ide() {
             return next;
           });
           setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
+          appendLog(`${name}() processed @ tick ${tick}`);
           if (detail) {
             setTxDetail((t) => ({ ...t, [key]: detail }));
+            if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
+            if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
+            detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
+            detail.logs.forEach((l) => appendLog(`  log ${l}`));
           }
-          appendLog(`${name}() processed @ tick ${tick} — invocation ran in tickdata`);
           eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
           void refreshState(key.split(":")[0]);
         };
