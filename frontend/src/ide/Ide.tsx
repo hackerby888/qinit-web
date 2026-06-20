@@ -8,6 +8,7 @@ import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
+import { Card, SectionHead, NeoBtn } from "./ui";
 import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
 import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
@@ -42,6 +43,7 @@ const assignSlot = (reg: Record<string, DeployedContract>, name: string): number
 type Phase = "idle" | "compiling" | "ready" | "error";
 type MonacoNS = Parameters<OnMount>[1];
 type EditorRef = Parameters<OnMount>[0];
+
 
 // One row of the Problems panel — a marker (qpi lexical/context, or clang) on the active model.
 interface ProblemItem {
@@ -152,7 +154,8 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
   const accent = kind === "function" ? color.accent : color.secondary;
 
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+    <Card frame={accent} shadow={3}>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 7, height: 7, background: accent, flex: "none" }} />
         <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
@@ -200,7 +203,8 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
           {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
         </div>
       )}
-    </div>
+      </div>
+    </Card>
   );
 }
 
@@ -211,23 +215,25 @@ function StatePanel({ dump }: { dump?: StateDump }) {
     return null;
   }
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>STATE</div>
-      {dump.fields.map((f) => (
-        <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
-          <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
-          <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
-        </div>
-      ))}
-      {dump.cols.map((c) => (
-        <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
-          <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
-          {c.entries.map((e, i) => (
-            <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{e}</div>
-          ))}
-        </div>
-      ))}
-    </div>
+    <Card>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+        <SectionHead label="STATE" accent={color.secondary} />
+        {dump.fields.map((f) => (
+          <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
+            <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
+            <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
+          </div>
+        ))}
+        {dump.cols.map((c) => (
+          <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
+            <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
+            {c.entries.map((e, i) => (
+              <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{e}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -263,28 +269,24 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
 }) {
   const [amount, setAmount] = useState("1000000000");
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
-      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>ACCOUNTS · caller</div>
-      <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
-        {accounts.map((a, i) => (
-          <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
-        ))}
-      </select>
-      <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
-        balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
+    <Card>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <SectionHead label="ACCOUNTS" right={<span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>caller</span>} />
+        <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
+          {accounts.map((a, i) => (
+            <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
+          ))}
+        </select>
+        <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
+          balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput} />
+          <NeoBtn onClick={() => onFund(caller, Number(amount) || 0)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
-        <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput} />
-        <button
-          onClick={() => onFund(caller, Number(amount) || 0)}
-          title="Credit this account from the testnet faucet"
-          style={{ border: `2px solid ${color.ink}`, background: color.accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 12px", cursor: "pointer", flex: "none" }}
-        >
-          +Fund
-        </button>
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -305,39 +307,45 @@ function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpo
   const tick = info?.tick ?? 0;
   const within = epochLen > 0 ? tick % epochLen : 0;
   const nextBoundary = tick + (epochLen > 0 ? epochLen - within : 1);
-  const ctlBtn: CSSProperties = {
-    border: `1px solid ${color.hair2}`,
-    background: color.void,
-    color: color.textLight,
-    fontFamily: font.mono,
-    fontSize: 11,
-    padding: "3px 8px",
-    cursor: "pointer",
-    flex: "none",
-  };
+  const pct = epochLen > 0 ? (within / epochLen) * 100 : 0;
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 8, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-      <span style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, width: "100%" }}>
-        TESTNET · tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span> <span style={{ color: color.textGhostDk }}>· {within}/{epochLen} to next</span>
-      </span>
-      <button onClick={onToggle} title={paused ? "Resume auto-tick" : "Pause auto-tick"} style={{ ...ctlBtn, background: paused ? color.accent : color.void, color: paused ? color.void : color.textLight }}>
-        {paused ? "▶ run" : "⏸ pause"}
-      </button>
-      <button onClick={() => onStep(1)} title="Advance 1 tick" style={ctlBtn}>⏭ +1</button>
-      <button onClick={() => onStep(10)} title="Advance 10 ticks" style={ctlBtn}>⏩ +10</button>
-      <button onClick={onEpoch} title={`Jump to tick ${nextBoundary} (the next epoch boundary) — fires END_EPOCH → BEGIN_EPOCH`} style={ctlBtn}>⤓ epoch</button>
-      <button onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)" style={ctlBtn}>↺ reset</button>
-      <button onClick={onReplay} title="Replay every tx this session from genesis" style={ctlBtn}>↻ replay</button>
-      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
-        speed
-        <select value={speed} onChange={(e) => onSpeed(Number(e.target.value))} style={{ ...ctlBtn, padding: "2px 4px" }}>
-          <option value={1}>1×</option>
-          <option value={2}>2×</option>
-          <option value={5}>5×</option>
-          <option value={10}>10×</option>
-        </select>
-      </span>
-    </div>
+    <Card frame={color.accentDeep} shadow={5}>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 9 }}>
+        <SectionHead
+          label="TESTNET"
+          right={
+            <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>
+              tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
+            </span>
+          }
+        />
+
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 9.5, color: color.textGhostDk }}>
+          <span style={{ flex: 1, height: 8, background: color.void, border: `1px solid ${color.hair}`, position: "relative", overflow: "hidden" }}>
+            <span style={{ position: "absolute", inset: 0, width: `${pct}%`, background: color.accentDeep }} />
+          </span>
+          <span>{within}/{epochLen}</span>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
+          <NeoBtn onClick={onToggle} active={paused} title={paused ? "Resume auto-tick" : "Pause auto-tick"}>{paused ? "▶ run" : "⏸ pause"}</NeoBtn>
+          <NeoBtn onClick={() => onStep(1)} title="Advance 1 tick">⏭ +1</NeoBtn>
+          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks">⏩ +10</NeoBtn>
+          <NeoBtn onClick={onEpoch} accent={color.secondary} title={`Jump to tick ${nextBoundary} (the next epoch boundary) — fires END_EPOCH → BEGIN_EPOCH`}>⤓ epoch</NeoBtn>
+          <NeoBtn onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset</NeoBtn>
+          <NeoBtn onClick={onReplay} title="Replay every tx this session from genesis">↻ replay</NeoBtn>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
+            speed
+            <select value={speed} onChange={(e) => onSpeed(Number(e.target.value))} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}>
+              <option value={1}>1×</option>
+              <option value={2}>2×</option>
+              <option value={5}>5×</option>
+              <option value={10}>10×</option>
+            </select>
+          </span>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -350,14 +358,14 @@ function DeployedList({ deployed, selected, onSelect }: {
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>DEPLOYED CONTRACTS</div>
+      <SectionHead label="DEPLOYED" />
       {Object.values(deployed).map((d) => {
         const on = d.name === selected;
         return (
           <div
             key={d.name}
             onClick={() => onSelect(d.name)}
-            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 9px", cursor: "pointer", border: `1px solid ${on ? color.accent : color.hair}`, background: on ? `${color.accent}12` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 9px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : color.hair2}`, border: `1px solid ${on ? color.accent : color.hair}`, borderLeftWidth: 3, background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
           >
             <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
             <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
@@ -1200,9 +1208,11 @@ export default function Ide() {
 
           {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
           <div style={{ flex: "none", borderTop: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
-            <div onClick={() => setProblemsOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 10, height: 30, padding: "0 14px", flex: "none", cursor: "pointer", userSelect: "none", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".1em", color: color.textGhostDk }}>
-              <span>{problemsOpen ? "▾" : "▸"} PROBLEMS</span>
-              <span style={{ marginLeft: "auto", display: "flex", gap: 12 }}>
+            <div onClick={() => setProblemsOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 14px", flex: "none", cursor: "pointer", userSelect: "none", fontFamily: font.display, fontSize: 12.5, color: color.textLightHi }}>
+              <span style={{ color: color.textGhostDk, fontFamily: font.mono, fontSize: 10 }}>{problemsOpen ? "▾" : "▸"}</span>
+              <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#FF8B7E" : color.yellow }} />
+              <span>PROBLEMS</span>
+              <span style={{ marginLeft: "auto", display: "flex", gap: 12, fontFamily: font.mono, fontSize: 11 }}>
                 <span style={{ color: errorCount ? "#FF8B7E" : color.textGhostDk }}>⊘ {errorCount}</span>
                 <span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span>
               </span>
@@ -1228,9 +1238,10 @@ export default function Ide() {
         <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize" }} />
 
         <div style={{ borderLeft: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ padding: "12px 14px 8px", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".12em", color: color.textGhostDk, display: "flex", justifyContent: "space-between" }}>
-            <span>ENGINE</span>
-            {sel && <span style={{ color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
+          <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: HAIR }}>
+            <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
+            <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
+            {sel && <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1329,10 +1340,11 @@ export default function Ide() {
 
           {/* console — contract logs / run output, its own region with real room */}
           <div style={{ flex: "0 0 42%", minHeight: 160, display: "flex", flexDirection: "column", borderTop: FRAME, background: color.void }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px 6px", fontFamily: font.mono, fontSize: 10, letterSpacing: ".12em", color: color.textGhostDk }}>
-              <span>CONSOLE</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 7px" }}>
+              <span style={{ width: 8, height: 8, flex: "none", background: color.secondary }} />
+              <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>CONSOLE</span>
               {log.length > 0 && (
-                <button onClick={() => setLog([])} style={{ border: "none", background: "transparent", color: color.textGhostDk, fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", cursor: "pointer" }}>
+                <button onClick={() => setLog([])} style={{ marginLeft: "auto", border: "none", background: "transparent", color: color.textGhostDk, fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", cursor: "pointer" }}>
                   CLEAR
                 </button>
               )}
