@@ -9,6 +9,12 @@ import { scanContext, type ContextFinding } from "./contextlint";
 const OWNER = "qpi";
 
 export function runQpiDiagnostics(monaco: typeof Monaco, model: Monaco.editor.ITextModel): void {
+  // QPI lint is for qpi.h contracts only — never a .ts test file. Clear any stale qpi markers and bail.
+  if (model.getLanguageId() !== "cpp") {
+    monaco.editor.setModelMarkers(model, OWNER, []);
+    return;
+  }
+
   const src = model.getValue();
   const findings: (QpiFinding | ContextFinding)[] = [...scanQpi(src), ...scanLocals(src), ...scanLocalsForm(src), ...idlChecks(src), ...scanContext(src)];
 

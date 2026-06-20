@@ -463,6 +463,30 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 };
 `;
 
+const counterTest = `// The SAME test the qinit CLI runs under \`bun test\` — runs here in-page too. Compile & Run Counter first,
+// then open this file and hit "▶ Run tests". The imports resolve to the node's generated client (./.qinit)
+// under bun test, and to the in-page engine here. The chain is one fresh node for the file: state persists
+// across tests, in order (call procedures to set it up — like a real node).
+import { test, expect, beforeAll } from "bun:test";
+import { Counter, provider } from "./.qinit";
+
+let c: Counter;
+beforeAll(() => { c = new Counter(provider()); });
+
+test("Counter starts at zero and increments", async () => {
+  expect((await c.Get()).value).toBe(0n);
+
+  const r = await c.Inc();           // submits + auto-confirms (resolves once processed)
+  expect(r.confirmed).toBe(true);
+  expect((await c.Get()).value).toBe(1n);
+});
+
+test("increments again on the same chain", async () => {
+  await c.Inc();
+  expect((await c.Get()).value).toBe(2n);   // 2, not 1 — the chain persists across tests
+});
+`;
+
 export const EXAMPLES: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Adder.h", name: "Adder", slot: 28, source: adder },
@@ -471,4 +495,5 @@ export const EXAMPLES: Example[] = [
   { file: "Proxy.h", name: "Proxy", slot: 29, source: proxy },
   { file: "Shares.h", name: "Shares", slot: 28, source: shares },
   { file: "Equity.h", name: "Equity", slot: 28, source: equity },
+  { file: "Counter.test.ts", name: "Counter.test", slot: 0, source: counterTest },
 ];

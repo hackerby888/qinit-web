@@ -18,6 +18,9 @@ import { compileContract, base64ToBytes, fetchBuildQueue, type CompileResult, ty
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
+import { runTests, type TestResult, type TestContract } from "./tests/runner";
+import { TestPanel } from "./tests/TestPanel";
+import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { getStore } from "./projects/store";
@@ -550,6 +553,7 @@ export default function Ide() {
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
   const [showTxs, setShowTxs] = useState(false);
+  const [testRun, setTestRun] = useState<{ results: TestResult[]; running: boolean; title: string } | null>(null); // .ts test run
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
@@ -575,6 +579,7 @@ export default function Ide() {
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
   const pendingJumpRef = useRef<{ file: string; offset: number } | null>(null); // goto-source target awaiting its file's model swap
+  const qinitLibRef = useRef<{ dispose(): void } | null>(null); // the ./.qinit ambient types extralib (regenerated on deploy)
   const engineRef = useRef<IdeEngine | null>(null);
   const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
   const consoleRef = useRef<HTMLDivElement | null>(null);
@@ -604,6 +609,8 @@ export default function Ide() {
   contractNameRef.current = contractName;
   activeNameRef.current = ws.active;
   filesRef.current = ws.files;
+
+  const activeIsTest = /\.tsx?$/.test(ws.active); // a .ts test file -> run-tests, not compile
 
   // Load the project for this route. Seeds the editor (files/active), open tabs and saved scenarios; an
   // unknown id bounces back to the gallery. Async by design — the same call shape a cloud store would use.
@@ -1008,11 +1015,46 @@ export default function Ide() {
     return left > 0 ? `pending · ${left} tick${left > 1 ? "s" : ""} left → tick ${targetTick}` : "pending · landing…";
   };
 
+  // Feed Monaco the ./.qinit client types (built from the deployed IDLs) so `c.` completes in .ts tests. The
+  // test model is file:///<name>.test.ts, so "./.qinit" resolves to file:///.qinit.d.ts.
+  const updateQinitTypes = () => {
+    const monaco = monacoRef.current;
+    if (!monaco) {
+      return;
+    }
+    qinitLibRef.current?.dispose();
+    const idls = Object.values(deployedRef.current).map((d) => d.idl);
+    qinitLibRef.current = monaco.languages.typescript.typescriptDefaults.addExtraLib(genQinitDts(idls), "file:///.qinit.d.ts");
+  };
+
   const onEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
     setupQpi(monaco, editor);
     import("./qpi/hover").then((m) => m.registerQpiHover(monaco)).catch(() => undefined);
+
+    // Type the bun:test surface for .ts test files (the same module the qinit CLI tests import). The
+    // per-project "./.qinit" client module can't be typed here — its module-not-found is ignored below.
+    monaco.languages.typescript.typescriptDefaults.addExtraLib(
+      `declare module "bun:test" {
+  export function test(name: string, fn: () => any): void;
+  export function expect(actual: any): { toBe(v: any): void; toEqual(v: any): void; toBeGreaterThan(v: any): void; toBeLessThan(v: any): void; toBeTruthy(): void; toBeFalsy(): void };
+  export function beforeAll(fn: () => any): void;
+  export function beforeEach(fn: () => any): void;
+  export function afterEach(fn: () => any): void;
+  export function describe(name: string, fn: () => any): void;
+}`,
+      "qinit-bun-test.d.ts",
+    );
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+      target: monaco.languages.typescript.ScriptTarget.ES2020,
+      allowNonTsExtensions: true,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      lib: ["es2020", "dom"],
+    });
+    // 2307 / 2792 = "cannot find module" (the second is the nodenext-suggestion variant) — the generated
+    // "./.qinit" client only exists in a qinit project, not here.
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({ diagnosticCodesToIgnore: [2307, 2792] });
 
     // Aggregate all markers on the active model (qpi lexical + context, and clang) into the Problems panel.
     const refreshProblems = () => {
@@ -1026,6 +1068,8 @@ export default function Ide() {
     };
     monaco.editor.onDidChangeMarkers(refreshProblems);
     editor.onDidChangeModel(refreshProblems);
+
+    updateQinitTypes();
   };
 
   // Jump the editor to a problem's location.
@@ -1286,6 +1330,10 @@ export default function Ide() {
     const src = sourceRef.current;
     const name = contractNameRef.current;
     const fileName = activeNameRef.current;
+    if (/\.tsx?$/.test(fileName)) {
+      setDiag({ state: "idle", count: 0 }); // .ts test files aren't clang-compiled
+      return;
+    }
     if (!src.trim() || src === autoSentRef.current) {
       return;
     }
@@ -1485,9 +1533,31 @@ export default function Ide() {
         void refreshState(nm);
       }
       setAssetsView(eng.assets()); // INITIALIZE may have issued assets on deploy
+      updateQinitTypes(); // refresh the ./.qinit client types for .ts test completion
     } catch (e) {
       setPhase("error");
       appendLog("deploy failed: " + (e as Error).message);
+    }
+  };
+
+  // Run the active .ts test file in-page against the engine. Contracts must have been built (Compile & Run)
+  // so deployedRef has their wasm/idl; the runner deploys each on a fresh chain per test.
+  const runTestFile = async () => {
+    const eng = await ensureEngine();
+    const accs = await eng.ensureAccounts();
+    const contracts: Record<string, TestContract> = {};
+    for (const d of Object.values(deployedRef.current)) {
+      contracts[d.name] = { name: d.name, slot: d.slot, idl: d.idl, source: d.source, wasm: d.wasm };
+    }
+
+    setTestRun({ results: [], running: true, title: ws.active });
+    try {
+      const results = await runTests(source, { eng, contracts, accounts: accs });
+      setTestRun({ results, running: false, title: ws.active });
+    } catch (e) {
+      setTestRun({ results: [{ name: "(runner)", ok: false, ms: 0, error: (e as Error).message, logs: [] }], running: false, title: ws.active });
+    } finally {
+      void refreshEngineViews();
     }
   };
 
@@ -1605,9 +1675,15 @@ export default function Ide() {
         <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>{projectName || "…"}</span>
         {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.accent }}>✓ saved</span>}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling"}>
-            {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
-          </ToolButton>
+          {activeIsTest ? (
+            <ToolButton variant="accent" onClick={() => void runTestFile()} disabled={!!testRun?.running}>
+              {testRun?.running ? "Running…" : "▶ Run tests"}
+            </ToolButton>
+          ) : (
+            <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling"}>
+              {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
+            </ToolButton>
+          )}
           <ToolButton onClick={share}>Share</ToolButton>
           <ToolButton onClick={() => setShowTxs(true)}>≡ txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
           <button
@@ -1860,6 +1936,8 @@ export default function Ide() {
       {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} onBack={debug.onBack} />}
 
       {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title, onBack: () => { setDebug(null); setShowTxs(true); } }); }} />}
+
+      {testRun && <TestPanel results={testRun.results} running={testRun.running} title={testRun.title} onClose={() => setTestRun(null)} onRerun={() => void runTestFile()} />}
 
       {palette && (
         <CommandPalette
