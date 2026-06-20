@@ -12,6 +12,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@qinit/engine": qinit("engine/src/index.ts"),
+      // Subpath imports must precede the package root (first match wins). idl.ts pulls the shared QPI
+      // container layouts from @qinit/proto/qpi-layout.
+      "@qinit/proto/qpi-layout": qinit("proto/src/qpi-layout.ts"),
       "@qinit/proto": qinit("proto/src/index.ts"),
       // `@qinit/build/idl` must precede `@qinit/build` (first match wins). The package root pulls node:fs,
       // so it's redirected to the browser-safe idl module (which is all the inspector needs: extractIdl).
