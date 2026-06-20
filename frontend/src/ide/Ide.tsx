@@ -185,6 +185,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
           {detail.caller && detail.caller !== "(none)" && <div>caller <span style={{ color: color.textMutedDk }}>{shortId(detail.caller)}</span></div>}
           {detail.in && detail.in !== "(none)" && <div>in <span style={{ color: color.textMutedDk }}>{detail.in}</span></div>}
           {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.before} → {d.after}</div>)}
+          {detail.hostCalls.map((h, i) => <div key={`h${i}`} style={{ color: color.textMutedDk }}>host {h}</div>)}
           {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
         </div>
       )}
@@ -475,6 +476,7 @@ export default function Ide() {
             if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
             if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
             detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
+            detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
             detail.logs.forEach((l) => appendLog(`  log ${l}`));
           }
           eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);

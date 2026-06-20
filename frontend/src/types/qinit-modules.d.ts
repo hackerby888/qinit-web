@@ -30,6 +30,7 @@ declare module "@qinit/engine" {
     invocator: string;
     stateDiff: { off: number; before: string; after: string }[];
     logs: { type: number; size: number; hex: string }[];
+    hostCalls: { name: string; detail: string }[];
   }
   export interface DebugTrace {
     enabled: boolean;

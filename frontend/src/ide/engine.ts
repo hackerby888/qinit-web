@@ -33,6 +33,7 @@ export interface TxDetail {
   out: string;
   caller: string;
   diff: { label: string; before: string; after: string }[];
+  hostCalls: string[];
   logs: string[];
 }
 
@@ -113,6 +114,7 @@ export class IdeEngine {
         out: tv.outDecoded,
         caller: tv.caller,
         diff: e.stateDiff.map((d) => ({ label: labelOff(tv.fields, d.off), before: fmtDiffVal(tv.fields, d.off, d.before), after: fmtDiffVal(tv.fields, d.off, d.after) })),
+        hostCalls: e.hostCalls.map((h) => `${h.name} ${h.detail}`),
         logs: tv.logs.map((l) => fmtLog(l)),
       };
     } catch {
