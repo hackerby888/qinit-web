@@ -69,6 +69,46 @@ export function setupMonaco(): typeof monaco {
     },
   });
 
+  // The "flat" companion theme — near-monochrome with one dim teal-grey accent, matched to the FLAT
+  // palette. Literal hex on purpose: defineTheme runs once at import, so reading the mutable `color`
+  // here would bake whatever palette happened to be active.
+  monaco.editor.defineTheme("qinit-flat", {
+    base: "vs-dark",
+    inherit: true,
+    rules: [
+      { token: "comment", foreground: "54575C", fontStyle: "italic" },
+      { token: "keyword", foreground: "8A8F98" },
+      { token: "keyword.directive", foreground: "8A8F98" },
+      { token: "type", foreground: "7FA6AD" },
+      { token: "type.identifier", foreground: "7FA6AD" },
+      { token: "type.qpi", foreground: "7E97A8" },
+      { token: "annotation", foreground: "A89B7E", fontStyle: "bold" },
+      { token: "variable.predefined", foreground: "8A9AA0" },
+      { token: "number", foreground: "AEA686" },
+      { token: "string", foreground: "AEA686" },
+      { token: "identifier", foreground: "B8BABF" },
+    ],
+    colors: {
+      "editor.background": "#121214",
+      "editor.foreground": "#B8BABF",
+      "editorLineNumber.foreground": "#3A3A3F",
+      "editorLineNumber.activeForeground": "#8A8D93",
+      "editor.selectionBackground": "#7FA6AD33",
+      "editor.lineHighlightBackground": "#FFFFFF06",
+      "editorCursor.foreground": "#7FA6AD",
+      "editorIndentGuide.background1": "#222226",
+      "editorWidget.background": "#0E0E10",
+      "editorHoverWidget.background": "#0E0E10",
+      "editorHoverWidget.border": "#222226",
+      "editorSuggestWidget.background": "#0E0E10",
+      "editorSuggestWidget.border": "#222226",
+      "editorSuggestWidget.selectedBackground": "#7FA6AD22",
+      "list.hoverBackground": "#FFFFFF06",
+      "scrollbarSlider.background": "#22222688",
+      "scrollbarSlider.hoverBackground": "#222226cc",
+    },
+  });
+
   return monaco;
 }
 

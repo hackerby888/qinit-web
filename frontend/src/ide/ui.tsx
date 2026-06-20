@@ -2,7 +2,7 @@
 // pressable button. Same visual language as the landing (tokens.NOTCH + hardShadow), tuned for a dense
 // dark dashboard: static cards (no hover lift), compact buttons.
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { color, font, NOTCH, hardShadow } from "../landing/tokens";
+import { color, font, NOTCH, hardShadow, themeFlags } from "../landing/tokens";
 
 export const clipNotch: CSSProperties = { clipPath: NOTCH, WebkitClipPath: NOTCH };
 
@@ -16,6 +16,14 @@ export function Card({ children, frame = color.hair2, face = color.panel, shadow
   style?: CSSProperties;
   faceStyle?: CSSProperties;
 }) {
+  // Flat theme: collapse the notched two-div frame to a single 1px-bordered surface — no clip, no
+  // hard shadow, no 2px padding wrapper (children own their padding).
+  if (themeFlags.flat) {
+    return (
+      <div style={{ border: `1px solid ${frame}`, background: face, ...style, ...faceStyle }}>{children}</div>
+    );
+  }
+
   return (
     <div style={{ background: frame, padding: 2, ...clipNotch, filter: hardShadow(shadow, shadow, shadowColor), ...style }}>
       <div style={{ background: face, ...clipNotch, ...faceStyle }}>{children}</div>
@@ -29,7 +37,7 @@ export function SectionHead({ label, accent = color.accent, right }: { label: st
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ width: 9, height: 9, flex: "none", background: accent }} />
       <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>{label}</span>
-      <span style={{ flex: 1, height: 2, background: color.hair }} />
+      <span style={{ flex: 1, height: themeFlags.flat ? 1 : 2, background: color.hair }} />
       {right}
     </div>
   );
@@ -63,8 +71,8 @@ export function NeoBtn({ children, onClick, title, disabled = false, active = fa
         padding: "3px 8px",
         cursor: disabled ? "default" : "pointer",
         flex: "none",
-        filter: `drop-shadow(${off}px ${off}px 0 ${active ? color.accentShadow : "#000"})`,
-        transform: `translate(${2 - off}px,${2 - off}px)`,
+        filter: themeFlags.flat ? "none" : `drop-shadow(${off}px ${off}px 0 ${active ? color.accentShadow : "#000"})`,
+        transform: themeFlags.flat ? "none" : `translate(${2 - off}px,${2 - off}px)`,
         transition: "transform .08s steps(2), filter .08s steps(2)",
       }}
     >

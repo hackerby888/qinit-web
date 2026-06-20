@@ -8,16 +8,6 @@ import { color, font } from "../landing/tokens";
 import { Card } from "./ui";
 import type { DebugStep } from "./engine";
 
-const navBtn: CSSProperties = {
-  border: `1px solid ${color.hair2}`,
-  background: color.void,
-  color: color.textLight,
-  fontFamily: font.mono,
-  fontSize: 11,
-  padding: "2px 8px",
-  cursor: "pointer",
-};
-
 const line: CSSProperties = { fontFamily: font.mono, fontSize: 11.5, lineHeight: 1.6, wordBreak: "break-all" };
 
 function Field({ label, val }: { label: string; val: string }) {
@@ -46,6 +36,17 @@ function Group({ title, accent, empty, children }: { title: string; accent: stri
 
 export function Debugger({ steps, title, onClose, onJump }: { steps: DebugStep[]; title?: string; onClose: () => void; onJump?: (step: DebugStep) => void }) {
   const [i, setI] = useState(0);
+
+  // Built per render so a live theme swap recolors the nav buttons.
+  const navBtn: CSSProperties = {
+    border: `1px solid ${color.hair2}`,
+    background: color.void,
+    color: color.textLight,
+    fontFamily: font.mono,
+    fontSize: 11,
+    padding: "2px 8px",
+    cursor: "pointer",
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

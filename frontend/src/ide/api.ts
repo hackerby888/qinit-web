@@ -23,7 +23,15 @@ export interface CompileResult {
   error?: string;
 }
 
-export async function compileContract(req: { source: string; name: string; slot: number; skipVerify?: boolean }): Promise<CompileResult> {
+// An inter-contract callee passed to the compiler: a sibling contract this one calls, with the slot it's
+// deployed at (the callee must sit at a lower index than the caller — the qubic lower-index rule).
+export interface CompileCallee {
+  name: string;
+  source: string;
+  slot: number;
+}
+
+export async function compileContract(req: { source: string; name: string; slot: number; skipVerify?: boolean; callees?: CompileCallee[] }): Promise<CompileResult> {
   let r: Response;
   try {
     r = await fetch("/api/compile", {
