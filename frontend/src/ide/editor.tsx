@@ -15,10 +15,12 @@ export interface CodeEditorProps {
 }
 
 export function CodeEditor({ value, path, theme, onChange, onMount }: CodeEditorProps) {
+  // Contracts are C++ (qpi.h); .ts test files get the TypeScript language so Monaco's TS worker checks them.
+  const language = /\.tsx?$/.test(path ?? "") ? "typescript" : "cpp";
   return (
     <Editor
       height="100%"
-      language="cpp"
+      language={language}
       theme={theme ?? "qinit-dark"}
       path={path}
       value={value}

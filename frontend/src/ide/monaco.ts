@@ -3,12 +3,18 @@
 // neo-brutalist styling lives in the IDE *chrome*; the code surface itself stays calm and legible.
 import * as monaco from "monaco-editor";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { color } from "../landing/tokens";
 import { applyQpiGrammar } from "./qpi/grammar";
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
-  getWorker() {
+  getWorker(_: unknown, label: string) {
+    // .ts test files use the TypeScript language worker (diagnostics/completions); everything else (cpp) just
+    // needs the base editor worker.
+    if (label === "typescript" || label === "javascript") {
+      return new TsWorker();
+    }
     return new EditorWorker();
   },
 };
