@@ -43,6 +43,30 @@ export function SectionHead({ label, accent = color.accent, right }: { label: st
   );
 }
 
+// A collapsible bordered section — the frame color is the section's identity; the header toggles it open.
+// One consistent wrapper for the engine panel's sections (the inner panels render content only).
+export function Section({ label, accent = color.accent, open, onToggle, right, children }: {
+  label: string;
+  accent?: string;
+  open: boolean;
+  onToggle: () => void;
+  right?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Card frame={accent} faceStyle={{ display: "flex", flexDirection: "column" }}>
+      <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", userSelect: "none" }}>
+        <span style={{ width: 9, height: 9, flex: "none", background: accent }} />
+        <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>{label}</span>
+        <span style={{ flex: 1, height: themeFlags.flat ? 1 : 2, background: color.hair }} />
+        {right && <span onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", flex: "none" }}>{right}</span>}
+        <span style={{ flex: "none", color: color.textGhostDk, fontFamily: font.mono, fontSize: 11, width: 12, textAlign: "center" }}>{open ? "▾" : "▸"}</span>
+      </div>
+      {open && <div style={{ padding: "0 10px 10px" }}>{children}</div>}
+    </Card>
+  );
+}
+
 // Chunky control button that physically presses (its hard shadow collapses on click).
 export function NeoBtn({ children, onClick, title, disabled = false, active = false, accent = color.accent }: {
   children: ReactNode;

@@ -2,11 +2,14 @@
 //   function (read)  -> querySmartContract (no signing)
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> broadcastTx -> advanceTick
 // One IdeEngine instance backs an IDE session; deploy() (re)loads a contract into its slot.
-import { InProcessEngine, initK12 } from "@qinit/engine";
+import { InProcessEngine, initK12, type AssetSnapshot } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
 import { readState, describeTrace, labelOff, fmtDiffVal, fmtLog, type StateDump } from "@qinit/inspector";
+
+// Re-export the engine's asset-universe snapshot under the IDE's name (one inter-contract asset + its holdings).
+export type AssetView = AssetSnapshot;
 
 // A submitted tx lands a few ticks ahead — the auto-ticker processes it when the chain reaches it.
 const TICKS_AHEAD = 3;
@@ -334,6 +337,11 @@ export class IdeEngine {
   // Decode a deployed contract's CURRENT state (scalars + container columns) — the qinit `state` inspector.
   async stateOf(slot: number, source: string, name: string): Promise<StateDump> {
     return readState(this.engine, slot, source, name);
+  }
+
+  // The asset universe (issued assets + share holdings) for the inspector panel.
+  assets(): AssetView[] {
+    return this.engine.assetUniverse();
   }
 
   // Read a function's output. No crypto — a direct query against the deployed wasm.

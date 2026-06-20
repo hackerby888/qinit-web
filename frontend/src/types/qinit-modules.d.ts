@@ -28,6 +28,15 @@ declare module "@qinit/engine" {
     stateRead(slot: number, off: number, len: number): Promise<{ hex: string; off: number; len: number; stateSize: number }>;
     setDebug(on: boolean): Promise<{ enabled: boolean }>;
     debugTrace(): Promise<DebugTrace>;
+    assetUniverse(): AssetSnapshot[];
+  }
+  export interface AssetSnapshot {
+    issuer: string;
+    name: string;
+    decimals: number;
+    unit: string;
+    totalShares: string;
+    holdings: { owner: string; possessor: string; ownMgmt: number; posMgmt: number; shares: string }[];
   }
   export interface DebugEntry {
     seq: number;
