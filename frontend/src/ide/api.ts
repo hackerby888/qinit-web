@@ -74,6 +74,26 @@ export async function compileContract(req: { source: string; name: string; slot:
   return body;
 }
 
+export interface BuildQueue {
+  active: number;
+  queued: number;
+  limit: number;
+}
+
+// Poll the backend build-pool state while a compile is pending, to show "waiting for a build slot". Returns
+// null on any error (the indicator just stays generic).
+export async function fetchBuildQueue(): Promise<BuildQueue | null> {
+  try {
+    const r = await fetch("/api/compile/queue");
+    if (!r.ok) {
+      return null;
+    }
+    return (await r.json()) as BuildQueue;
+  } catch {
+    return null;
+  }
+}
+
 export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);

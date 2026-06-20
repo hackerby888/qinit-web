@@ -4,7 +4,7 @@
 // byte-identical to the node. Builds are serialized (clang is heavy) and memoized by a hash of the input.
 import { buildContract } from "@qinit/build";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { tmpdir, cpus } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
@@ -88,8 +88,37 @@ function sanitizeName(raw: string | undefined): string {
 
 const cache = new Map<string, CompileResponse>();
 
-// Serialize builds: clang is CPU/IO heavy and writes shared temp dirs — one at a time keeps the box sane.
-let queue: Promise<unknown> = Promise.resolve();
+// Build concurrency pool. One clang on one TU is single-threaded, so the throughput lever is running several
+// builds at once — up to LIMIT in parallel, the rest queued. Default ~ (cores − 1) capped at 8 (clang is also
+// RAM-heavy); QINIT_BUILD_CONCURRENCY overrides.
+const LIMIT = Math.max(1, Number(process.env.QINIT_BUILD_CONCURRENCY) || Math.min(8, Math.max(1, (cpus()?.length ?? 4) - 1)));
+let active = 0;  // builds running now
+let queued = 0;  // builds waiting for a slot
+const waiters: Array<() => void> = [];
+
+// Snapshot of the pool, for the /api/compile/queue endpoint the IDE polls while a build is pending.
+export function buildQueueState(): { active: number; queued: number; limit: number } {
+  return { active, queued, limit: LIMIT };
+}
+
+// Run `fn` once a build slot is free; releases the slot (and wakes the next waiter) when done.
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= LIMIT) {
+    queued++;
+    await new Promise<void>((resolve) => waiters.push(resolve));
+    queued--;
+  }
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    const next = waiters.shift();
+    if (next) {
+      next();
+    }
+  }
+}
 
 async function runBuild(req: CompileRequest): Promise<CompileResponse> {
   const corePath = resolveCorePath();
@@ -153,13 +182,17 @@ export async function compile(req: CompileRequest): Promise<CompileResponse> {
     return hit;
   }
 
-  const run = queue.then(() => runBuild(req));
-  queue = run.catch(() => undefined);
+  return withSlot(async () => {
+    // Re-check: an identical build may have finished (and cached) while this one waited for a slot.
+    const queuedHit = cache.get(key);
+    if (queuedHit) {
+      return queuedHit;
+    }
 
-  const res = await run;
-  if (res.ok) {
-    cache.set(key, res);
-  }
-
-  return res;
+    const res = await runBuild(req);
+    if (res.ok) {
+      cache.set(key, res);
+    }
+    return res;
+  });
 }
