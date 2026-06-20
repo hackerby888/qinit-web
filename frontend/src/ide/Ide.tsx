@@ -17,6 +17,7 @@ import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep } from "./engine";
 import { Debugger } from "./Debugger";
+import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
@@ -454,6 +455,7 @@ export default function Ide() {
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string } | null>(null); // open step debugger
+  const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
@@ -1027,6 +1029,32 @@ export default function Ide() {
     }
   };
 
+  // Latest "close the active tab" closure, read by the once-registered keybind listener below.
+  const closeActiveTabRef = useRef<() => void>(() => undefined);
+  closeActiveTabRef.current = () => closeTab(ws.active, { stopPropagation() {} });
+
+  // IDE-wide keybinds. Capture phase so these beat Monaco's own Ctrl+P / Ctrl+Shift+P when the editor is
+  // focused. Ctrl+P = quick-open files; Ctrl+Shift+P = command palette; Ctrl+W = close the active tab.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) {
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        setPalette(e.shiftKey ? "command" : "file");
+      } else if (k === "w" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeActiveTabRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   // A tab is dirty when its source has unbuilt edits — i.e. it compiled clean once, then changed.
   const isDirty = (name: string): boolean =>
     name in built && built[name] !== (ws.files.find((f) => f.name === name)?.source ?? "");
@@ -1289,6 +1317,37 @@ export default function Ide() {
   const procedures = idl ? Object.entries(idl.procedures) : [];
   const functions = idl ? Object.entries(idl.functions) : [];
 
+  // The new-file action: prompt for a name, default-extend with `.h`.
+  const promptNewFile = () => {
+    const raw = window.prompt("New file name", "Contract.h");
+    if (!raw) {
+      return;
+    }
+    const name = /\.\w+$/.test(raw) ? raw : `${raw}.h`;
+    createFile(name);
+  };
+
+  // Quick-open lists the workspace files; the command palette lists IDE actions. Built only while open.
+  const paletteItems: PaletteItem[] =
+    palette === "file"
+      ? ws.files.map((f) => ({ id: f.name, label: f.name, hint: f.name === ws.active ? "open" : undefined, run: () => selectFile(f.name) }))
+      : palette === "command"
+        ? [
+            { id: "compile", label: "Compile & Run", run: () => void compile() },
+            { id: "pause", label: paused ? "Engine: resume auto-tick" : "Engine: pause auto-tick", run: togglePause },
+            { id: "step1", label: "Engine: step +1 tick", run: () => void stepTicks(1) },
+            { id: "step10", label: "Engine: step +10 ticks", run: () => void stepTicks(10) },
+            { id: "epoch", label: "Engine: advance epoch", run: () => void advanceEpoch() },
+            { id: "reset", label: "Engine: reset chain", run: () => void resetChain() },
+            { id: "replay", label: "Engine: replay session", run: () => void replayChain() },
+            { id: "save", label: "Save project", hint: "Ctrl S", run: () => { persistRef.current(); setSaved(true); } },
+            { id: "newfile", label: "New file…", run: promptNewFile },
+            { id: "close", label: "Close active tab", hint: "Ctrl W", run: () => closeActiveTabRef.current() },
+            { id: "share", label: "Share workspace link", run: () => void share() },
+            { id: "projects", label: "Go to projects home", run: () => navigate("/ide") },
+          ]
+        : [];
+
   if (!loaded) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 13 }}>
@@ -1522,6 +1581,14 @@ export default function Ide() {
       </div>
 
       {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} />}
+
+      {palette && (
+        <CommandPalette
+          items={paletteItems}
+          placeholder={palette === "file" ? "Go to file…" : "Run a command…"}
+          onClose={() => setPalette(null)}
+        />
+      )}
     </div>
   );
 }
