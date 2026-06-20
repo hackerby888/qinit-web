@@ -28,6 +28,23 @@ interface PendingTx {
   contractSource: string;
 }
 
+// One invocation in a transaction's call sequence — a user procedure, an inter-contract call, or a system
+// procedure — fully decoded for the step debugger.
+export interface DebugStep {
+  seq: number;
+  slot: number;
+  contract: string;
+  kind: number; // 0 function, 1 procedure, 2 system procedure
+  label: string; // human label, e.g. "procedure #1" or "BEGIN_TICK"
+  ok: boolean;
+  caller: string;
+  in: string;
+  out: string;
+  diff: { label: string; before: string; after: string }[];
+  hostCalls: string[];
+  logs: string[];
+}
+
 export interface TxDetail {
   in: string;
   out: string;
@@ -35,6 +52,24 @@ export interface TxDetail {
   diff: { label: string; before: string; after: string }[];
   hostCalls: string[];
   logs: string[];
+  steps: DebugStep[]; // the whole call sequence, for the step debugger
+}
+
+// System-procedure id -> name (core contract_def.h SystemProcedureID order).
+const SP_LABEL: Record<number, string> = {
+  0: "INITIALIZE", 1: "BEGIN_EPOCH", 2: "END_EPOCH", 3: "BEGIN_TICK", 4: "END_TICK",
+  5: "PRE_RELEASE_SHARES", 6: "PRE_ACQUIRE_SHARES", 7: "POST_RELEASE_SHARES", 8: "POST_ACQUIRE_SHARES",
+  9: "POST_INCOMING_TRANSFER", 10: "SET_SHAREHOLDER_PROPOSAL", 11: "SET_SHAREHOLDER_VOTES",
+};
+
+function stepLabel(kind: number, entry: number): string {
+  if (kind === 2) {
+    return SP_LABEL[entry] ?? `sysproc #${entry}`;
+  }
+  if (kind === 0) {
+    return `function #${entry}`;
+  }
+  return `procedure #${entry}`;
 }
 
 export interface TxProcessed {
@@ -73,6 +108,7 @@ export class IdeEngine {
   private accounts: Account[] = [];
   private speedMs = 1000;
   private history: ReplayStep[] = []; // every applied write this session, for replay
+  private contractSources = new Map<number, { source: string; name: string }>(); // slot -> source, for per-step trace decoding
 
   onTick: ((info: { tick: number; epoch: number }) => void) | null = null;
   onTxProcessed: ((e: TxProcessed) => void) | null = null;
@@ -242,23 +278,51 @@ export class IdeEngine {
     }
   }
 
-  // Decode the just-processed tx (debug entries added since `base`) into the inspector view — decoded
-  // in/out, caller, named StateData diff, and contract logs. Reuses the CLI's trace decoder; never throws.
+  // Tell the decoder which source backs a slot, so inter-contract / system-procedure steps decode their
+  // own StateData (not the originating contract's). Called by the IDE on every deploy.
+  registerSource(slot: number, source: string, name: string): void {
+    this.contractSources.set(slot, { source, name });
+  }
+
+  // Decode the just-processed tx (debug entries added since `base`) into the step debugger's call sequence —
+  // each invocation's decoded in/out, caller, named StateData diff, host-event timeline and logs. The
+  // inline tx detail reuses the primary (user-procedure) step. Reuses the CLI's trace decoder; never throws.
   private async traceOf(base: number, t: PendingTx): Promise<TxDetail | undefined> {
     try {
       const entries = (await this.engine.debugTrace()).entries.slice(base);
-      const e = entries.find((x) => x.kind === 1) ?? entries[entries.length - 1];
-      if (!e) {
+      if (!entries.length) {
         return undefined;
       }
-      const tv = await describeTrace(e, t.contractSource, t.contractName, this.engine);
+
+      const steps: DebugStep[] = [];
+      for (const e of entries) {
+        const src = this.contractSources.get(e.index) ?? { source: t.contractSource, name: t.contractName };
+        const tv = await describeTrace(e, src.source, src.name, this.engine);
+        steps.push({
+          seq: e.seq,
+          slot: e.index,
+          contract: src.name,
+          kind: e.kind,
+          label: stepLabel(e.kind, e.entry),
+          ok: e.ok,
+          caller: tv.caller,
+          in: tv.inDecoded,
+          out: tv.outDecoded,
+          diff: e.stateDiff.map((d) => ({ label: labelOff(tv.fields, d.off), before: fmtDiffVal(tv.fields, d.off, d.before), after: fmtDiffVal(tv.fields, d.off, d.after) })),
+          hostCalls: e.hostCalls.map((h) => `${h.name} ${h.detail}`),
+          logs: tv.logs.map((l) => fmtLog(l)),
+        });
+      }
+
+      const primary = steps.find((s) => s.kind === 1) ?? steps[steps.length - 1];
       return {
-        in: tv.inDecoded,
-        out: tv.outDecoded,
-        caller: tv.caller,
-        diff: e.stateDiff.map((d) => ({ label: labelOff(tv.fields, d.off), before: fmtDiffVal(tv.fields, d.off, d.before), after: fmtDiffVal(tv.fields, d.off, d.after) })),
-        hostCalls: e.hostCalls.map((h) => `${h.name} ${h.detail}`),
-        logs: tv.logs.map((l) => fmtLog(l)),
+        in: primary.in,
+        out: primary.out,
+        caller: primary.caller,
+        diff: primary.diff,
+        hostCalls: primary.hostCalls,
+        logs: primary.logs,
+        steps,
       };
     } catch {
       return undefined;

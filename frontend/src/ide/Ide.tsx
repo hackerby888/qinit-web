@@ -14,7 +14,8 @@ import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep } from "./engine";
+import { Debugger } from "./Debugger";
 import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
@@ -141,7 +142,7 @@ const fieldInput: CSSProperties = {
   outline: "none",
 };
 
-function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun }: {
+function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun, onDebug }: {
   kind: "function" | "procedure";
   id: string;
   entry: IdlEntry;
@@ -150,6 +151,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
   pending?: boolean;
   detail?: TxDetail;
   onRun: (input: Record<string, string>, value: number) => void;
+  onDebug?: (steps: DebugStep[], title: string) => void;
 }) {
   const [vals, setVals] = useState<Record<string, string>>({});
   const [value, setValue] = useState("0");
@@ -198,6 +200,9 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
 
       {detail && (
         <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textFaintDk, lineHeight: 1.6, borderTop: `1px solid ${color.hair}`, paddingTop: 5, display: "flex", flexDirection: "column", gap: 1 }}>
+          {onDebug && detail.steps && detail.steps.length > 0 && (
+            <button onClick={() => onDebug(detail.steps, `${entry.name}()`)} title="Step through this transaction" style={{ alignSelf: "flex-start", border: `1px solid ${color.hair2}`, background: color.void, color: color.accent, fontFamily: font.mono, fontSize: 10.5, padding: "2px 8px", cursor: "pointer", marginBottom: 4 }}>🐞 step debug</button>
+          )}
           {detail.caller && detail.caller !== "(none)" && <div>caller <span style={{ color: color.textMutedDk }}>{shortId(detail.caller)}</span></div>}
           {detail.in && detail.in !== "(none)" && <div>in <span style={{ color: color.textMutedDk }}>{detail.in}</span></div>}
           {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.before} → {d.after}</div>)}
@@ -447,6 +452,7 @@ export default function Ide() {
   const [projectName, setProjectName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
+  const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string } | null>(null); // open step debugger
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
@@ -1152,6 +1158,7 @@ export default function Ide() {
       const eng = await ensureEngine();
       const wasmBytes = base64ToBytes(res.wasm);
       await eng.deploy(slot, wasmBytes, idlData);
+      eng.registerSource(slot, source, contractName); // so the step debugger decodes this contract's StateData
       const address = await eng.addressOf(slot);
       const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source, wasm: wasmBytes } };
       deployedRef.current = reg;
@@ -1386,6 +1393,7 @@ export default function Ide() {
                       output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
                       detail={txDetail[key]}
                       onRun={(input, value) => runProcedure(id, entry, input, value)}
+                      onDebug={(steps, title) => setDebug({ steps, title })}
                     />
                   );
                 })}
@@ -1458,6 +1466,8 @@ export default function Ide() {
         {result?.hash && <span>hash {result.hash.slice(0, 12)}</span>}
         <span style={{ marginLeft: "auto" }}>in-process engine</span>
       </div>
+
+      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} />}
     </div>
   );
 }
