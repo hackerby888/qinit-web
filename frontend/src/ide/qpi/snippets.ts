@@ -5,9 +5,10 @@ import type * as Monaco from "monaco-editor";
 import { QPI_TYPES, QPI_BUILTINS, QPI_MACROS } from "./vocab";
 import { enclosingEntry, collectStructs, isUserEntry } from "./members";
 
-// Which framework builtins make sense where the cursor is: `qpi`/`state` everywhere; `input`/`output`
-// only in a user fn/proc (system hooks carry NoData / qpi.h IO); `locals` only in a _WITH_LOCALS entry
-// that declares a <Name>_locals struct.
+// Which framework builtins make sense where the cursor is. All of them require being inside an entry body
+// (out of scope in StateData / the REGISTER block / top level): `qpi`/`state` in any entry; `input`/`output`
+// only in a user fn/proc (system hooks carry NoData / qpi.h IO); `locals` only in a _WITH_LOCALS entry that
+// declares a <Name>_locals struct.
 function allowedBuiltins(model: Monaco.editor.ITextModel, position: Monaco.Position): (b: string) => boolean {
   const src = model.getValue();
   const entry = enclosingEntry(src, model.getOffsetAt(position));
@@ -15,13 +16,16 @@ function allowedBuiltins(model: Monaco.editor.ITextModel, position: Monaco.Posit
   const hasLocals = !!entry && entry.macro.endsWith("_WITH_LOCALS") && collectStructs(src).has(entry.base + "_locals");
 
   return (b) => {
+    if (!entry) {
+      return false;
+    }
     if (b === "input" || b === "output") {
       return userEntry;
     }
     if (b === "locals") {
       return hasLocals;
     }
-    return true;
+    return true; // qpi, state
   };
 }
 

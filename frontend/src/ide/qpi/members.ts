@@ -96,19 +96,39 @@ export function collectStructs(src: string): Map<string, Field[]> {
 
 const ENTRY_RE = /\b((?:PUBLIC|PRIVATE)_(?:FUNCTION|PROCEDURE)(?:_WITH_LOCALS)?|INITIALIZE|BEGIN_EPOCH|END_EPOCH|BEGIN_TICK|END_TICK|POST_INCOMING_TRANSFER|PRE_ACQUIRE_SHARES|PRE_RELEASE_SHARES|POST_ACQUIRE_SHARES|POST_RELEASE_SHARES)\s*\(\s*(\w*)\s*\)/g;
 
-// The entry body the cursor sits in: its declaring macro + the base name for <Name>_input/_output/_locals.
-// For a lifecycle hook (INITIALIZE etc.) the macro itself is the base (e.g. INITIALIZE_locals).
+// The entry whose `{ … }` body the cursor sits INSIDE — its declaring macro + the base name for
+// <Name>_input/_output/_locals. Null when the cursor is outside every entry body (StateData, the REGISTER
+// block, top level), where qpi / state / input / output / locals are all out of scope. For a lifecycle
+// hook (INITIALIZE etc.) the macro itself is the base (e.g. INITIALIZE_locals).
 export function enclosingEntry(src: string, offset: number): { macro: string; base: string } | null {
-  let hit: { macro: string; base: string } | null = null;
   let m: RegExpExecArray | null;
   ENTRY_RE.lastIndex = 0;
   while ((m = ENTRY_RE.exec(src)) !== null) {
     if (m.index >= offset) {
       break;
     }
-    hit = { macro: m[1], base: m[2] || m[1] };
+    const braceStart = src.indexOf("{", ENTRY_RE.lastIndex);
+    if (braceStart < 0) {
+      continue;
+    }
+    let depth = 0;
+    let end = src.length;
+    for (let i = braceStart; i < src.length; i++) {
+      if (src[i] === "{") {
+        depth++;
+      } else if (src[i] === "}") {
+        depth--;
+        if (depth === 0) {
+          end = i;
+          break;
+        }
+      }
+    }
+    if (offset > braceStart && offset <= end) {
+      return { macro: m[1], base: m[2] || m[1] };
+    }
   }
-  return hit;
+  return null;
 }
 
 export function enclosingEntryBase(src: string, offset: number): string | null {
@@ -168,45 +188,57 @@ export interface Method {
 export const CONTAINERS: Record<string, Method[]> = {
   Array: [
     { label: "get", insert: "get(${1:index})", detail: "const T& — element at index" },
-    { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void" },
+    { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void — write element at index" },
     { label: "setAll", insert: "setAll(${1:value})", detail: "void — fill every element" },
-    { label: "setRange", insert: "setRange(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "void" },
-    { label: "rangeEquals", insert: "rangeEquals(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "bit" },
+    { label: "setRange", insert: "setRange(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "void — fill [begin, end)" },
+    { label: "rangeEquals", insert: "rangeEquals(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "bool" },
     { label: "capacity", insert: "capacity()", detail: "uint64 — fixed N" },
   ],
   BitArray: [
-    { label: "get", insert: "get(${1:index})", detail: "bit" },
+    { label: "get", insert: "get(${1:index})", detail: "bit — bit at index" },
     { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void" },
     { label: "setAll", insert: "setAll(${1:value})", detail: "void" },
-    { label: "capacity", insert: "capacity()", detail: "uint64" },
+    { label: "capacity", insert: "capacity()", detail: "uint64 — fixed L" },
   ],
+  // HashMap.get fills `value` (an out-param reference) and returns whether the key was present.
   HashMap: [
-    { label: "get", insert: "get(${1:key}, ${2:value})", detail: "bit — reads value out-param" },
-    { label: "set", insert: "set(${1:key}, ${2:value})", detail: "sint64 — slot index, or -1 if full" },
-    { label: "contains", insert: "contains(${1:key})", detail: "bit" },
-    { label: "removeByKey", insert: "removeByKey(${1:key})", detail: "sint64" },
-    { label: "replace", insert: "replace(${1:key}, ${2:newValue})", detail: "bit" },
+    { label: "get", insert: "get(${1:key}, ${2:value})", detail: "bool — true if found; fills value (out-param)" },
+    { label: "set", insert: "set(${1:key}, ${2:value})", detail: "sint64 — element index, or -1 if full" },
+    { label: "contains", insert: "contains(${1:key})", detail: "bool" },
+    { label: "removeByKey", insert: "removeByKey(${1:key})", detail: "sint64 — removed element index, or -1" },
+    { label: "replace", insert: "replace(${1:key}, ${2:newValue})", detail: "bool — true if the key existed" },
+    { label: "getElementIndex", insert: "getElementIndex(${1:key})", detail: "sint64 — index of key, or -1" },
+    { label: "key", insert: "key(${1:elementIndex})", detail: "const KeyT& — key at element index" },
+    { label: "value", insert: "value(${1:elementIndex})", detail: "const ValueT& — value at element index" },
+    { label: "nextElementIndex", insert: "nextElementIndex(${1:elementIndex})", detail: "sint64 — next occupied index, or -1 (iteration)" },
     { label: "population", insert: "population()", detail: "uint64 — number of entries" },
     { label: "capacity", insert: "capacity()", detail: "uint64" },
     { label: "reset", insert: "reset()", detail: "void — empty the map" },
   ],
   HashSet: [
-    { label: "add", insert: "add(${1:key})", detail: "sint64" },
-    { label: "contains", insert: "contains(${1:key})", detail: "bit" },
-    { label: "remove", insert: "remove(${1:key})", detail: "sint64" },
+    { label: "add", insert: "add(${1:key})", detail: "sint64 — element index, or -1 if full" },
+    { label: "contains", insert: "contains(${1:key})", detail: "bool" },
+    { label: "remove", insert: "remove(${1:key})", detail: "sint64 — removed element index, or -1" },
+    { label: "getElementIndex", insert: "getElementIndex(${1:key})", detail: "sint64 — index of key, or -1" },
+    { label: "key", insert: "key(${1:elementIndex})", detail: "KeyT — key at element index" },
+    { label: "nextElementIndex", insert: "nextElementIndex(${1:elementIndex})", detail: "sint64 — next occupied index, or -1 (iteration)" },
     { label: "population", insert: "population()", detail: "uint64" },
     { label: "capacity", insert: "capacity()", detail: "uint64" },
     { label: "reset", insert: "reset()", detail: "void" },
   ],
   Collection: [
-    { label: "add", insert: "add(${1:pov}, ${2:element}, ${3:priority})", detail: "sint64 — element index" },
-    { label: "element", insert: "element(${1:elementIndex})", detail: "T" },
-    { label: "pov", insert: "pov(${1:elementIndex})", detail: "id — point of view" },
-    { label: "priority", insert: "priority(${1:elementIndex})", detail: "sint64" },
-    { label: "population", insert: "population()", detail: "uint64" },
+    { label: "add", insert: "add(${1:pov}, ${2:element}, ${3:priority})", detail: "sint64 — new element index, or -1 if full" },
+    { label: "element", insert: "element(${1:elementIndex})", detail: "T — element at index" },
+    { label: "pov", insert: "pov(${1:elementIndex})", detail: "id — point of view of an element" },
+    { label: "priority", insert: "priority(${1:elementIndex})", detail: "sint64 — priority of an element" },
+    { label: "headIndex", insert: "headIndex(${1:pov})", detail: "sint64 — highest-priority element index for a pov" },
+    { label: "nextElementIndex", insert: "nextElementIndex(${1:elementIndex})", detail: "sint64 — next element in the pov's queue, or -1" },
+    { label: "prevElementIndex", insert: "prevElementIndex(${1:elementIndex})", detail: "sint64 — previous element in the queue, or -1" },
+    { label: "population", insert: "population()", detail: "uint64 — total elements" },
     { label: "capacity", insert: "capacity()", detail: "uint64" },
-    { label: "remove", insert: "remove(${1:elementIndex})", detail: "sint64" },
-    { label: "reset", insert: "reset()", detail: "void" },
+    { label: "remove", insert: "remove(${1:elementIndex})", detail: "sint64 — next element index after removal" },
+    { label: "replace", insert: "replace(${1:oldElementIndex}, ${2:newElement})", detail: "void" },
+    { label: "reset", insert: "reset()", detail: "void — empty the collection" },
   ],
 };
 
@@ -283,10 +315,13 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         range,
       });
 
-      // qpi.<api> — a const function only sees the read-only host API (no transfer/burn/issueAsset/…).
+      // qpi.<api> — only inside an entry body; a const function sees only the read-only host API.
       if (QPI_ACCESS.test(line)) {
         const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
-        const api = entry && isFunctionEntry(entry.macro) ? QPI_API.filter((m) => !m.proc) : QPI_API;
+        if (!entry) {
+          return { suggestions: [] };
+        }
+        const api = isFunctionEntry(entry.macro) ? QPI_API.filter((m) => !m.proc) : QPI_API;
         return { suggestions: api.map(methodItem) };
       }
 
@@ -296,12 +331,15 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
       if (chain) {
         const src = model.getValue();
         const structs = collectStructs(src);
+        const entry = enclosingEntry(src, model.getOffsetAt(position));
+        if (!entry) {
+          return { suggestions: [] }; // state / input / output / locals are only in scope in an entry body
+        }
 
         let rootType: string | null;
         if (chain[1].startsWith("state")) {
           rootType = "StateData";
         } else {
-          const entry = enclosingEntry(src, model.getOffsetAt(position));
           const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
           // input/output are author-authored only in a user fn/proc; system hooks carry NoData / qpi.h IO.
           if ((chain[1] === "input" || chain[1] === "output") && !(entry && isUserEntry(entry.macro))) {
@@ -338,8 +376,11 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         });
 
         const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
+        if (!entry) {
+          return { suggestions: [] }; // `state` is only in scope in an entry body
+        }
         const suggestions = [accessor("get", "read-only StateData")];
-        if (!entry || !isFunctionEntry(entry.macro)) {
+        if (!isFunctionEntry(entry.macro)) {
           suggestions.unshift(accessor("mut", "writable StateData (marks the slot dirty)"));
         }
         return { suggestions };
