@@ -140,22 +140,28 @@ export class IdeEngine {
     return this.speedMs;
   }
 
-  // Advance exactly n ticks now (each: BEGIN_TICK asc -> due mempool txs -> END_TICK desc), independent of
-  // the auto-ticker. Lets a paused chain be stepped one tick at a time or jumped forward.
+  // Advance exactly n ticks now, independent of the auto-ticker. Each tick crosses an epoch boundary when
+  // due (END_EPOCH -> BEGIN_EPOCH) then runs BEGIN_TICK asc -> due mempool txs -> END_TICK desc. onTick is
+  // emitted once at the end so a long jump doesn't thrash the UI.
   async step(n = 1): Promise<void> {
     for (let i = 0; i < n; i++) {
-      await this.tickOnce();
+      await this.tickOnce(i === n - 1);
     }
   }
 
-  // Fire one epoch boundary in core's lifecycle order (contract_def.h SystemProcedureID): END_EPOCH for the
-  // closing epoch (descending slot), bump the epoch counter, BEGIN_EPOCH for the new one (ascending slot).
-  // On the live node these straddle the last/first tick of an epoch; here they fire back-to-back so
-  // lifecycle / revenue logic can be exercised without ticking through a whole epoch.
+  // Ticks per epoch — the boundary where the network switches epoch.
+  epochLength(): number {
+    return this.engine.sim.epochLength;
+  }
+
+  // Jump to the next epoch: fast-forward ticks to the upcoming epoch boundary. The switch itself
+  // (END_EPOCH -> epoch++ -> BEGIN_EPOCH) is fired by the tick mechanism (sim.advance) as the tick crosses
+  // the boundary — same as the live network reaching the last tick of an epoch — not by hand.
   async advanceEpoch(): Promise<{ tick: number; epoch: number }> {
-    this.engine.sim.endEpoch();
-    this.engine.sim.epochN++;
-    this.engine.sim.beginEpoch();
+    const m = this.engine.sim.epochLength;
+    const cur = (await this.engine.tickInfo()).tick;
+    const target = m > 0 ? (Math.floor(cur / m) + 1) * m : cur + 1;
+    await this.step(target - cur);
     const info = await this.engine.tickInfo();
     this.onTick?.(info);
     return info;
@@ -216,7 +222,7 @@ export class IdeEngine {
     }
   }
 
-  private async tickOnce(): Promise<void> {
+  private async tickOnce(emit = true): Promise<void> {
     this.engine.advanceTick(1);
     const info = await this.engine.tickInfo();
 
@@ -231,7 +237,9 @@ export class IdeEngine {
       }
     }
 
-    this.onTick?.(info);
+    if (emit) {
+      this.onTick?.(info);
+    }
   }
 
   // Decode the just-processed tx (debug entries added since `base`) into the inspector view — decoded

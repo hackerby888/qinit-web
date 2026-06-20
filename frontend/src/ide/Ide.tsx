@@ -290,10 +290,11 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
 
 // Deterministic testnet controls (Remix has none — we own the chain in-page). Pause/step time, jump an
 // epoch to fire BEGIN/END_EPOCH hooks, and reset/replay the whole session against a fresh chain.
-function EngineControls({ paused, speed, info, onToggle, onStep, onEpoch, onReset, onReplay, onSpeed }: {
+function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpoch, onReset, onReplay, onSpeed }: {
   paused: boolean;
   speed: number;
   info: { tick: number; epoch: number } | null;
+  epochLen: number;
   onToggle: () => void;
   onStep: (n: number) => void;
   onEpoch: () => void;
@@ -301,6 +302,9 @@ function EngineControls({ paused, speed, info, onToggle, onStep, onEpoch, onRese
   onReplay: () => void;
   onSpeed: (ticksPerSec: number) => void;
 }) {
+  const tick = info?.tick ?? 0;
+  const within = epochLen > 0 ? tick % epochLen : 0;
+  const nextBoundary = tick + (epochLen > 0 ? epochLen - within : 1);
   const ctlBtn: CSSProperties = {
     border: `1px solid ${color.hair2}`,
     background: color.void,
@@ -314,14 +318,14 @@ function EngineControls({ paused, speed, info, onToggle, onStep, onEpoch, onRese
   return (
     <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 8, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
       <span style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, width: "100%" }}>
-        TESTNET · tick <span style={{ color: color.accent }}>{info?.tick ?? 0}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
+        TESTNET · tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span> <span style={{ color: color.textGhostDk }}>· {within}/{epochLen} to next</span>
       </span>
       <button onClick={onToggle} title={paused ? "Resume auto-tick" : "Pause auto-tick"} style={{ ...ctlBtn, background: paused ? color.accent : color.void, color: paused ? color.void : color.textLight }}>
         {paused ? "▶ run" : "⏸ pause"}
       </button>
       <button onClick={() => onStep(1)} title="Advance 1 tick" style={ctlBtn}>⏭ +1</button>
       <button onClick={() => onStep(10)} title="Advance 10 ticks" style={ctlBtn}>⏩ +10</button>
-      <button onClick={onEpoch} title="Advance one epoch — fires END_EPOCH then BEGIN_EPOCH" style={ctlBtn}>⤓ epoch</button>
+      <button onClick={onEpoch} title={`Jump to tick ${nextBoundary} (the next epoch boundary) — fires END_EPOCH → BEGIN_EPOCH`} style={ctlBtn}>⤓ epoch</button>
       <button onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)" style={ctlBtn}>↺ reset</button>
       <button onClick={onReplay} title="Replay every tx this session from genesis" style={ctlBtn}>↻ replay</button>
       <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
@@ -445,6 +449,7 @@ export default function Ide() {
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
+  const [epochLen, setEpochLen] = useState(3000); // ticks per epoch (from the engine)
   const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
   const [scenResults, setScenResults] = useState<Record<string, ScenarioResult>>({});
   const [runningScen, setRunningScen] = useState<string | null>(null);
@@ -1025,6 +1030,7 @@ export default function Ide() {
       };
       eng.start();
       engineRef.current = eng;
+      setEpochLen(eng.epochLength());
       const accs = await eng.ensureAccounts();
       setAccounts(accs);
       setCaller(accs[0]?.id ?? "");
@@ -1233,6 +1239,7 @@ export default function Ide() {
                 paused={paused}
                 speed={speed}
                 info={engineInfo}
+                epochLen={epochLen}
                 onToggle={togglePause}
                 onStep={(n) => void stepTicks(n)}
                 onEpoch={() => void advanceEpoch()}
