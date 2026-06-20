@@ -46,8 +46,8 @@ export interface TxProcessed {
 }
 
 // One replayable write — the args of a submitProcedure call, kept so the whole session can be re-run
-// against a fresh chain (reset + replay).
-interface ReplayStep {
+// against a fresh chain (reset + replay), or saved into a scenario.
+export interface ReplayStep {
   slot: number;
   procId: string;
   entry: IdlEntry;
@@ -186,12 +186,23 @@ export class IdeEngine {
   // Reset to genesis, then re-apply every write this session in order — each landed on its own ticks, so
   // ordering is preserved. Reproduces the exact state from a clean chain.
   async replay(images: DeployImage[]): Promise<void> {
-    const steps = this.history.slice();
+    await this.runSteps(images, this.history.slice());
+  }
+
+  // Reset to genesis, then apply a specific ordered list of writes (each landed on its own ticks). The
+  // scenario runner uses this to re-drive a saved test against a fresh chain; replay() feeds it the live
+  // history.
+  async runSteps(images: DeployImage[], steps: ReplayStep[]): Promise<void> {
     await this.reset(images);
     for (const s of steps) {
       await this.submitProcedure(s.slot, s.procId, s.entry, s.input, s.key, s.caller, s.contract);
       await this.step(TICKS_AHEAD + 1); // tick until it lands
     }
+  }
+
+  // The writes recorded this session — used to capture a scenario from what you just ran.
+  exportHistory(): ReplayStep[] {
+    return this.history.slice();
   }
 
   // Re-seed the faucet and re-fund the existing dev accounts into a fresh engine, keeping their identities

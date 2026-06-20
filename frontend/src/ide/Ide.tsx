@@ -13,7 +13,8 @@ import { FileExplorer } from "./FileExplorer";
 import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine, Account, TxDetail, DeployImage } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep } from "./engine";
+import { ScenarioPanel, loadScenarios, saveScenarios, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
 
@@ -444,6 +445,9 @@ export default function Ide() {
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
+  const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
+  const [scenResults, setScenResults] = useState<Record<string, ScenarioResult>>({});
+  const [runningScen, setRunningScen] = useState<string | null>(null);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
@@ -690,6 +694,108 @@ export default function Ide() {
     await refreshBalances(await eng.ensureAccounts());
   };
 
+  // ---- scenario runner (saved contract tests built on reset/replay) ----
+
+  const acctLabel = (seed: string): string => {
+    const i = accounts.findIndex((a) => a.seed === seed);
+    return i >= 0 ? `acct ${i}` : "acct";
+  };
+
+  // Snapshot the writes you ran on the selected contract into a new saved scenario.
+  const captureScenario = () => {
+    const d = sel;
+    if (!d) {
+      return;
+    }
+    const mine = (engineRef.current?.exportHistory() ?? []).filter((h) => h.contract.name === d.name);
+    if (!mine.length) {
+      appendLog("nothing to capture — run a procedure on this contract first");
+      return;
+    }
+    const calls: CallStep[] = mine.map((h) => ({
+      procId: h.procId,
+      procName: h.entry.name,
+      input: Object.fromEntries(Object.entries(h.input).map(([k, v]) => [k, String(v)])),
+      callerSeed: h.caller.seed,
+      callerLabel: acctLabel(h.caller.seed),
+      value: h.caller.amount,
+    }));
+    const n = scenarios.filter((x) => x.contract === d.name).length + 1;
+    const s: Scenario = { id: uid(), name: `${d.name} test ${n}`, contract: d.name, calls, asserts: [] };
+    setScenarios((xs) => [...xs, s]);
+    appendLog(`captured ${calls.length} call(s) into "${s.name}" — add assertions, then run`);
+  };
+
+  // Reset the chain, replay the scenario's calls, then evaluate its assertions against the result.
+  const runScenario = async (s: Scenario) => {
+    const eng = engineRef.current;
+    const d = deployedRef.current[s.contract];
+    if (!eng) {
+      return;
+    }
+    if (!d) {
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: `${s.contract} not deployed` } }));
+      return;
+    }
+    if (s.calls.some((c) => !d.idl.procedures[c.procId])) {
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: "contract changed — a captured procedure is gone" } }));
+      return;
+    }
+
+    setRunningScen(s.id);
+    try {
+      const steps: ReplayStep[] = s.calls.map((c) => {
+        const entry = d.idl.procedures[c.procId];
+        return {
+          slot: d.slot,
+          procId: c.procId,
+          entry,
+          input: coerce(entry, c.input),
+          key: `${d.name}:scenario:${c.procId}`,
+          caller: { seed: c.callerSeed, amount: c.value },
+          contract: { name: d.name, source: d.source },
+        };
+      });
+      await eng.runSteps(deployImages(), steps);
+
+      const out: AssertResult[] = [];
+      for (const a of s.asserts) {
+        const entry = d.idl.functions[a.fnId];
+        if (!entry) {
+          out.push({ ok: false, actual: "(no such function)" });
+          continue;
+        }
+        const res = await eng.callFunction(d.slot, a.fnId, entry, coerce(entry, a.input));
+        const actual = res && typeof res === "object" ? (res as Record<string, unknown>)[a.field] : res;
+        out.push({ ok: compare(a.op, actual, a.expected), actual: actual === undefined ? "undefined" : String(actual) });
+      }
+      setScenResults((r) => ({ ...r, [s.id]: { results: out } }));
+      appendLog(`scenario "${s.name}": ${out.filter((x) => x.ok).length}/${out.length} assertions passed`);
+    } catch (e) {
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: (e as Error).message } }));
+    } finally {
+      setRunningScen(null);
+      await refreshEngineViews();
+    }
+  };
+
+  const deleteScenario = (id: string) => {
+    setScenarios((xs) => xs.filter((x) => x.id !== id));
+    setScenResults((r) => {
+      const next = { ...r };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const addAssert = (id: string, a: AssertStep) => {
+    setScenarios((xs) => xs.map((s) => (s.id === id ? { ...s, asserts: [...s.asserts, a] } : s)));
+  };
+
+  const deleteAssert = (id: string, idx: number) => {
+    setScenarios((xs) => xs.map((s) => (s.id === id ? { ...s, asserts: s.asserts.filter((_, i) => i !== idx) } : s)));
+  };
+
   // Live label for a queued tx — counts down as the chain ticks toward its target.
   const pendingLabel = (targetTick: number): string => {
     const cur = engineInfo?.tick ?? 0;
@@ -740,6 +846,9 @@ export default function Ide() {
   useEffect(() => {
     localStorage.setItem("ide.openTabs", JSON.stringify(openTabs));
   }, [openTabs]);
+  useEffect(() => {
+    saveScenarios(scenarios);
+  }, [scenarios]);
 
   // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
   // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
@@ -1192,6 +1301,22 @@ export default function Ide() {
               </>
             ) : (
               phase === "idle" && <PanelHint />
+            )}
+
+            {(sel || scenarios.some((s) => s.contract === contractName)) && (
+              <ScenarioPanel
+                scenarios={scenarios.filter((s) => s.contract === contractName)}
+                results={scenResults}
+                running={runningScen}
+                idl={sel?.idl ?? null}
+                contractName={contractName}
+                canCapture={!!sel}
+                onCapture={captureScenario}
+                onRun={(s) => void runScenario(s)}
+                onDelete={deleteScenario}
+                onAddAssert={addAssert}
+                onDeleteAssert={deleteAssert}
+              />
             )}
           </div>
 
