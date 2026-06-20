@@ -23,7 +23,7 @@ export interface CompileResult {
   error?: string;
 }
 
-export async function compileContract(req: { source: string; name: string; slot: number }): Promise<CompileResult> {
+export async function compileContract(req: { source: string; name: string; slot: number; skipVerify?: boolean }): Promise<CompileResult> {
   let r: Response;
   try {
     r = await fetch("/api/compile", {

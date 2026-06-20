@@ -2,7 +2,7 @@
 // QPI diagnostics + IDL hover (./qpi), compile on the backend (./api), and deploy + test the wasm in
 // this page via @qinit/engine (./engine). The engine/crypto modules are dynamically imported so a load
 // failure degrades to "compile only" rather than breaking the editor.
-import { useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
@@ -309,6 +309,7 @@ export default function Ide() {
   const [selected, setSelected] = useState<string | null>(null);
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
+  const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
@@ -317,11 +318,24 @@ export default function Ide() {
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
 
+  // Auto-compile coordination (Remix-style background diagnostics). Refs so the debounce reads fresh
+  // values without re-creating the callback.
+  const sourceRef = useRef("");
+  const contractNameRef = useRef("");
+  const autoSeqRef = useRef(0);
+  const autoSentRef = useRef<string>("");   // last source we POSTed — dedupe undo/redo/whitespace churn
+  const autoBusyRef = useRef(false);        // single in-flight
+  const autoDirtyRef = useRef(false);       // an edit landed mid-compile -> trailing re-run
+  const warmRef = useRef<{ source: string; name: string; res: CompileResult } | null>(null); // warm deploy artifact
+
   const appendLog = (line: string) => setLog((l) => [...l.slice(-200), line]);
 
   const activeFile = ws.files.find((f) => f.name === ws.active) ?? ws.files[0];
   const source = activeFile?.source ?? "";
   const contractName = baseName(ws.active);
+
+  sourceRef.current = source;
+  contractNameRef.current = contractName;
 
   // Persist the workspace (debounced) on every edit.
   useEffect(() => {
@@ -442,12 +456,75 @@ export default function Ide() {
     })));
   };
 
+  // Remix's loop, compiler out-of-band: on an idle pause the editor source is compiled in the background
+  // (one POST, non-blocking — typing is fed by the instant local QPI layer) and the real clang diagnostics
+  // land as "clang" markers. Coalesced (single in-flight + trailing re-run), deduped (skip unchanged
+  // buffers), and the wasm/idl is kept warm so ▶ Deploy & Run needs no extra compile.
+  const runAutoCompile = useCallback(async () => {
+    const src = sourceRef.current;
+    const name = contractNameRef.current;
+    if (!src.trim() || src === autoSentRef.current) {
+      return;
+    }
+    if (autoBusyRef.current) {
+      autoDirtyRef.current = true; // an edit is mid-flight; re-run once the current pass finishes
+      return;
+    }
+
+    autoBusyRef.current = true;
+    autoSentRef.current = src;
+    const seq = ++autoSeqRef.current;
+    setDiag((d) => ({ ...d, state: "checking" }));
+
+    let res: CompileResult | null = null;
+    try {
+      const slot = assignSlot(deployedRef.current, name);
+      res = await compileContract({ source: src, name, slot, skipVerify: true });
+    } catch {
+      res = null;
+    }
+    autoBusyRef.current = false;
+
+    if (autoDirtyRef.current) {
+      autoDirtyRef.current = false;
+      void runAutoCompile(); // pick up the newest buffer
+    }
+    if (seq !== autoSeqRef.current || !res) {
+      return; // superseded by a newer run, or the request failed — don't flap the markers
+    }
+
+    applyClangMarkers(res);
+    const errs = res.diagnostics.filter((d) => d.severity === "error").length;
+    setDiag({ state: errs ? "error" : "ok", count: errs });
+
+    if (res.ok && res.wasm && res.idl) {
+      warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs; intentionally stable
+  }, []);
+
+  // Debounce: re-arm on each edit / file switch, fire the background compile after an idle pause.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      void runAutoCompile();
+    }, 800);
+    return () => clearTimeout(t);
+  }, [source, contractName, runAutoCompile]);
+
   const compile = async () => {
     setPhase("compiling");
     const slot = assignSlot(deployed, contractName);
-    appendLog(`compiling ${contractName} (slot ${slot})…`);
 
-    const res = await compileContract({ source, name: contractName, slot });
+    // Reuse the background auto-compile's warm artifact when the source is unchanged — deploy is instant.
+    const warm = warmRef.current;
+    const cached = warm && warm.source === source && warm.name === contractName ? warm.res : null;
+    if (cached) {
+      appendLog(`deploying ${contractName} (slot ${slot}) — already built`);
+    } else {
+      appendLog(`compiling ${contractName} (slot ${slot})…`);
+    }
+
+    const res = cached ?? await compileContract({ source, name: contractName, slot, skipVerify: true });
     setResult(res);
     applyClangMarkers(res);
 
@@ -709,6 +786,11 @@ export default function Ide() {
         </span>
         <span>{contractName}</span>
         <span>C++ · qpi.h</span>
+        {diag.state !== "idle" && (
+          <span style={{ color: diag.state === "error" ? "#FF8B7E" : diag.state === "ok" ? color.accent : color.textMutedDk }}>
+            {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ no errors" : `✕ ${diag.count} error${diag.count === 1 ? "" : "s"}`}
+          </span>
+        )}
         {result?.hash && <span>hash {result.hash.slice(0, 12)}</span>}
         <span style={{ marginLeft: "auto" }}>in-process engine</span>
       </div>
