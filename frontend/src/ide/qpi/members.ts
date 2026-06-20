@@ -140,9 +140,93 @@ const QPI_API: { label: string; insert: string; detail: string }[] = [
   { label: "computor", insert: "computor(${1:index})", detail: "id" },
 ];
 
-const STATE_ACCESS = /\bstate\s*\.\s*(?:mut|get)\s*\(\s*\)\s*\.\s*(\w*)$/;
+// The public method surface of the QPI container templates (qpi.h), offered when a member chain resolves
+// to a container-typed field (e.g. `state.get().balances.` where `balances` is a HashMap).
+interface Method {
+  label: string;
+  insert: string;
+  detail: string;
+}
+
+const CONTAINERS: Record<string, Method[]> = {
+  Array: [
+    { label: "get", insert: "get(${1:index})", detail: "const T& — element at index" },
+    { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void" },
+    { label: "setAll", insert: "setAll(${1:value})", detail: "void — fill every element" },
+    { label: "setRange", insert: "setRange(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "void" },
+    { label: "rangeEquals", insert: "rangeEquals(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "bit" },
+    { label: "capacity", insert: "capacity()", detail: "uint64 — fixed N" },
+  ],
+  BitArray: [
+    { label: "get", insert: "get(${1:index})", detail: "bit" },
+    { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void" },
+    { label: "setAll", insert: "setAll(${1:value})", detail: "void" },
+    { label: "capacity", insert: "capacity()", detail: "uint64" },
+  ],
+  HashMap: [
+    { label: "get", insert: "get(${1:key}, ${2:value})", detail: "bit — reads value out-param" },
+    { label: "set", insert: "set(${1:key}, ${2:value})", detail: "sint64 — slot index, or -1 if full" },
+    { label: "contains", insert: "contains(${1:key})", detail: "bit" },
+    { label: "removeByKey", insert: "removeByKey(${1:key})", detail: "sint64" },
+    { label: "replace", insert: "replace(${1:key}, ${2:newValue})", detail: "bit" },
+    { label: "population", insert: "population()", detail: "uint64 — number of entries" },
+    { label: "capacity", insert: "capacity()", detail: "uint64" },
+    { label: "reset", insert: "reset()", detail: "void — empty the map" },
+  ],
+  HashSet: [
+    { label: "add", insert: "add(${1:key})", detail: "sint64" },
+    { label: "contains", insert: "contains(${1:key})", detail: "bit" },
+    { label: "remove", insert: "remove(${1:key})", detail: "sint64" },
+    { label: "population", insert: "population()", detail: "uint64" },
+    { label: "capacity", insert: "capacity()", detail: "uint64" },
+    { label: "reset", insert: "reset()", detail: "void" },
+  ],
+  Collection: [
+    { label: "add", insert: "add(${1:pov}, ${2:element}, ${3:priority})", detail: "sint64 — element index" },
+    { label: "element", insert: "element(${1:elementIndex})", detail: "T" },
+    { label: "pov", insert: "pov(${1:elementIndex})", detail: "id — point of view" },
+    { label: "priority", insert: "priority(${1:elementIndex})", detail: "sint64" },
+    { label: "population", insert: "population()", detail: "uint64" },
+    { label: "capacity", insert: "capacity()", detail: "uint64" },
+    { label: "remove", insert: "remove(${1:elementIndex})", detail: "sint64" },
+    { label: "reset", insert: "reset()", detail: "void" },
+  ],
+};
+
+// The container kind of a field type, if any — `HashMap<id, sint64>` -> "HashMap".
+function containerKind(type: string): string | null {
+  const m = type.match(/^(Array|BitArray|HashMap|HashSet|Collection)\s*</);
+  return m ? m[1] : null;
+}
+
+// The members offered for a resolved type: a container's method table, else a user struct's fields,
+// else none (a scalar / unknown type has no `.` members).
+function membersOfType(type: string, structs: Map<string, Field[]>): { fields: Field[]; methods: Method[] } {
+  const kind = containerKind(type);
+  if (kind) {
+    return { fields: [], methods: CONTAINERS[kind] };
+  }
+  return { fields: structs.get(type) ?? [], methods: [] };
+}
+
+// Walk a dotted field path from a root struct to its final type. e.g. root "StateData" + ["config"]
+// -> the type of StateData::config. Bails (null) on an unknown field or a non-struct mid-path.
+function walkPath(rootType: string, path: string[], structs: Map<string, Field[]>): string | null {
+  let cur = rootType;
+  for (const name of path) {
+    const fields = structs.get(cur);
+    const fld = fields?.find((f) => f.name === name);
+    if (!fld) {
+      return null;
+    }
+    cur = fld.type;
+  }
+  return cur;
+}
+
+// `state.mut()`/`state.get()` then any `.field.field…` chain, then the trailing partial word.
+const CHAIN = /\b(state\s*\.\s*(?:mut|get)\s*\(\s*\)|input|output|locals)((?:\s*\.\s*\w+)*)\s*\.\s*(\w*)$/;
 const STATE_BARE = /\bstate\s*\.\s*(\w*)$/;
-const IO_ACCESS = /\b(input|output|locals)\s*\.\s*(\w*)$/;
 const QPI_ACCESS = /\bqpi\s*\.\s*(\w*)$/;
 
 let registered = false;
@@ -166,32 +250,54 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         endColumn: word.endColumn,
       };
 
-      const field = (f: Field): Monaco.languages.CompletionItem => ({
+      const fieldItem = (f: Field): Monaco.languages.CompletionItem => ({
         label: f.name,
         kind: monaco.languages.CompletionItemKind.Field,
         insertText: f.name,
         detail: f.type,
         range,
       });
+      const methodItem = (m: Method): Monaco.languages.CompletionItem => ({
+        label: m.label,
+        kind: monaco.languages.CompletionItemKind.Method,
+        insertText: m.insert,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+        detail: m.detail,
+        range,
+      });
 
       // qpi.<api>
       if (QPI_ACCESS.test(line)) {
-        return {
-          suggestions: QPI_API.map((a) => ({
-            label: a.label,
-            kind: monaco.languages.CompletionItemKind.Method,
-            insertText: a.insert,
-            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-            detail: a.detail,
-            range,
-          })),
-        };
+        return { suggestions: QPI_API.map(methodItem) };
       }
 
-      // state.mut()./state.get(). -> StateData fields
-      if (STATE_ACCESS.test(line)) {
-        const fields = collectStructs(model.getValue()).get("StateData") ?? [];
-        return { suggestions: fields.map(field) };
+      // state.mut()/get().<path>. | input/output/locals.<path>.  -> resolve the chain to a type, then
+      // offer that type's members (a user struct's fields or a container's method table).
+      const chain = line.match(CHAIN);
+      if (chain) {
+        const src = model.getValue();
+        const structs = collectStructs(src);
+
+        let rootType: string | null;
+        if (chain[1].startsWith("state")) {
+          rootType = "StateData";
+        } else {
+          const base = enclosingEntryBase(src, model.getOffsetAt(position));
+          const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
+          rootType = base ? base + suffix : null;
+        }
+        if (!rootType) {
+          return { suggestions: [] };
+        }
+
+        const path = (chain[2].match(/\w+/g) ?? []); // the intermediate fields before the trailing partial
+        const type = walkPath(rootType, path, structs);
+        if (!type) {
+          return { suggestions: [] };
+        }
+
+        const { fields, methods } = membersOfType(type, structs);
+        return { suggestions: [...fields.map(fieldItem), ...methods.map(methodItem)] };
       }
 
       // state. -> mut() / get()
@@ -204,18 +310,6 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
           range,
         });
         return { suggestions: [accessor("mut", "writable StateData (marks the slot dirty)"), accessor("get", "read-only StateData")] };
-      }
-
-      // input./output./locals. -> the enclosing entry's struct
-      const io = line.match(IO_ACCESS);
-      if (io) {
-        const base = enclosingEntryBase(model.getValue(), model.getOffsetAt(position));
-        if (!base) {
-          return { suggestions: [] };
-        }
-        const suffix = io[1] === "input" ? "_input" : io[1] === "output" ? "_output" : "_locals";
-        const fields = collectStructs(model.getValue()).get(base + suffix) ?? [];
-        return { suggestions: fields.map(field) };
       }
 
       return { suggestions: [] };

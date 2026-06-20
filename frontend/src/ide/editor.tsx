@@ -35,6 +35,9 @@ export function CodeEditor({ value, path, onChange, onMount }: CodeEditorProps) 
         cursorBlinking: "smooth",
         cursorSmoothCaretAnimation: "on",
         tabSize: 4,
+        // Completion is structured (QPI snippets + member resolution); the word-based fallback would
+        // otherwise flood the list with raw document words after a `.` on a scalar.
+        wordBasedSuggestions: "off",
         automaticLayout: true,
         fixedOverflowWidgets: true,
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
