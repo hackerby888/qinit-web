@@ -6,27 +6,34 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSPrope
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
-import { color, font } from "../landing/tokens";
+import { color, font, themeFlags, applyTheme, type ThemeName } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { Card, SectionHead, NeoBtn } from "./ui";
 import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
+import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep } from "./engine";
 import { Debugger } from "./Debugger";
+import { TxExplorer, type TxRow } from "./TxExplorer";
+import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
 
-const FRAME = `3px solid ${color.ink}`;
-const HAIR = `3px solid ${color.hair}`;
+// Structural borders, read live at render so a theme swap (neo 3px ↔ flat 1px) takes effect without a
+// reload. Used across Ide() and the sibling EditorTabs(), so they stay module-level helpers rather than
+// per-component consts.
+const frame = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.ink}`;
+const hair = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
+
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 
-type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array };
+type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array; calls?: string[] };
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
@@ -41,6 +48,41 @@ const assignSlot = (reg: Record<string, DeployedContract>, name: string): number
     s++;
   }
   return s;
+};
+
+// First free slot at or above `floor`, reusing the contract's current slot when it already clears the floor.
+// A caller must land above all its callees (the qubic lower-index rule), so floor = maxCalleeSlot + 1.
+const slotAtOrAbove = (reg: Record<string, DeployedContract>, name: string, floor: number): number => {
+  const cur = reg[name]?.slot;
+  if (cur !== undefined && cur >= floor) {
+    return cur;
+  }
+  const used = new Set(Object.values(reg).map((d) => d.slot));
+  let s = Math.max(SLOT_BASE, floor);
+  while (used.has(s)) {
+    s++;
+  }
+  return s;
+};
+
+// Inter-contract callee type names referenced by CALL/INVOKE_OTHER_CONTRACT(<Name>, …) in a source.
+const scanCallees = (src: string): string[] =>
+  [...new Set([...src.matchAll(/(?:CALL|INVOKE)_OTHER_CONTRACT_\w+\s*\(\s*(\w+)/g)].map((m) => m[1]))];
+
+// Resolve a source's callees to the project files that define them, for passing to the compiler. The slot is
+// the deployed index when known, else a provisional ascending one — its value only affects the emitted index
+// constants, so the contract compiles either way (used for live diagnostics before a deploy).
+const resolveCallees = (files: { name: string; source: string }[], reg: Record<string, DeployedContract>, src: string): { name: string; source: string; slot: number }[] => {
+  const out: { name: string; source: string; slot: number }[] = [];
+  let provisional = SLOT_BASE;
+  for (const name of scanCallees(src)) {
+    const f = files.find((x) => baseName(x.name) === name);
+    if (!f) {
+      continue; // unresolved — let clang report the missing callee type
+    }
+    out.push({ name, source: f.source, slot: reg[name]?.slot ?? provisional++ });
+  }
+  return out;
 };
 
 type Phase = "idle" | "compiling" | "ready" | "error";
@@ -118,8 +160,8 @@ function ToolButton({ children, onClick, variant = "ghost", disabled = false }: 
         background: accent ? color.accentDeep : color.ink,
         padding: 2,
         cursor: disabled ? "default" : "pointer",
-        filter: `drop-shadow(${off}px ${off}px 0 ${accent ? color.accentShadow : "#000"})`,
-        transform: `translate(${3 - off}px,${3 - off}px)`,
+        filter: themeFlags.flat ? "none" : `drop-shadow(${off}px ${off}px 0 ${accent ? color.accentShadow : "#000"})`,
+        transform: themeFlags.flat ? "none" : `translate(${3 - off}px,${3 - off}px)`,
         transition: "transform .1s steps(2), filter .1s steps(2)",
       }}
     >
@@ -130,7 +172,9 @@ function ToolButton({ children, onClick, variant = "ghost", disabled = false }: 
   );
 }
 
-const fieldInput: CSSProperties = {
+// Built per render (a function, not a const) so a live theme swap recolors the input — the same reason
+// the structural border helpers above are functions. Consumed by sibling components (CallRow, AccountsBar).
+const fieldInput = (): CSSProperties => ({
   flex: 1,
   minWidth: 0,
   background: color.void,
@@ -140,7 +184,7 @@ const fieldInput: CSSProperties = {
   fontSize: 11.5,
   padding: "4px 7px",
   outline: "none",
-};
+});
 
 function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun, onDebug }: {
   kind: "function" | "procedure";
@@ -181,7 +225,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
             value={vals[f.name] ?? ""}
             onChange={(e) => setVals((p) => ({ ...p, [f.name]: e.target.value }))}
             placeholder="0"
-            style={fieldInput}
+            style={fieldInput()}
           />
         </div>
       ))}
@@ -190,7 +234,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
           <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk, minWidth: 64 }}>value</span>
           <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk, minWidth: 44 }}>qus</span>
-          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" style={fieldInput} />
+          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" style={fieldInput()} />
         </div>
       )}
 
@@ -253,7 +297,7 @@ function PanelHint() {
   );
 }
 
-const selectStyle: CSSProperties = {
+const selectStyle = (): CSSProperties => ({
   flex: 1,
   minWidth: 0,
   background: color.void,
@@ -263,7 +307,7 @@ const selectStyle: CSSProperties = {
   fontSize: 11.5,
   padding: "4px 7px",
   outline: "none",
-};
+});
 
 // Pick the caller for a write + see its balance (Remix's account dropdown). Dev accounts are funded by
 // the engine faucet; the +fund control tops the selected account up with more qus straight from it.
@@ -279,7 +323,7 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
     <Card>
       <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
         <SectionHead label="ACCOUNTS" right={<span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>caller</span>} />
-        <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
+        <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle()}>
           {accounts.map((a, i) => (
             <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
           ))}
@@ -289,7 +333,7 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput} />
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput()} />
           <NeoBtn onClick={() => onFund(caller, Number(amount) || 0)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
         </div>
       </div>
@@ -372,12 +416,17 @@ function DeployedList({ deployed, selected, onSelect }: {
           <div
             key={d.name}
             onClick={() => onSelect(d.name)}
-            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 9px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : color.hair2}`, border: `1px solid ${on ? color.accent : color.hair}`, borderLeftWidth: 3, background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
+            style={{ display: "flex", flexDirection: "column", gap: 3, padding: "6px 9px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : color.hair2}`, border: `1px solid ${on ? color.accent : color.hair}`, borderLeftWidth: 3, background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
           >
-            <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
-            <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
-            <span style={{ color: color.textGhostDk, fontSize: 10 }}>slot {d.slot}</span>
-            <span style={{ marginLeft: "auto", color: color.textGhostDk, fontSize: 10 }}>{shortId(d.address)}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
+              <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
+              <span style={{ color: color.textGhostDk, fontSize: 10 }}>slot {d.slot}</span>
+              <span style={{ marginLeft: "auto", color: color.textGhostDk, fontSize: 10 }}>{shortId(d.address)}</span>
+            </div>
+            {d.calls && d.calls.length > 0 && (
+              <div style={{ color: color.secondary, fontSize: 10, paddingLeft: 14 }}>→ calls {d.calls.join(", ")}</div>
+            )}
           </div>
         );
       })}
@@ -396,7 +445,7 @@ function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
   onClose: (name: string, e: { stopPropagation(): void }) => void;
 }) {
   return (
-    <div className="pix-tabs" style={{ display: "flex", height: 36, flex: "none", borderBottom: HAIR, background: color.panelDeep, overflowX: "auto", overflowY: "hidden" }}>
+    <div className="pix-tabs" style={{ display: "flex", height: 36, flex: "none", borderBottom: hair(), background: color.panelDeep, overflowX: "auto", overflowY: "hidden" }}>
       {tabs.map((name) => {
         const on = name === active;
         const d = dirty(name);
@@ -448,11 +497,21 @@ function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
 export default function Ide() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // IDE chrome theme. The initializer applies the persisted palette before the first paint (mutating the
+  // shared `color` singleton), so the whole subtree renders in the right theme on mount.
+  const [theme, setTheme] = useState<ThemeName>(() => {
+    const t = (localStorage.getItem("ide.theme") as ThemeName) || "neo";
+    applyTheme(t);
+    return t;
+  });
+
   const [ws, setWs] = useState<Workspace>({ files: [], active: "" });
   const [projectName, setProjectName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string } | null>(null); // open step debugger
+  const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
@@ -467,6 +526,8 @@ export default function Ide() {
   const [selected, setSelected] = useState<string | null>(null);
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
+  const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
+  const [showTxs, setShowTxs] = useState(false);
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
@@ -483,6 +544,7 @@ export default function Ide() {
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
+  const pendingJumpRef = useRef<{ file: string; offset: number } | null>(null); // goto-source target awaiting its file's model swap
   const engineRef = useRef<IdeEngine | null>(null);
   const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
   const consoleRef = useRef<HTMLDivElement | null>(null);
@@ -495,6 +557,7 @@ export default function Ide() {
   const sourceRef = useRef("");
   const contractNameRef = useRef("");
   const activeNameRef = useRef(""); // active file name (with extension) — keys the dirty-tracking `built` map
+  const filesRef = useRef<{ name: string; source: string }[]>([]); // live workspace files, for resolving callees off the render path
   const autoSeqRef = useRef(0);
   const autoSentRef = useRef<string>("");   // last source we POSTed — dedupe undo/redo/whitespace churn
   const autoBusyRef = useRef(false);        // single in-flight
@@ -510,6 +573,7 @@ export default function Ide() {
   sourceRef.current = source;
   contractNameRef.current = contractName;
   activeNameRef.current = ws.active;
+  filesRef.current = ws.files;
 
   // Load the project for this route. Seeds the editor (files/active), open tabs and saved scenarios; an
   // unknown id bounces back to the gallery. Async by design — the same call shape a cloud store would use.
@@ -605,6 +669,23 @@ export default function Ide() {
       engineRef.current?.stop();
     };
   }, []);
+
+  // Reset the palette to neo when leaving the editor, so the landing (/) and projects gallery (/ide)
+  // always render neo-brutalist regardless of the IDE's chosen theme.
+  useEffect(() => {
+    return () => {
+      applyTheme("neo");
+    };
+  }, []);
+
+  // Flip neo ↔ flat: swap the palette in place (applyTheme) before re-rendering (setTheme), persist the
+  // choice, and let the `theme` prop drive Monaco's editor theme.
+  const toggleTheme = () => {
+    const next: ThemeName = theme === "neo" ? "flat" : "neo";
+    applyTheme(next);
+    localStorage.setItem("ide.theme", next);
+    setTheme(next);
+  };
 
   const selectFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
@@ -753,6 +834,7 @@ export default function Ide() {
     await eng.reset(deployImages());
     setPaused(false);
     setPending({});
+    setTxLog([]);
     appendLog("chain reset to genesis — contracts re-deployed, INITIALIZE re-run");
     await refreshEngineViews();
   };
@@ -763,6 +845,7 @@ export default function Ide() {
       return;
     }
     appendLog("replaying the session from genesis…");
+    setTxLog([]);
     await eng.replay(deployImages());
     setPaused(false);
     setPending({});
@@ -925,6 +1008,66 @@ export default function Ide() {
     editor.focus();
   };
 
+  // Move the cursor to a source offset in the active model and center it.
+  const applyJump = (offset: number) => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) {
+      return;
+    }
+    const pos = model.getPositionAt(offset);
+    editor.setPosition(pos);
+    editor.revealLineInCenter(pos.lineNumber);
+    editor.focus();
+  };
+
+  // Outline click: jump to a symbol's declaration in the active file (StateData field, function, procedure).
+  const jumpToSymbol = (name: string) => {
+    const off = definitionOffset(source, name);
+    if (off !== null) {
+      applyJump(off);
+    }
+  };
+
+  // Debugger goto-source: a step -> its PUBLIC_*/PRIVATE_* declaration in the editor. The entry name comes
+  // from the deployed contract's IDL (keyed by entry-point id); the offset is located in the LIVE file
+  // source so it tracks edits made since deploy. System procedures (kind 2) have no user declaration to jump
+  // to. If the contract lives in another tab, defer the cursor move until that file's model has swapped in.
+  const jumpToStep = (step: DebugStep) => {
+    const d = deployedRef.current[step.contract];
+    if (!d) {
+      return;
+    }
+    const entry = step.kind === 1 ? d.idl.procedures[String(step.entry)] : step.kind === 0 ? d.idl.functions[String(step.entry)] : undefined;
+    const name = entry?.name;
+    const file = ws.files.find((f) => baseName(f.name) === step.contract);
+    if (!name || !file) {
+      return;
+    }
+    const off = definitionOffset(file.source, name);
+    if (off === null) {
+      return;
+    }
+    setDebug(null);
+    if (ws.active === file.name) {
+      applyJump(off);
+    } else {
+      pendingJumpRef.current = { file: file.name, offset: off };
+      selectFile(file.name);
+    }
+  };
+
+  // A goto-source jump that had to switch tabs fires once the target file's model is live.
+  useEffect(() => {
+    const pend = pendingJumpRef.current;
+    if (!pend || pend.file !== ws.active) {
+      return;
+    }
+    pendingJumpRef.current = null;
+    const id = requestAnimationFrame(() => applyJump(pend.offset));
+    return () => cancelAnimationFrame(id);
+  }, [ws.active]);
+
   const errorCount = problems.filter((p) => p.severity === 8).length;
   const warnCount = problems.filter((p) => p.severity === 4).length;
 
@@ -972,6 +1115,32 @@ export default function Ide() {
       setWs((w) => ({ ...w, active: fallback }));
     }
   };
+
+  // Latest "close the active tab" closure, read by the once-registered keybind listener below.
+  const closeActiveTabRef = useRef<() => void>(() => undefined);
+  closeActiveTabRef.current = () => closeTab(ws.active, { stopPropagation() {} });
+
+  // IDE-wide keybinds. Capture phase so these beat Monaco's own Ctrl+P / Ctrl+Shift+P when the editor is
+  // focused. Ctrl+P = quick-open files; Ctrl+Shift+P = command palette; Ctrl+W = close the active tab.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) {
+        return;
+      }
+      const k = e.key.toLowerCase();
+      if (k === "p") {
+        e.preventDefault();
+        e.stopPropagation();
+        setPalette(e.shiftKey ? "command" : "file");
+      } else if (k === "w" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeActiveTabRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   // A tab is dirty when its source has unbuilt edits — i.e. it compiled clean once, then changed.
   const isDirty = (name: string): boolean =>
@@ -1045,7 +1214,8 @@ export default function Ide() {
     let res: CompileResult | null = null;
     try {
       const slot = assignSlot(deployedRef.current, name);
-      res = await compileContract({ source: src, name, slot, skipVerify: true });
+      const callees = resolveCallees(filesRef.current, deployedRef.current, src);
+      res = await compileContract({ source: src, name, slot, skipVerify: true, callees });
     } catch {
       res = null;
     }
@@ -1100,6 +1270,7 @@ export default function Ide() {
         });
         setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
         appendLog(`${name}() processed @ tick ${tick}`);
+        setTxLog((l) => [{ key, name, tick, moneyFlew, contract: key.split(":")[0], detail }, ...l].slice(0, 300));
         if (detail) {
           setTxDetail((t) => ({ ...t, [key]: detail }));
           if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
@@ -1130,49 +1301,92 @@ export default function Ide() {
     void ensureEngine().catch(() => undefined);
   }, [ensureEngine]);
 
+  // Compile + deploy the active contract and the whole graph it calls. Each CALL/INVOKE_OTHER_CONTRACT(<Name>)
+  // resolves to the project's <Name>.h, which is deployed FIRST at a lower slot (the qubic lower-index rule),
+  // so a single ▶ brings up the whole graph. Post-order DFS: callees land before their callers.
   const compile = async () => {
     setPhase("compiling");
-    const slot = assignSlot(deployed, contractName);
 
-    // Reuse the background auto-compile's warm artifact when the source is unchanged — deploy is instant.
-    const warm = warmRef.current;
-    const cached = warm && warm.source === source && warm.name === contractName ? warm.res : null;
-    if (cached) {
-      appendLog(`deploying ${contractName} (slot ${slot}) — already built`);
-    } else {
-      appendLog(`compiling ${contractName} (slot ${slot})…`);
-    }
+    const done = new Map<string, number>(); // name -> slot deployed this pass
+    const visiting = new Set<string>(); // cycle guard
 
-    const res = cached ?? await compileContract({ source, name: contractName, slot, skipVerify: true });
-    setResult(res);
-    applyClangMarkers(res);
+    const deployNode = async (eng: IdeEngine, name: string, src: string): Promise<number> => {
+      const seen = done.get(name);
+      if (seen !== undefined) {
+        return seen;
+      }
+      if (visiting.has(name)) {
+        throw new Error(`circular inter-contract calls involving ${name}`);
+      }
+      visiting.add(name);
 
-    if (!res.ok || !res.wasm || !res.idl) {
-      setPhase("error");
-      appendLog(res.error ?? `compile failed — ${res.diagnostics.length} problem(s)`);
-      return;
-    }
-    const idlData = res.idl;
+      // Deploy every callee first; the caller must sit above the highest of them.
+      const calleeArgs: { name: string; source: string; slot: number }[] = [];
+      let floor = SLOT_BASE;
+      for (const cn of scanCallees(src)) {
+        const f = filesRef.current.find((x) => baseName(x.name) === cn);
+        if (!f) {
+          throw new Error(`${name} calls '${cn}', but there's no ${cn}.h in this project`);
+        }
+        const cslot = await deployNode(eng, cn, f.source);
+        calleeArgs.push({ name: cn, source: f.source, slot: cslot });
+        floor = Math.max(floor, cslot + 1);
+      }
+
+      const slot = slotAtOrAbove(deployedRef.current, name, floor);
+      appendLog(calleeArgs.length
+        ? `compiling ${name} (slot ${slot}) → calls ${calleeArgs.map((c) => c.name).join(", ")}…`
+        : `compiling ${name} (slot ${slot})…`);
+
+      // A leaf contract with a warm background-compiled artifact deploys instantly; everything else builds fresh.
+      const warm = warmRef.current;
+      const cached = calleeArgs.length === 0 && warm && warm.source === src && warm.name === name ? warm.res : null;
+      const res = cached ?? await compileContract({ source: src, name, slot, skipVerify: true, callees: calleeArgs });
+      if (name === contractName) {
+        setResult(res);
+        applyClangMarkers(res);
+      }
+      if (!res.ok || !res.wasm || !res.idl) {
+        throw new Error(res.error ?? `compile of ${name} failed — ${res.diagnostics.length} problem(s)`);
+      }
+
+      const wasmBytes = base64ToBytes(res.wasm);
+      await eng.deploy(slot, wasmBytes, res.idl);
+      eng.registerSource(slot, src, name); // so the step debugger decodes this contract's StateData
+      const address = await eng.addressOf(slot);
+      deployedRef.current = { ...deployedRef.current, [name]: { name, slot, address, idl: res.idl, source: src, wasm: wasmBytes, calls: calleeArgs.map((c) => c.name) } };
+      appendLog(`deployed ${res.idl.name} → slot ${slot} · ${res.size} B · ${shortId(address)}`);
+
+      visiting.delete(name);
+      done.set(name, slot);
+      return slot;
+    };
 
     try {
       const eng = await ensureEngine();
-      const wasmBytes = base64ToBytes(res.wasm);
-      await eng.deploy(slot, wasmBytes, idlData);
-      eng.registerSource(slot, source, contractName); // so the step debugger decodes this contract's StateData
-      const address = await eng.addressOf(slot);
-      const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source, wasm: wasmBytes } };
-      deployedRef.current = reg;
-      setDeployed(reg);
+      await deployNode(eng, contractName, source);
+
+      setDeployed(deployedRef.current);
       setSelected(contractName);
       setEngineInfo(await eng.info());
       setPhase("ready");
-      setBuilt((b) => ({ ...b, [ws.active]: source })); // clears the active tab's dirty dot
+      setBuilt((b) => {
+        const next = { ...b };
+        for (const nm of done.keys()) {
+          const file = ws.files.find((f) => baseName(f.name) === nm);
+          if (file) {
+            next[file.name] = deployedRef.current[nm].source; // clear each deployed file's dirty dot
+          }
+        }
+        return next;
+      });
       void refreshBalances(await eng.ensureAccounts());
-      void refreshState(contractName);
-      appendLog(`deployed ${idlData.name} → slot ${slot} · ${res.size} B · ${shortId(address)}`);
+      for (const nm of done.keys()) {
+        void refreshState(nm);
+      }
     } catch (e) {
       setPhase("error");
-      appendLog("engine error: " + (e as Error).message);
+      appendLog("deploy failed: " + (e as Error).message);
     }
   };
 
@@ -1235,6 +1449,37 @@ export default function Ide() {
   const procedures = idl ? Object.entries(idl.procedures) : [];
   const functions = idl ? Object.entries(idl.functions) : [];
 
+  // The new-file action: prompt for a name, default-extend with `.h`.
+  const promptNewFile = () => {
+    const raw = window.prompt("New file name", "Contract.h");
+    if (!raw) {
+      return;
+    }
+    const name = /\.\w+$/.test(raw) ? raw : `${raw}.h`;
+    createFile(name);
+  };
+
+  // Quick-open lists the workspace files; the command palette lists IDE actions. Built only while open.
+  const paletteItems: PaletteItem[] =
+    palette === "file"
+      ? ws.files.map((f) => ({ id: f.name, label: f.name, hint: f.name === ws.active ? "open" : undefined, run: () => selectFile(f.name) }))
+      : palette === "command"
+        ? [
+            { id: "compile", label: "Compile & Run", run: () => void compile() },
+            { id: "pause", label: paused ? "Engine: resume auto-tick" : "Engine: pause auto-tick", run: togglePause },
+            { id: "step1", label: "Engine: step +1 tick", run: () => void stepTicks(1) },
+            { id: "step10", label: "Engine: step +10 ticks", run: () => void stepTicks(10) },
+            { id: "epoch", label: "Engine: advance epoch", run: () => void advanceEpoch() },
+            { id: "reset", label: "Engine: reset chain", run: () => void resetChain() },
+            { id: "replay", label: "Engine: replay session", run: () => void replayChain() },
+            { id: "save", label: "Save project", hint: "Ctrl S", run: () => { persistRef.current(); setSaved(true); } },
+            { id: "newfile", label: "New file…", run: promptNewFile },
+            { id: "close", label: "Close active tab", hint: "Ctrl W", run: () => closeActiveTabRef.current() },
+            { id: "share", label: "Share workspace link", run: () => void share() },
+            { id: "projects", label: "Go to projects home", run: () => navigate("/ide") },
+          ]
+        : [];
+
   if (!loaded) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 13 }}>
@@ -1248,7 +1493,7 @@ export default function Ide() {
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: FRAME, background: color.panelDeep, flex: "none" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
           <PixelQMark size={22} />
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
@@ -1263,11 +1508,19 @@ export default function Ide() {
             {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
           </ToolButton>
           <ToolButton onClick={share}>Share</ToolButton>
+          <ToolButton onClick={() => setShowTxs(true)}>📊 txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
+          <button
+            onClick={toggleTheme}
+            title={theme === "flat" ? "Switch to neo-brutalist theme" : "Switch to flat minimal theme"}
+            style={{ border: `1px solid ${color.hair2}`, background: color.panel, color: color.textMutedDk, fontFamily: font.mono, fontSize: 11, padding: "5px 9px", cursor: "pointer", flex: "none" }}
+          >
+            {theme === "flat" ? "◐ flat" : "◑ neo"}
+          </button>
           <Link to="/docs" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: HAIR, background: color.panel, flex: "none" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: hair(), background: color.panel, flex: "none" }}>
         <TrafficLights />
         <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textFaintDk, marginLeft: 6 }}>qinit ide — my-contract</span>
         <div style={{ marginLeft: "auto" }}>
@@ -1279,10 +1532,12 @@ export default function Ide() {
         <FileExplorer
           files={ws.files}
           active={ws.active}
+          source={source}
           onSelect={selectFile}
           onCreate={createFile}
           onRename={renameFile}
           onDelete={deleteFile}
+          onJump={jumpToSymbol}
         />
 
         <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize" }} />
@@ -1290,11 +1545,11 @@ export default function Ide() {
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 0 }}>
-            <CodeEditor value={source} path={ws.active} onChange={editSource} onMount={onEditorMount} />
+            <CodeEditor value={source} path={ws.active} theme={theme === "flat" ? "qinit-flat" : "qinit-dark"} onChange={editSource} onMount={onEditorMount} />
           </div>
 
           {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
-          <div style={{ flex: "none", borderTop: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
+          <div style={{ flex: "none", borderTop: hair(), background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
             <div onClick={() => setProblemsOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 14px", flex: "none", cursor: "pointer", userSelect: "none", fontFamily: font.display, fontSize: 12.5, color: color.textLightHi }}>
               <span style={{ color: color.textGhostDk, fontFamily: font.mono, fontSize: 10 }}>{problemsOpen ? "▾" : "▸"}</span>
               <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#FF8B7E" : color.yellow }} />
@@ -1324,8 +1579,8 @@ export default function Ide() {
 
         <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize" }} />
 
-        <div style={{ borderLeft: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: HAIR }}>
+        <div style={{ borderLeft: hair(), background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: hair() }}>
             <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
             <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
             {sel && <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
@@ -1427,7 +1682,7 @@ export default function Ide() {
           </div>
 
           {/* console — contract logs / run output, its own region with real room */}
-          <div style={{ flex: "0 0 42%", minHeight: 160, display: "flex", flexDirection: "column", borderTop: FRAME, background: color.void }}>
+          <div style={{ flex: "0 0 42%", minHeight: 160, display: "flex", flexDirection: "column", borderTop: frame(), background: color.void }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 7px" }}>
               <span style={{ width: 8, height: 8, flex: "none", background: color.secondary }} />
               <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>CONSOLE</span>
@@ -1452,7 +1707,7 @@ export default function Ide() {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: FRAME, background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
         <span style={{ color: phase === "ready" ? color.accent : phase === "error" ? "#FF8B7E" : color.textFaintDk }}>
           ● {phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
         </span>
@@ -1467,7 +1722,17 @@ export default function Ide() {
         <span style={{ marginLeft: "auto" }}>in-process engine</span>
       </div>
 
-      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} />}
+      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} />}
+
+      {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title }); }} />}
+
+      {palette && (
+        <CommandPalette
+          items={paletteItems}
+          placeholder={palette === "file" ? "Go to file…" : "Run a command…"}
+          onClose={() => setPalette(null)}
+        />
+      )}
     </div>
   );
 }

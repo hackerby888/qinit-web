@@ -1,10 +1,9 @@
 // Workspace file explorer: switch / create / rename / delete contract files. Create + rename use inline
 // inputs (no blocking prompts); delete asks once. Names are normalised to a `.h` file.
 import { useState, type CSSProperties } from "react";
-import { color, font } from "../landing/tokens";
+import { color, font, themeFlags } from "../landing/tokens";
 import type { WorkspaceFile } from "./workspace";
-
-const HAIR = `3px solid ${color.hair}`;
+import { parseOutline } from "./outline";
 
 const normalize = (raw: string): string => {
   const n = raw.trim().replace(/[^\w.\-]/g, "");
@@ -14,41 +13,46 @@ const normalize = (raw: string): string => {
   return /\.[A-Za-z0-9]+$/.test(n) ? n : `${n}.h`;
 };
 
-const inlineInput: CSSProperties = {
-  width: "calc(100% - 28px)",
-  margin: "2px 14px",
-  background: color.void,
-  border: `1px solid ${color.accentDeep}`,
-  color: color.textLight,
-  fontFamily: font.mono,
-  fontSize: 12,
-  padding: "4px 7px",
-  outline: "none",
-};
-
-const iconBtn: CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: color.textGhostDk,
-  cursor: "pointer",
-  fontFamily: font.mono,
-  fontSize: 12,
-  padding: "0 3px",
-  lineHeight: 1,
-};
-
-export function FileExplorer({ files, active, onSelect, onCreate, onRename, onDelete }: {
+export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onJump }: {
   files: WorkspaceFile[];
   active: string;
+  source: string;
   onSelect: (name: string) => void;
   onCreate: (name: string) => void;
   onRename: (oldName: string, newName: string) => void;
   onDelete: (name: string) => void;
+  onJump: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+
+  // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
+  const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
+
+  const inlineInput: CSSProperties = {
+    width: "calc(100% - 28px)",
+    margin: "2px 14px",
+    background: color.void,
+    border: `1px solid ${color.accentDeep}`,
+    color: color.textLight,
+    fontFamily: font.mono,
+    fontSize: 12,
+    padding: "4px 7px",
+    outline: "none",
+  };
+
+  const iconBtn: CSSProperties = {
+    border: "none",
+    background: "transparent",
+    color: color.textGhostDk,
+    cursor: "pointer",
+    fontFamily: font.mono,
+    fontSize: 12,
+    padding: "0 3px",
+    lineHeight: 1,
+  };
 
   const taken = (n: string, except?: string) => files.some((f) => f.name === n && f.name !== except);
 
@@ -130,6 +134,51 @@ export function FileExplorer({ files, active, onSelect, onCreate, onRename, onDe
           onKeyDown={(e) => { if (e.key === "Enter") { commitNew(); } if (e.key === "Escape") { setAdding(false); } }}
           style={inlineInput}
         />
+      )}
+
+      <Outline source={source} onJump={onJump} />
+    </div>
+  );
+}
+
+// The active contract's symbol tree (StateData fields, functions, procedures) — click a symbol to jump to
+// its declaration in the editor. Parsed from the live buffer, so it updates as you type.
+function Outline({ source, onJump }: { source: string; onJump: (name: string) => void }) {
+  const ol = parseOutline(source);
+  const groups: { label: string; dot: string; names: string[] }[] = [
+    { label: "STATE", dot: color.secondary, names: ol.state },
+    { label: "FUNCTIONS", dot: color.accent, names: ol.functions },
+    { label: "PROCEDURES", dot: color.yellow, names: ol.procedures },
+  ];
+
+  if (!ol.state.length && !ol.functions.length && !ol.procedures.length) {
+    return null;
+  }
+
+  return (
+    <div style={{ marginTop: 14, borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, paddingTop: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 6px" }}>
+        <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
+        <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>OUTLINE</span>
+      </div>
+
+      {groups.map((g) =>
+        g.names.length === 0 ? null : (
+          <div key={g.label} style={{ paddingBottom: 4 }}>
+            <div style={{ paddingLeft: 14, color: color.textGhostDk, fontSize: 10.5, letterSpacing: ".08em", paddingBottom: 2 }}>{g.label}</div>
+            {g.names.map((name) => (
+              <div
+                key={g.label + name}
+                onClick={() => onJump(name)}
+                title={`Jump to ${name}`}
+                style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 10px 3px 26px", cursor: "pointer", color: color.textMutedDk }}
+              >
+                <span style={{ width: 6, height: 6, flex: "none", background: g.dot }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+              </div>
+            ))}
+          </div>
+        )
       )}
     </div>
   );

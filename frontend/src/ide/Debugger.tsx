@@ -8,16 +8,6 @@ import { color, font } from "../landing/tokens";
 import { Card } from "./ui";
 import type { DebugStep } from "./engine";
 
-const navBtn: CSSProperties = {
-  border: `1px solid ${color.hair2}`,
-  background: color.void,
-  color: color.textLight,
-  fontFamily: font.mono,
-  fontSize: 11,
-  padding: "2px 8px",
-  cursor: "pointer",
-};
-
 const line: CSSProperties = { fontFamily: font.mono, fontSize: 11.5, lineHeight: 1.6, wordBreak: "break-all" };
 
 function Field({ label, val }: { label: string; val: string }) {
@@ -44,8 +34,19 @@ function Group({ title, accent, empty, children }: { title: string; accent: stri
   );
 }
 
-export function Debugger({ steps, title, onClose }: { steps: DebugStep[]; title?: string; onClose: () => void }) {
+export function Debugger({ steps, title, onClose, onJump }: { steps: DebugStep[]; title?: string; onClose: () => void; onJump?: (step: DebugStep) => void }) {
   const [i, setI] = useState(0);
+
+  // Built per render so a live theme swap recolors the nav buttons.
+  const navBtn: CSSProperties = {
+    border: `1px solid ${color.hair2}`,
+    background: color.void,
+    color: color.textLight,
+    fontFamily: font.mono,
+    fontSize: 11,
+    padding: "2px 8px",
+    cursor: "pointer",
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -107,7 +108,16 @@ export function Debugger({ steps, title, onClose }: { steps: DebugStep[]; title?
                 <span style={{ width: 8, height: 8, flex: "none", background: kindColor }} />
                 <span style={{ fontFamily: font.mono, fontSize: 13, color: color.textLight }}>{cur.contract}.{cur.label}</span>
                 <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>slot {cur.slot}</span>
-                <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: cur.ok ? color.accent : "#FF8B7E" }}>{cur.ok ? "ok" : "trapped"}</span>
+                {onJump && (cur.kind === 0 || cur.kind === 1) && (
+                  <button
+                    onClick={() => onJump(cur)}
+                    title={`Jump to ${cur.contract}.${cur.label} in the editor`}
+                    style={{ ...navBtn, marginLeft: "auto", color: color.accent, borderColor: color.hair2 }}
+                  >
+                    ↪ source
+                  </button>
+                )}
+                <span style={{ marginLeft: onJump && (cur.kind === 0 || cur.kind === 1) ? 0 : "auto", fontFamily: font.mono, fontSize: 11, color: cur.ok ? color.accent : "#FF8B7E" }}>{cur.ok ? "ok" : "trapped"}</span>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

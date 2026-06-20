@@ -8,11 +8,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
+// An inter-contract callee: another project contract this one calls (CALL/INVOKE_OTHER_CONTRACT). Its
+// source is written to a sibling .h so the build can compile its types at `slot` (the deployed index).
+export interface CompileCallee {
+  name: string;
+  source: string;
+  slot: number;
+}
+
 export interface CompileRequest {
   source: string;
   name?: string;
   slot?: number;
   skipVerify?: boolean;
+  callees?: CompileCallee[];
 }
 
 export interface CompileDiagnostic {
@@ -96,7 +105,19 @@ async function runBuild(req: CompileRequest): Promise<CompileResponse> {
 
   try {
     writeFileSync(contractPath, req.source);
-    const r = await buildContract({ contractPath, name, slot, corePath, outDir: dir, skipVerify: req.skipVerify });
+
+    // Inter-contract callees: write each referenced contract's source to a sibling <Name>.h and map
+    // Type -> { header, deployed slot index }. buildContract's buildCalleePrelude stitches their types in
+    // and emits the per-fn inputType constants the CALL/INVOKE_OTHER_CONTRACT macros need.
+    const dynCallees: Record<string, { header: string; index: number }> = {};
+    for (const c of req.callees ?? []) {
+      const cname = sanitizeName(c.name);
+      const cpath = join(dir, `${cname}.h`);
+      writeFileSync(cpath, c.source);
+      dynCallees[cname] = { header: cpath, index: Number(c.slot) };
+    }
+
+    const r = await buildContract({ contractPath, name, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees });
     const diagnostics = parseDiagnostics(r.stderr ?? "", contractFile);
 
     if (!r.ok || !r.so) {
@@ -124,7 +145,7 @@ async function runBuild(req: CompileRequest): Promise<CompileResponse> {
 
 export async function compile(req: CompileRequest): Promise<CompileResponse> {
   const key = createHash("sha256")
-    .update(`${req.slot ?? 28}\0${req.name ?? ""}\0${req.skipVerify ? 1 : 0}\0${req.source}`)
+    .update(`${req.slot ?? 28}\0${req.name ?? ""}\0${req.skipVerify ? 1 : 0}\0${JSON.stringify(req.callees ?? [])}\0${req.source}`)
     .digest("hex");
 
   const hit = cache.get(key);

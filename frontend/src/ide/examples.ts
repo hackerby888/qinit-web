@@ -304,9 +304,63 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 };
 `;
 
+const proxy = `// Proxy — an inter-contract contract. It calls the Counter contract using the upstream macros:
+// ReadCounter reads Counter's value (CALL_OTHER_CONTRACT_FUNCTION), BumpCounter increments it
+// (INVOKE_OTHER_CONTRACT_PROCEDURE). \`Counter\` resolves to the Counter.h file in this project; the IDE
+// deploys it first at a LOWER slot (the qubic lower-index rule: a callee must sit below its caller), then
+// deploys Proxy. Hit ▶ Compile & Run on this file and the whole graph deploys in one go.
+using namespace QPI;
+
+struct CONTRACT_STATE2_TYPE
+{
+};
+
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        uint64 bumps;
+    };
+
+    struct ReadCounter_input {};
+    struct ReadCounter_output { uint64 value; };
+    struct ReadCounter_locals { Counter::Get_input gi; Counter::Get_output go; };
+
+    struct BumpCounter_input {};
+    struct BumpCounter_output {};
+    struct BumpCounter_locals { Counter::Inc_input ii; Counter::Inc_output io; };
+
+    // Cross-contract read: call Counter.Get and return its value.
+    PUBLIC_FUNCTION_WITH_LOCALS(ReadCounter)
+    {
+        CALL_OTHER_CONTRACT_FUNCTION(Counter, Get, locals.gi, locals.go);
+        output.value = locals.go.value;
+    }
+
+    // Cross-contract write: invoke Counter.Inc, then record that we did (reward 0).
+    PUBLIC_PROCEDURE_WITH_LOCALS(BumpCounter)
+    {
+        INVOKE_OTHER_CONTRACT_PROCEDURE(Counter, Inc, locals.ii, locals.io, 0);
+        state.mut().bumps += 1;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_FUNCTION(ReadCounter, 1);
+        REGISTER_USER_PROCEDURE(BumpCounter, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().bumps = 0;
+    }
+};
+`;
+
 export const EXAMPLES: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Adder.h", name: "Adder", slot: 28, source: adder },
   { file: "Bank.h", name: "Bank", slot: 28, source: bank },
   { file: "Token.h", name: "Token", slot: 28, source: token },
+  { file: "Proxy.h", name: "Proxy", slot: 29, source: proxy },
 ];

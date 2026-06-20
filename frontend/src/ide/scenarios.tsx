@@ -76,22 +76,24 @@ export function compare(op: Op, actual: unknown, expected: string): boolean {
   return false;
 }
 
-const tinyInput: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  background: color.void,
-  border: `1px solid ${color.hair2}`,
-  color: color.textLight,
-  fontFamily: font.mono,
-  fontSize: 11,
-  padding: "3px 6px",
-  outline: "none",
-};
-
 // The add-an-assertion form for one scenario: pick a function, fill its inputs, choose an output field +
 // comparison + expected value.
 function AssertForm({ idl, onAdd }: { idl: ContractIdl; onAdd: (a: AssertStep) => void }) {
   const fnIds = Object.keys(idl.functions);
+
+  // Built per render so a live theme swap recolors the form fields.
+  const tinyInput: CSSProperties = {
+    flex: 1,
+    minWidth: 0,
+    background: color.void,
+    border: `1px solid ${color.hair2}`,
+    color: color.textLight,
+    fontFamily: font.mono,
+    fontSize: 11,
+    padding: "3px 6px",
+    outline: "none",
+  };
+
   const [fnId, setFnId] = useState(fnIds[0] ?? "");
   const [input, setInput] = useState<Record<string, string>>({});
   const [field, setField] = useState("");
