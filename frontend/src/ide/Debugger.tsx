@@ -34,7 +34,7 @@ function Group({ title, accent, empty, children }: { title: string; accent: stri
   );
 }
 
-export function Debugger({ steps, title, onClose, onJump }: { steps: DebugStep[]; title?: string; onClose: () => void; onJump?: (step: DebugStep) => void }) {
+export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: DebugStep[]; title?: string; onClose: () => void; onJump?: (step: DebugStep) => void; onBack?: () => void }) {
   const [i, setI] = useState(0);
 
   // Built per render so a live theme swap recolors the nav buttons.
@@ -74,6 +74,7 @@ export function Debugger({ steps, title, onClose, onJump }: { steps: DebugStep[]
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(880px, 96vw)" }}>
         <Card frame={color.accentDeep} shadow={6} faceStyle={{ display: "flex", flexDirection: "column", maxHeight: "86vh" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", borderBottom: `1px solid ${color.hair}`, flex: "none" }}>
+            {onBack && <button onClick={onBack} title="Back to tx explorer" style={{ ...navBtn, color: color.accent }}>← txs</button>}
             <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
             <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>DEBUGGER</span>
             {title && <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textMutedDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>}

@@ -4,7 +4,6 @@
 import { useState, type CSSProperties } from "react";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
-import { Card, SectionHead } from "./ui";
 
 export type Op = "==" | "!=" | ">" | "<" | ">=" | "<=";
 export const OPS: Op[] = ["==", "!=", ">", "<", ">=", "<="];
@@ -160,22 +159,15 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
   const [open, setOpen] = useState<string | null>(null);
 
   return (
-    <Card>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-      <SectionHead
-        label="SCENARIOS"
-        accent={color.yellow}
-        right={
-          <button
-            onClick={onCapture}
-            disabled={!canCapture}
-            title={canCapture ? `Capture the writes you ran on ${contractName} as a test` : "Run a procedure first, then capture it"}
-            style={{ border: `1px solid ${color.hair2}`, background: color.void, color: canCapture ? color.accent : color.textFaintDk, fontFamily: font.mono, fontSize: 10.5, padding: "3px 8px", cursor: canCapture ? "pointer" : "default" }}
-          >
-            + capture session
-          </button>
-        }
-      />
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <button
+        onClick={onCapture}
+        disabled={!canCapture}
+        title={canCapture ? `Capture the writes you ran on ${contractName} as a test` : "Run a procedure first, then capture it"}
+        style={{ alignSelf: "flex-start", border: `1px solid ${color.hair2}`, background: color.void, color: canCapture ? color.accent : color.textFaintDk, fontFamily: font.mono, fontSize: 10.5, padding: "3px 8px", cursor: canCapture ? "pointer" : "default" }}
+      >
+        + capture session
+      </button>
 
       {scenarios.length === 0 && (
         <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk, lineHeight: 1.5 }}>
@@ -233,7 +225,6 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
           </div>
         );
       })}
-      </div>
-    </Card>
+    </div>
   );
 }

@@ -357,10 +357,118 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 };
 `;
 
+const shares = `// Shares — Qubic's native asset / share model (qpi.issueAsset + share transfer), so the ASSETS panel
+// lights up. INITIALIZE mints a fixed "DEMO" asset to the contract (issuer = SELF); Issue mints a named
+// asset to the caller; Transfer moves shares between holders. Watch the ASSETS panel after deploying.
+using namespace QPI;
+
+struct CONTRACT_STATE2_TYPE
+{
+};
+
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        uint64 issuedCount;
+    };
+
+    struct Issue_input { uint64 assetName; sint64 numberOfShares; };
+    struct Issue_output { sint64 issued; };
+
+    struct Transfer_input { uint64 assetName; id issuer; id to; sint64 numberOfShares; };
+    struct Transfer_output { sint64 moved; };
+
+    struct SharesOf_input { uint64 assetName; id issuer; id who; };
+    struct SharesOf_output { sint64 shares; };
+
+    // Mint shares of an asset to the caller (issuer = invocator), managed by this contract.
+    PUBLIC_PROCEDURE(Issue)
+    {
+        output.issued = qpi.issueAsset(input.assetName, qpi.invocator(), 0, input.numberOfShares, 0);
+        state.mut().issuedCount += 1;
+    }
+
+    // Move shares the caller owns + possesses to another id.
+    PUBLIC_PROCEDURE(Transfer)
+    {
+        output.moved = qpi.transferShareOwnershipAndPossession(input.assetName, input.issuer, qpi.invocator(), qpi.invocator(), input.numberOfShares, input.to);
+    }
+
+    PUBLIC_FUNCTION(SharesOf)
+    {
+        output.shares = qpi.numberOfPossessedShares(input.assetName, input.issuer, input.who, input.who, SELF_INDEX, SELF_INDEX);
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Issue, 1);
+        REGISTER_USER_PROCEDURE(Transfer, 2);
+        REGISTER_USER_FUNCTION(SharesOf, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().issuedCount = 0;
+        qpi.issueAsset(0x4F4D4544, SELF, 0, 1000000, 0); // "DEMO", 1,000,000 shares to this contract
+    }
+};
+`;
+
+const equity = `// Equity — a company cap-table on Qubic's native asset model. INITIALIZE issues 1,000,000 "EQUITY" shares
+// into the contract's own treasury (issuer = SELF); Grant moves shares from the treasury to a holder;
+// SharesOf reads a holder's balance. Deploy it and watch the ASSETS panel — each Grant updates the holdings.
+using namespace QPI;
+
+struct CONTRACT_STATE2_TYPE
+{
+};
+
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        uint64 grantCount;
+    };
+
+    struct Grant_input { id to; sint64 numberOfShares; };
+    struct Grant_output { sint64 moved; };
+
+    struct SharesOf_input { id holder; };
+    struct SharesOf_output { sint64 shares; };
+
+    // Move shares from the treasury (held + managed by this contract) to a holder.
+    PUBLIC_PROCEDURE(Grant)
+    {
+        output.moved = qpi.transferShareOwnershipAndPossession(0x595449555145, SELF, SELF, SELF, input.numberOfShares, input.to);
+        state.mut().grantCount += 1;
+    }
+
+    PUBLIC_FUNCTION(SharesOf)
+    {
+        output.shares = qpi.numberOfPossessedShares(0x595449555145, SELF, input.holder, input.holder, SELF_INDEX, SELF_INDEX);
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Grant, 1);
+        REGISTER_USER_FUNCTION(SharesOf, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().grantCount = 0;
+        qpi.issueAsset(0x595449555145, SELF, 0, 1000000, 0); // "EQUITY", 1,000,000 shares into the treasury
+    }
+};
+`;
+
 export const EXAMPLES: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Adder.h", name: "Adder", slot: 28, source: adder },
   { file: "Bank.h", name: "Bank", slot: 28, source: bank },
   { file: "Token.h", name: "Token", slot: 28, source: token },
   { file: "Proxy.h", name: "Proxy", slot: 29, source: proxy },
+  { file: "Shares.h", name: "Shares", slot: 28, source: shares },
+  { file: "Equity.h", name: "Equity", slot: 28, source: equity },
 ];

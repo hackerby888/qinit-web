@@ -8,14 +8,14 @@ import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
 import { color, font, themeFlags, applyTheme, type ThemeName } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
-import { Card, SectionHead, NeoBtn } from "./ui";
+import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
@@ -202,8 +202,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
   const accent = kind === "function" ? color.accent : color.secondary;
 
   return (
-    <Card frame={accent} shadow={3}>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+    <div style={{ borderLeft: `3px solid ${accent}`, border: `1px solid ${color.hair}`, borderLeftWidth: 3, background: color.panel, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 7, height: 7, background: accent, flex: "none" }} />
         <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
@@ -254,21 +253,18 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
           {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
         </div>
       )}
-      </div>
-    </Card>
+    </div>
   );
 }
 
 // The qinit `state` inspector inline — a deployed contract's decoded StateData (scalars + container
 // columns), refreshed each tick. Reuses the CLI's readState decoder.
 function StatePanel({ dump }: { dump?: StateDump }) {
-  if (!dump || (dump.fields.length === 0 && dump.cols.length === 0)) {
+  if (!dump) {
     return null;
   }
   return (
-    <Card>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 5 }}>
-        <SectionHead label="STATE" accent={color.secondary} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {dump.fields.map((f) => (
           <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
             <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
@@ -283,8 +279,43 @@ function StatePanel({ dump }: { dump?: StateDump }) {
             ))}
           </div>
         ))}
-      </div>
-    </Card>
+    </div>
+  );
+}
+
+// True when a state dump has anything worth showing (gates the STATE section).
+function hasState(dump?: StateDump): boolean {
+  return !!dump && (dump.fields.length > 0 || dump.cols.length > 0);
+}
+
+// The asset universe — every issued asset (qpi.issueAsset) and its share holdings. Global, not per-contract:
+// assets live in the spectrum universe, not a contract's state. `mgr` is the contract managing a holding
+// (the ownership-management slot). Refreshes each tick like balances/state.
+function AssetsPanel({ assets, slotName }: { assets: AssetView[]; slotName: (slot: number) => string }) {
+  if (assets.length === 0) {
+    return null;
+  }
+  const shortHex = (h: string): string => (h && h.length > 12 ? `${h.slice(0, 6)}…${h.slice(-4)}` : h);
+  const num = (s: string): string => Number(s).toLocaleString("en-US");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        {assets.map((a) => (
+          <div key={a.issuer + a.name} style={{ fontFamily: font.mono, fontSize: 11, display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+              <span style={{ color: color.yellow, fontSize: 12 }}>{a.name}</span>
+              <span style={{ color: color.textGhostDk }}>by {shortHex(a.issuer)}</span>
+              <span style={{ marginLeft: "auto", color: color.accent }}>{num(a.totalShares)} sh</span>
+            </div>
+            {a.holdings.map((h, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, paddingLeft: 12, color: color.textMutedDk }}>
+                <span style={{ color: color.textGhostDk }}>{shortHex(h.owner)}</span>
+                <span style={{ color: color.secondary }}>{num(h.shares)}</span>
+                <span style={{ marginLeft: "auto", color: color.textGhostDk }}>mgr {slotName(h.ownMgmt)}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+    </div>
   );
 }
 
@@ -320,9 +351,7 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
 }) {
   const [amount, setAmount] = useState("1000000000");
   return (
-    <Card>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-        <SectionHead label="ACCOUNTS" right={<span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>caller</span>} />
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle()}>
           {accounts.map((a, i) => (
             <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
@@ -336,8 +365,7 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput()} />
           <NeoBtn onClick={() => onFund(caller, Number(amount) || 0)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
         </div>
-      </div>
-    </Card>
+    </div>
   );
 }
 
@@ -360,16 +388,10 @@ function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpo
   const nextBoundary = tick + (epochLen > 0 ? epochLen - within : 1);
   const pct = epochLen > 0 ? (within / epochLen) * 100 : 0;
   return (
-    <Card frame={color.accentDeep} shadow={5}>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 9 }}>
-        <SectionHead
-          label="TESTNET"
-          right={
-            <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>
-              tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
-            </span>
-          }
-        />
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>
+          tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
+        </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 9.5, color: color.textGhostDk }}>
           <span style={{ flex: 1, height: 8, background: color.void, border: `1px solid ${color.hair}`, position: "relative", overflow: "hidden" }}>
@@ -396,7 +418,6 @@ function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpo
           </span>
         </div>
       </div>
-    </Card>
   );
 }
 
@@ -409,7 +430,6 @@ function DeployedList({ deployed, selected, onSelect }: {
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <SectionHead label="DEPLOYED" />
       {Object.values(deployed).map((d) => {
         const on = d.name === selected;
         return (
@@ -510,7 +530,7 @@ export default function Ide() {
   const [projectName, setProjectName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
-  const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string } | null>(null); // open step debugger
+  const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
   const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
@@ -525,6 +545,7 @@ export default function Ide() {
   const [deployed, setDeployed] = useState<Record<string, DeployedContract>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
+  const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
   const [showTxs, setShowTxs] = useState(false);
@@ -539,6 +560,14 @@ export default function Ide() {
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
   const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
+  const [consoleH, setConsoleH] = useState(() => Number(localStorage.getItem("ide.consoleH")) || 300);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("ide.sections") ?? "{}");
+    } catch {
+      return {};
+    }
+  });
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
 
@@ -789,6 +818,7 @@ export default function Ide() {
     for (const name of Object.keys(deployedRef.current)) {
       await refreshState(name);
     }
+    setAssetsView(eng.assets());
   };
 
   const togglePause = () => {
@@ -1077,6 +1107,17 @@ export default function Ide() {
   useEffect(() => {
     localStorage.setItem("ide.engineW", String(engineW));
   }, [engineW]);
+  useEffect(() => {
+    localStorage.setItem("ide.consoleH", String(consoleH));
+  }, [consoleH]);
+  useEffect(() => {
+    localStorage.setItem("ide.sections", JSON.stringify(collapsed));
+  }, [collapsed]);
+
+  // Fold / unfold an engine-panel section (default open — an absent key means open).
+  const toggleSection = (name: string) => {
+    setCollapsed((c) => ({ ...c, [name]: !c[name] }));
+  };
 
   // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
   // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
@@ -1170,6 +1211,29 @@ export default function Ide() {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
     document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  // Drag the console's top edge — moving up grows the console (and shrinks the engine views above it).
+  const startResizeConsole = (e: { clientY: number; preventDefault(): void }) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = consoleH;
+
+    const onMove = (ev: MouseEvent) => {
+      const dy = startY - ev.clientY;
+      setConsoleH(Math.max(120, Math.min(window.innerHeight - 220, startH + dy)));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "row-resize";
     document.body.style.userSelect = "none";
   };
 
@@ -1281,6 +1345,7 @@ export default function Ide() {
         }
         eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
         void refreshState(key.split(":")[0]);
+        setAssetsView(eng.assets());
       };
       eng.start();
       engineRef.current = eng;
@@ -1347,7 +1412,18 @@ export default function Ide() {
         applyClangMarkers(res);
       }
       if (!res.ok || !res.wasm || !res.idl) {
-        throw new Error(res.error ?? `compile of ${name} failed — ${res.diagnostics.length} problem(s)`);
+        const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s) — see the editor` : "compile failed");
+        appendLog(`✗ ${name}: ${why}`);
+
+        // Detail: the per-line clang diagnostics, then the tail of the raw toolchain stderr.
+        res.diagnostics.slice(0, 8).forEach((d) => appendLog(`  ${d.severity} ${name}.h:${d.line}:${d.column} — ${d.message}`));
+        if (res.verify && res.verify.ok === false && res.verify.errors?.length) {
+          res.verify.errors.slice(0, 8).forEach((e) => appendLog(`  protocol: ${e}`));
+        }
+        if (res.stderr) {
+          res.stderr.split("\n").map((l) => l.trimEnd()).filter(Boolean).slice(-14).forEach((l) => appendLog(`  ${l}`));
+        }
+        throw new Error(why);
       }
 
       const wasmBytes = base64ToBytes(res.wasm);
@@ -1384,6 +1460,7 @@ export default function Ide() {
       for (const nm of done.keys()) {
         void refreshState(nm);
       }
+      setAssetsView(eng.assets()); // INITIALIZE may have issued assets on deploy
     } catch (e) {
       setPhase("error");
       appendLog("deploy failed: " + (e as Error).message);
@@ -1508,7 +1585,7 @@ export default function Ide() {
             {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
           </ToolButton>
           <ToolButton onClick={share}>Share</ToolButton>
-          <ToolButton onClick={() => setShowTxs(true)}>📊 txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
+          <ToolButton onClick={() => setShowTxs(true)}>≡ txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
           <button
             onClick={toggleTheme}
             title={theme === "flat" ? "Switch to neo-brutalist theme" : "Switch to flat minimal theme"}
@@ -1586,20 +1663,28 @@ export default function Ide() {
             {sel && <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
           </div>
 
-          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
             {engineInfo && (
-              <EngineControls
-                paused={paused}
-                speed={speed}
-                info={engineInfo}
-                epochLen={epochLen}
-                onToggle={togglePause}
-                onStep={(n) => void stepTicks(n)}
-                onEpoch={() => void advanceEpoch()}
-                onReset={() => void resetChain()}
-                onReplay={() => void replayChain()}
-                onSpeed={changeSpeed}
-              />
+              <Section label="TESTNET" accent="#3FB950" open={!collapsed.testnet} onToggle={() => toggleSection("testnet")}>
+                <EngineControls
+                  paused={paused}
+                  speed={speed}
+                  info={engineInfo}
+                  epochLen={epochLen}
+                  onToggle={togglePause}
+                  onStep={(n) => void stepTicks(n)}
+                  onEpoch={() => void advanceEpoch()}
+                  onReset={() => void resetChain()}
+                  onReplay={() => void replayChain()}
+                  onSpeed={changeSpeed}
+                />
+              </Section>
+            )}
+
+            {accounts.length > 0 && (
+              <Section label="ACCOUNTS" accent={color.secondary} open={!collapsed.accounts} onToggle={() => toggleSection("accounts")}>
+                <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} onFund={(id, qus) => void fundFromFaucet(id, qus)} />
+              </Section>
             )}
 
             {phase === "compiling" && <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>compiling on the node toolchain…</div>}
@@ -1610,11 +1695,11 @@ export default function Ide() {
               </div>
             )}
 
-            {accounts.length > 0 && <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} onFund={(id, qus) => void fundFromFaucet(id, qus)} />}
-
             {Object.keys(deployed).length > 0 ? (
               <>
-                <DeployedList deployed={deployed} selected={selected} onSelect={selectDeployed} />
+                <Section label="DEPLOYED" accent={color.hair2} open={!collapsed.deployed} onToggle={() => toggleSection("deployed")}>
+                  <DeployedList deployed={deployed} selected={selected} onSelect={selectDeployed} />
+                </Section>
 
                 {!sel && (
                   <div style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textGhostDk, lineHeight: 1.6, padding: "2px 0" }}>
@@ -1622,7 +1707,17 @@ export default function Ide() {
                   </div>
                 )}
 
-                {sel && <StatePanel dump={stateView[sel.name]} />}
+                {sel && hasState(stateView[sel.name]) && (
+                  <Section label="STATE" accent={color.hair2} open={!collapsed.state} onToggle={() => toggleSection("state")}>
+                    <StatePanel dump={stateView[sel.name]} />
+                  </Section>
+                )}
+
+                {assetsView.length > 0 && (
+                  <Section label="ASSETS" accent={color.hair2} open={!collapsed.assets} onToggle={() => toggleSection("assets")}>
+                    <AssetsPanel assets={assetsView} slotName={(slot) => Object.values(deployed).find((d) => d.slot === slot)?.name ?? `slot ${slot}`} />
+                  </Section>
+                )}
 
                 {Object.keys(pending).length > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: `1px solid ${color.yellow}`, background: `${color.yellow}14`, fontFamily: font.mono, fontSize: 11, color: color.yellow }}>
@@ -1631,58 +1726,67 @@ export default function Ide() {
                   </div>
                 )}
 
-                {sel && procedures.length > 0 && (
-                  <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>PROCEDURES</div>
-                )}
-                {sel && procedures.map(([id, entry]) => {
-                  const key = `${sel.name}:p:${id}`;
-                  const pend = pending[key];
-                  return (
-                    <CallRow
-                      key={`p${id}`}
-                      kind="procedure"
-                      id={id}
-                      entry={entry}
-                      busy={busy}
-                      pending={!!pend}
-                      output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
-                      detail={txDetail[key]}
-                      onRun={(input, value) => runProcedure(id, entry, input, value)}
-                      onDebug={(steps, title) => setDebug({ steps, title })}
-                    />
-                  );
-                })}
+                {sel && (procedures.length > 0 || functions.length > 0) && (
+                  <Section label="CALLS" accent={color.hair2} open={!collapsed.calls} onToggle={() => toggleSection("calls")}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {procedures.length > 0 && <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>PROCEDURES</div>}
+                      {procedures.map(([id, entry]) => {
+                        const key = `${sel.name}:p:${id}`;
+                        const pend = pending[key];
+                        return (
+                          <CallRow
+                            key={`p${id}`}
+                            kind="procedure"
+                            id={id}
+                            entry={entry}
+                            busy={busy}
+                            pending={!!pend}
+                            output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
+                            detail={txDetail[key]}
+                            onRun={(input, value) => runProcedure(id, entry, input, value)}
+                            onDebug={(steps, title) => setDebug({ steps, title })}
+                          />
+                        );
+                      })}
 
-                {sel && functions.length > 0 && (
-                  <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, marginTop: 4 }}>FUNCTIONS</div>
+                      {functions.length > 0 && <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, marginTop: 4 }}>FUNCTIONS</div>}
+                      {functions.map(([id, entry]) => (
+                        <CallRow key={`f${id}`} kind="function" id={id} entry={entry} busy={busy} output={outputs[`${sel.name}:f:${id}`]} onRun={(input) => runFunction(id, entry, input)} />
+                      ))}
+                    </div>
+                  </Section>
                 )}
-                {sel && functions.map(([id, entry]) => (
-                  <CallRow key={`f${id}`} kind="function" id={id} entry={entry} busy={busy} output={outputs[`${sel.name}:f:${id}`]} onRun={(input) => runFunction(id, entry, input)} />
-                ))}
               </>
             ) : (
               phase === "idle" && <PanelHint />
             )}
 
             {(sel || scenarios.some((s) => s.contract === contractName)) && (
-              <ScenarioPanel
-                scenarios={scenarios.filter((s) => s.contract === contractName)}
-                results={scenResults}
-                running={runningScen}
-                idl={sel?.idl ?? null}
-                contractName={contractName}
-                canCapture={!!sel}
-                onCapture={captureScenario}
-                onRun={(s) => void runScenario(s)}
-                onDelete={deleteScenario}
-                onAddAssert={addAssert}
-                onDeleteAssert={deleteAssert}
-              />
+              <Section label="SCENARIOS" accent={color.hair2} open={!collapsed.scenarios} onToggle={() => toggleSection("scenarios")}>
+                <ScenarioPanel
+                  scenarios={scenarios.filter((s) => s.contract === contractName)}
+                  results={scenResults}
+                  running={runningScen}
+                  idl={sel?.idl ?? null}
+                  contractName={contractName}
+                  canCapture={!!sel}
+                  onCapture={captureScenario}
+                  onRun={(s) => void runScenario(s)}
+                  onDelete={deleteScenario}
+                  onAddAssert={addAssert}
+                  onDeleteAssert={deleteAssert}
+                />
+              </Section>
             )}
           </div>
 
+          {/* draggable divider — resize the console height */}
+          <div onMouseDown={startResizeConsole} title="Drag to resize the console" style={{ height: 7, flex: "none", cursor: "row-resize", borderTop: frame(), background: color.panelDeep, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ width: 34, height: 2, background: color.hair2 }} />
+          </div>
+
           {/* console — contract logs / run output, its own region with real room */}
-          <div style={{ flex: "0 0 42%", minHeight: 160, display: "flex", flexDirection: "column", borderTop: frame(), background: color.void }}>
+          <div style={{ flex: `0 0 ${consoleH}px`, minHeight: 120, display: "flex", flexDirection: "column", background: color.void }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 7px" }}>
               <span style={{ width: 8, height: 8, flex: "none", background: color.secondary }} />
               <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>CONSOLE</span>
@@ -1722,9 +1826,9 @@ export default function Ide() {
         <span style={{ marginLeft: "auto" }}>in-process engine</span>
       </div>
 
-      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} />}
+      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} onBack={debug.onBack} />}
 
-      {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title }); }} />}
+      {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title, onBack: () => { setDebug(null); setShowTxs(true); } }); }} />}
 
       {palette && (
         <CommandPalette

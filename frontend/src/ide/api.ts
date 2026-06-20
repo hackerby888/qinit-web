@@ -40,14 +40,38 @@ export async function compileContract(req: { source: string; name: string; slot:
       body: JSON.stringify(req),
     });
   } catch (e) {
-    return { ok: false, diagnostics: [], error: `couldn't reach the compile server — is the backend running? (${(e as Error).message})` };
+    // Network / connection failure — the request never reached the server. Keep the underlying detail.
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    return { ok: false, diagnostics: [], error: `network error reaching POST /api/compile (is the backend on :8787 up?) — ${detail}` };
   }
 
+  // Read the body once as text so the raw response is available whether or not it parses as JSON.
+  let text: string;
   try {
-    return (await r.json()) as CompileResult;
-  } catch {
-    return { ok: false, diagnostics: [], error: `compile server returned a non-JSON response (${r.status})` };
+    text = await r.text();
+  } catch (e) {
+    return { ok: false, diagnostics: [], error: `couldn't read the compile response (HTTP ${r.status} ${r.statusText}) — ${(e as Error).message}` };
   }
+
+  let body: CompileResult | undefined;
+  try {
+    body = text ? (JSON.parse(text) as CompileResult) : undefined;
+  } catch {
+    body = undefined;
+  }
+
+  if (!body) {
+    // Non-JSON (a proxy/HTML error page, a crash, or an empty body) — surface the status + a raw snippet.
+    const snippet = text.trim().slice(0, 500);
+    return { ok: false, diagnostics: [], error: `compile server returned a non-JSON response (HTTP ${r.status} ${r.statusText})${snippet ? `:\n${snippet}` : ""}` };
+  }
+
+  if (!r.ok && !body.error) {
+    // HTTP error status but the JSON carried no error string — annotate it with the status.
+    return { ...body, ok: false, error: `compile server error (HTTP ${r.status} ${r.statusText})` };
+  }
+
+  return body;
 }
 
 export function base64ToBytes(b64: string): Uint8Array {
