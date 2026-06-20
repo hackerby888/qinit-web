@@ -2,6 +2,7 @@
 // inputs (no blocking prompts); delete asks once. Names are normalised to a `.h` file.
 import { useState, type CSSProperties } from "react";
 import { color, font, themeFlags } from "../landing/tokens";
+import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
 import { parseOutline } from "./outline";
 
@@ -80,7 +81,8 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   return (
-    <div style={{ borderRight: HAIR, background: color.panelDeep, padding: "14px 0", fontFamily: font.mono, fontSize: 12.5, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+    <div style={{ borderRight: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12.5, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
@@ -137,6 +139,9 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       )}
 
       <Outline source={source} onJump={onJump} />
+      </div>
+
+      <AdSlot />
     </div>
   );
 }
@@ -180,6 +185,26 @@ function Outline({ source, onJump }: { source: string; onJump: (name: string) =>
           </div>
         )
       )}
+    </div>
+  );
+}
+
+// Reserved sponsor slot pinned at the bottom of the explorer — a square placement. Placeholder for now:
+// the Qubic mark + wordmark; later this becomes a real ad unit.
+function AdSlot() {
+  return (
+    <div style={{ flex: "none", borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, padding: "8px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ fontFamily: font.mono, fontSize: 8.5, letterSpacing: ".18em", color: color.textGhostDk }}>SPONSORED</span>
+      <a
+        href="https://qubic.org"
+        target="_blank"
+        rel="noreferrer"
+        title="Qubic"
+        style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, width: "66%", alignSelf: "center", aspectRatio: "1 / 1", border: `1px solid ${color.hair2}`, background: color.void, textDecoration: "none" }}
+      >
+        <PixelQMark size={30} />
+        <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>Qubic</span>
+      </a>
     </div>
   );
 }
