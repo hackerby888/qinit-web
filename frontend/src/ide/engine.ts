@@ -35,6 +35,7 @@ export interface DebugStep {
   slot: number;
   contract: string;
   kind: number; // 0 function, 1 procedure, 2 system procedure
+  entry: number; // entry-point id (user function/procedure input type) — resolves the source name for goto-source
   label: string; // human label, e.g. "procedure #1" or "BEGIN_TICK"
   ok: boolean;
   caller: string;
@@ -303,6 +304,7 @@ export class IdeEngine {
           slot: e.index,
           contract: src.name,
           kind: e.kind,
+          entry: e.entry,
           label: stepLabel(e.kind, e.entry),
           ok: e.ok,
           caller: tv.caller,

@@ -13,6 +13,7 @@ import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
+import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep } from "./engine";
 import { Debugger } from "./Debugger";
@@ -483,6 +484,7 @@ export default function Ide() {
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
+  const pendingJumpRef = useRef<{ file: string; offset: number } | null>(null); // goto-source target awaiting its file's model swap
   const engineRef = useRef<IdeEngine | null>(null);
   const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
   const consoleRef = useRef<HTMLDivElement | null>(null);
@@ -924,6 +926,58 @@ export default function Ide() {
     editor.revealLineInCenter(p.line);
     editor.focus();
   };
+
+  // Move the cursor to a source offset in the active model and center it.
+  const applyJump = (offset: number) => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) {
+      return;
+    }
+    const pos = model.getPositionAt(offset);
+    editor.setPosition(pos);
+    editor.revealLineInCenter(pos.lineNumber);
+    editor.focus();
+  };
+
+  // Debugger goto-source: a step -> its PUBLIC_*/PRIVATE_* declaration in the editor. The entry name comes
+  // from the deployed contract's IDL (keyed by entry-point id); the offset is located in the LIVE file
+  // source so it tracks edits made since deploy. System procedures (kind 2) have no user declaration to jump
+  // to. If the contract lives in another tab, defer the cursor move until that file's model has swapped in.
+  const jumpToStep = (step: DebugStep) => {
+    const d = deployedRef.current[step.contract];
+    if (!d) {
+      return;
+    }
+    const entry = step.kind === 1 ? d.idl.procedures[String(step.entry)] : step.kind === 0 ? d.idl.functions[String(step.entry)] : undefined;
+    const name = entry?.name;
+    const file = ws.files.find((f) => baseName(f.name) === step.contract);
+    if (!name || !file) {
+      return;
+    }
+    const off = definitionOffset(file.source, name);
+    if (off === null) {
+      return;
+    }
+    setDebug(null);
+    if (ws.active === file.name) {
+      applyJump(off);
+    } else {
+      pendingJumpRef.current = { file: file.name, offset: off };
+      selectFile(file.name);
+    }
+  };
+
+  // A goto-source jump that had to switch tabs fires once the target file's model is live.
+  useEffect(() => {
+    const pend = pendingJumpRef.current;
+    if (!pend || pend.file !== ws.active) {
+      return;
+    }
+    pendingJumpRef.current = null;
+    const id = requestAnimationFrame(() => applyJump(pend.offset));
+    return () => cancelAnimationFrame(id);
+  }, [ws.active]);
 
   const errorCount = problems.filter((p) => p.severity === 8).length;
   const warnCount = problems.filter((p) => p.severity === 4).length;
@@ -1467,7 +1521,7 @@ export default function Ide() {
         <span style={{ marginLeft: "auto" }}>in-process engine</span>
       </div>
 
-      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} />}
+      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} />}
     </div>
   );
 }

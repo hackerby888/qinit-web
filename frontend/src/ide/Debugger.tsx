@@ -44,7 +44,7 @@ function Group({ title, accent, empty, children }: { title: string; accent: stri
   );
 }
 
-export function Debugger({ steps, title, onClose }: { steps: DebugStep[]; title?: string; onClose: () => void }) {
+export function Debugger({ steps, title, onClose, onJump }: { steps: DebugStep[]; title?: string; onClose: () => void; onJump?: (step: DebugStep) => void }) {
   const [i, setI] = useState(0);
 
   useEffect(() => {
@@ -107,7 +107,16 @@ export function Debugger({ steps, title, onClose }: { steps: DebugStep[]; title?
                 <span style={{ width: 8, height: 8, flex: "none", background: kindColor }} />
                 <span style={{ fontFamily: font.mono, fontSize: 13, color: color.textLight }}>{cur.contract}.{cur.label}</span>
                 <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>slot {cur.slot}</span>
-                <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: cur.ok ? color.accent : "#FF8B7E" }}>{cur.ok ? "ok" : "trapped"}</span>
+                {onJump && (cur.kind === 0 || cur.kind === 1) && (
+                  <button
+                    onClick={() => onJump(cur)}
+                    title={`Jump to ${cur.contract}.${cur.label} in the editor`}
+                    style={{ ...navBtn, marginLeft: "auto", color: color.accent, borderColor: color.hair2 }}
+                  >
+                    ↪ source
+                  </button>
+                )}
+                <span style={{ marginLeft: onJump && (cur.kind === 0 || cur.kind === 1) ? 0 : "auto", fontFamily: font.mono, fontSize: 11, color: cur.ok ? color.accent : "#FF8B7E" }}>{cur.ok ? "ok" : "trapped"}</span>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
