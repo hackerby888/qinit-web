@@ -473,6 +473,9 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
           insertTextRules: it.insert.includes("$") ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
           detail: it.detail,
           range,
+          // An item that lands the cursor right after a `.` (state.mut(). / get().) re-opens the suggest
+          // widget on accept, so the StateData fields appear immediately instead of after the next keystroke.
+          command: it.insert.endsWith(".") ? { id: "editor.action.triggerSuggest", title: "" } : undefined,
         })),
       };
     },
