@@ -4,12 +4,12 @@
 import { color } from "./tokens";
 
 export const REPO = "https://github.com/hackerby888/qinit";
-export const IDE_URL = "#ide"; // ide.qinit.dev once live
+export const IDE_URL = "/ide"; // the in-browser IDE route (ide.qinit.dev once live)
 
 export const NAV: { href: string; label: string }[] = [
   { href: "/docs", label: "Docs" },
   { href: "#ways", label: "Build" },
-  { href: "#ide", label: "Browser IDE" },
+  { href: "/ide", label: "Browser IDE" },
   { href: "#features", label: "Features" },
 ];
 
