@@ -5,6 +5,7 @@ import * as monaco from "monaco-editor";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import { loader } from "@monaco-editor/react";
 import { color } from "../landing/tokens";
+import { applyQpiGrammar } from "./qpi/grammar";
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker() {
@@ -27,6 +28,10 @@ export function setupMonaco(): typeof monaco {
   }
   ready = true;
 
+  // Teach the cpp tokenizer the QPI vocabulary (type.qpi / annotation / variable.predefined) — same `cpp`
+  // language id, so the existing providers are unaffected.
+  applyQpiGrammar(monaco);
+
   monaco.editor.defineTheme("qinit-dark", {
     base: "vs-dark",
     inherit: true,
@@ -36,6 +41,9 @@ export function setupMonaco(): typeof monaco {
       { token: "keyword.directive", foreground: "9B8CFF" },
       { token: "type", foreground: "19E0B4" },
       { token: "type.identifier", foreground: "19E0B4" },
+      { token: "type.qpi", foreground: "56C8FF" },
+      { token: "annotation", foreground: "FF9E64", fontStyle: "bold" },
+      { token: "variable.predefined", foreground: "E58CC9" },
       { token: "number", foreground: "FFD23F" },
       { token: "string", foreground: "FFD23F" },
       { token: "identifier", foreground: "EAF0ED" },

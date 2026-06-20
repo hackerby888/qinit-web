@@ -2,6 +2,14 @@
 // source (or the browser-core shim); tsc uses THESE declarations and never type-checks the cross-repo
 // source. Keep in sync with what ./ide actually calls.
 
+// Monaco ships its basic-language grammars as deep ESM entries with no bundled .d.ts. We import the cpp
+// Monarch definition to clone + extend it (see ide/qpi/grammar.ts).
+declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
+  import type * as Monaco from "monaco-editor";
+  export const conf: Monaco.languages.LanguageConfiguration;
+  export const language: Monaco.languages.IMonarchLanguage;
+}
+
 declare module "@qinit/engine" {
   export class InProcessEngine {
     constructor(opts?: { slotBase?: number; slotCount?: number });

@@ -2,6 +2,7 @@
 // whole-contract skeleton) plus the QPI scalar/container types. The qinit VS Code extension leans on
 // clangd for member completion; this is the lightweight, in-page surface (clangd parity is Phase 2).
 import type * as Monaco from "monaco-editor";
+import { QPI_TYPES } from "./vocab";
 
 interface Snip {
   label: string;
@@ -54,12 +55,6 @@ const SNIPPETS: Snip[] = [
   { label: "qpi-state", detail: "StateData", doc: "On-chain state struct.", insertText: "struct StateData\n{\n\t$0\n};" },
 ];
 
-const TYPES = [
-  "uint8", "uint16", "uint32", "uint64",
-  "sint8", "sint16", "sint32", "sint64",
-  "bit", "id", "Array", "BitArray", "HashMap", "HashSet", "Collection",
-];
-
 let registered = false;
 
 export function registerQpiSnippets(monaco: typeof Monaco): void {
@@ -71,6 +66,13 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
   monaco.languages.registerCompletionItemProvider("cpp", {
     provideCompletionItems(model, position) {
       const word = model.getWordUntilPosition(position);
+
+      // After a `.` the member-completion provider owns the list — don't flood it with snippets/types.
+      const before = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: Math.max(1, word.startColumn - 1), endLineNumber: position.lineNumber, endColumn: word.startColumn });
+      if (before === ".") {
+        return { suggestions: [] };
+      }
+
       const range: Monaco.IRange = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
@@ -88,7 +90,7 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         range,
       }));
 
-      const types: Monaco.languages.CompletionItem[] = TYPES.map((t) => ({
+      const types: Monaco.languages.CompletionItem[] = QPI_TYPES.map((t) => ({
         label: t,
         kind: monaco.languages.CompletionItemKind.TypeParameter,
         insertText: t,
