@@ -14,7 +14,7 @@ import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
-import { compileContract, base64ToBytes, type CompileResult } from "./api";
+import { compileContract, base64ToBytes, fetchBuildQueue, type CompileResult, type BuildQueue } from "./api";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
@@ -533,6 +533,7 @@ export default function Ide() {
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
   const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
   const [phase, setPhase] = useState<Phase>("idle");
+  const [buildQueue, setBuildQueue] = useState<BuildQueue | null>(null); // backend pool state while a compile is pending
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
   const [log, setLog] = useState<string[]>([]);
@@ -1119,6 +1120,29 @@ export default function Ide() {
     setCollapsed((c) => ({ ...c, [name]: !c[name] }));
   };
 
+  // While a compile is pending, poll the backend build pool so the status line can show "waiting for a build
+  // slot" when the box is saturated by other builds.
+  useEffect(() => {
+    if (phase !== "compiling") {
+      setBuildQueue(null);
+      return;
+    }
+    let alive = true;
+    const tick = () => {
+      void fetchBuildQueue().then((q) => {
+        if (alive) {
+          setBuildQueue(q);
+        }
+      });
+    };
+    tick();
+    const iv = setInterval(tick, 600);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [phase]);
+
   // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
   // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
   // creating or deleting a file just updates `ws`, and the right tabs follow.
@@ -1687,7 +1711,14 @@ export default function Ide() {
               </Section>
             )}
 
-            {phase === "compiling" && <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>compiling on the node toolchain…</div>}
+            {phase === "compiling" && (
+              <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 12, color: buildQueue && buildQueue.active >= buildQueue.limit ? color.yellow : color.textMutedDk }}>
+                <span style={{ width: 7, height: 7, flex: "none", background: buildQueue && buildQueue.active >= buildQueue.limit ? color.yellow : color.accent, animation: "nodePulse 1.4s ease-in-out infinite" }} />
+                {buildQueue && buildQueue.active >= buildQueue.limit
+                  ? `waiting for a build slot — ${buildQueue.queued} queued · ${buildQueue.active}/${buildQueue.limit} building`
+                  : "compiling on the node toolchain…"}
+              </div>
+            )}
 
             {phase === "error" && (
               <div style={{ fontFamily: font.mono, fontSize: 11.5, color: "#FF8B7E", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>

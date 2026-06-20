@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { getDb } from "./db";
 import { latestRelease, bumpVisits } from "./release";
-import { compile } from "./compile";
+import { compile, buildQueueState } from "./compile";
 
 const app = express();
 app.use(cors());
@@ -24,6 +24,9 @@ app.post("/api/compile", async (req, res) => {
     res.status(500).json({ ok: false, diagnostics: [], error: (e as Error).message });
   }
 });
+
+// Build-pool snapshot — the IDE polls this while a compile is pending to show "waiting for a build slot".
+app.get("/api/compile/queue", (_req, res) => res.json(buildQueueState()));
 
 app.get("/api/release/latest", async (_req, res) => {
   try { res.json(await latestRelease()); }
