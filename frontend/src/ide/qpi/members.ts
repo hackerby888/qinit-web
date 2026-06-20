@@ -13,6 +13,55 @@ export interface Field {
   type: string;
 }
 
+// Replace the *contents* of comments and string/char literals with spaces, preserving every offset and
+// newline. So a commented-out `INITIALIZE()` or a brace inside a string can't be mistaken for real code
+// (a real bug found in qRWA.h: a `// INITIALIZE() …` comment hijacked the next entry's body).
+export function maskComments(src: string): string {
+  let out = "";
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < n && src[i] !== "\n") {
+        out += " ";
+        i++;
+      }
+    } else if (c === "/" && src[i + 1] === "*") {
+      out += "  ";
+      i += 2;
+      while (i < n && !(src[i] === "*" && src[i + 1] === "/")) {
+        out += src[i] === "\n" ? "\n" : " ";
+        i++;
+      }
+      if (i < n) {
+        out += "  ";
+        i += 2;
+      }
+    } else if (c === '"' || c === "'") {
+      out += c;
+      i++;
+      while (i < n && src[i] !== c) {
+        if (src[i] === "\\") {
+          out += src[i] + (src[i + 1] ?? "");
+          i += 2;
+          continue;
+        }
+        out += src[i] === "{" || src[i] === "}" ? " " : src[i];
+        i++;
+      }
+      if (i < n) {
+        out += src[i];
+        i++;
+      }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
 // Drop nested `{…}` blocks so a struct's own field list isn't polluted by inner struct bodies.
 function stripNestedBraces(body: string): string {
   let out = "";
@@ -59,10 +108,11 @@ function splitDecls(flat: string): string[] {
 function parseFields(body: string): Field[] {
   const out: Field[] = [];
   for (const raw of splitDecls(stripNestedBraces(body))) {
-    const decl = raw.replace(/\/\/.*$/gm, "").trim();
-    if (!decl || decl.includes("(") || /^(struct|public|private|protected|typedef|using)\b/.test(decl)) {
+    const cleaned = raw.replace(/\/\/.*$/gm, "").trim();
+    if (!cleaned || cleaned.includes("(") || /^(struct|public|private|protected|typedef|using)\b/.test(cleaned)) {
       continue;
     }
+    const decl = cleaned.replace(/\s*=\s*[\s\S]*$/, "").trim(); // drop a default initializer (`uint64 a = 5`)
     const m = decl.match(/^([\s\S]*\S)\s+(\w+)$/);
     if (m) {
       out.push({ type: m[1].replace(/\s+/g, " ").trim(), name: m[2] });
@@ -73,7 +123,8 @@ function parseFields(body: string): Field[] {
 
 // All `struct <Name> … { … }` bodies in the source, name -> fields. Nested structs are captured under
 // their own bare name too (the outer container's parsed fields are simply never looked up).
-export function collectStructs(src: string): Map<string, Field[]> {
+export function collectStructs(rawSrc: string): Map<string, Field[]> {
+  const src = maskComments(rawSrc);
   const map = new Map<string, Field[]>();
   const re = /\bstruct\s+(\w+)[^{};]*\{/g;
   let m: RegExpExecArray | null;
@@ -100,7 +151,8 @@ const ENTRY_RE = /\b((?:PUBLIC|PRIVATE)_(?:FUNCTION|PROCEDURE)(?:_WITH_LOCALS)?|
 // <Name>_input/_output/_locals. Null when the cursor is outside every entry body (StateData, the REGISTER
 // block, top level), where qpi / state / input / output / locals are all out of scope. For a lifecycle
 // hook (INITIALIZE etc.) the macro itself is the base (e.g. INITIALIZE_locals).
-export function enclosingEntry(src: string, offset: number): { macro: string; base: string } | null {
+export function enclosingEntry(rawSrc: string, offset: number): { macro: string; base: string } | null {
+  const src = maskComments(rawSrc); // ignore entry macros / braces that live in comments or string literals
   let m: RegExpExecArray | null;
   ENTRY_RE.lastIndex = 0;
   while ((m = ENTRY_RE.exec(src)) !== null) {
@@ -240,11 +292,38 @@ export const CONTAINERS: Record<string, Method[]> = {
     { label: "replace", insert: "replace(${1:oldElementIndex}, ${2:newElement})", detail: "void" },
     { label: "reset", insert: "reset()", detail: "void — empty the collection" },
   ],
+  // Like Array, but allows any capacity L (not restricted to a power of two) — slower; use only when needed.
+  SlowAnySizeArray: [
+    { label: "get", insert: "get(${1:index})", detail: "const T& — element at index" },
+    { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void — write element at index" },
+    { label: "setAll", insert: "setAll(${1:value})", detail: "void — fill every element" },
+    { label: "capacity", insert: "capacity()", detail: "uint64 — any L (not restricted to 2^N)" },
+  ],
+  // Doubly-linked list with O(1) removal by element index and a recycling free list.
+  LinkedList: [
+    { label: "element", insert: "element(${1:elementIndex})", detail: "const T& — value at an element index" },
+    { label: "addHead", insert: "addHead(${1:value})", detail: "sint64 — new element index, or -1 if full" },
+    { label: "addTail", insert: "addTail(${1:value})", detail: "sint64 — new element index, or -1 if full" },
+    { label: "insertBefore", insert: "insertBefore(${1:elementIndex}, ${2:value})", detail: "sint64 — new element index, or -1" },
+    { label: "insertAfter", insert: "insertAfter(${1:elementIndex}, ${2:value})", detail: "sint64 — new element index, or -1" },
+    { label: "remove", insert: "remove(${1:elementIndex})", detail: "void" },
+    { label: "replace", insert: "replace(${1:elementIndex}, ${2:newValue})", detail: "bool" },
+    { label: "headIndex", insert: "headIndex()", detail: "sint64 — first element index, or -1" },
+    { label: "tailIndex", insert: "tailIndex()", detail: "sint64 — last element index, or -1" },
+    { label: "nextElementIndex", insert: "nextElementIndex(${1:elementIndex})", detail: "sint64 — next, or -1" },
+    { label: "prevElementIndex", insert: "prevElementIndex(${1:elementIndex})", detail: "sint64 — previous, or -1" },
+    { label: "population", insert: "population()", detail: "uint64" },
+    { label: "capacity", insert: "capacity()", detail: "uint64" },
+    { label: "reset", insert: "reset()", detail: "void — empty the list" },
+  ],
+  // NOTE: ProposalVoting is governance *storage* only — its getProposal/vote/… methods live on the
+  // QpiContextProposalFunctionCall/ProcedureCall wrappers, not on the field itself, so it isn't a
+  // direct-call container. It stays a known type (vocab/template hints) but offers no `.method()` set.
 };
 
 // The container kind of a field type, if any — `HashMap<id, sint64>` -> "HashMap".
 export function containerKind(type: string): string | null {
-  const m = type.match(/^(Array|BitArray|HashMap|HashSet|Collection)\s*</);
+  const m = type.match(/^(Array|BitArray|SlowAnySizeArray|HashMap|HashSet|Collection|LinkedList)\s*</);
   return m ? m[1] : null;
 }
 
@@ -278,6 +357,89 @@ const CHAIN = /\b(state\s*\.\s*(?:mut|get)\s*\(\s*\)|input|output|locals)((?:\s*
 const STATE_BARE = /\bstate\s*\.\s*(\w*)$/;
 const QPI_ACCESS = /\bqpi\s*\.\s*(\w*)$/;
 
+// A resolved completion entry, decoupled from Monaco. `method` picks the kind (Method vs Field); an insert
+// containing `${…}` is a snippet.
+export interface MemberItem {
+  label: string;
+  insert: string;
+  detail: string;
+  method: boolean;
+}
+
+function fieldMember(f: Field): MemberItem {
+  return { label: f.name, insert: f.name, detail: f.type, method: false };
+}
+
+function methodMember(m: Method): MemberItem {
+  return { label: m.label, insert: m.insert, detail: m.detail, method: true };
+}
+
+// The member completion for a `.`-triggered position — the whole QPI_ACCESS / CHAIN / STATE_BARE logic +
+// every gating rule, pure (no Monaco). `line` is the line text up to the cursor; `offset` is the cursor's
+// source offset. Returns null when this isn't a member-access position; an array (possibly empty when the
+// context gates everything out) otherwise.
+export function memberCompletionAt(src: string, line: string, offset: number): MemberItem[] | null {
+  // qpi.<api> — only inside an entry body; a const function sees only the read-only host API.
+  if (QPI_ACCESS.test(line)) {
+    const entry = enclosingEntry(src, offset);
+    if (!entry) {
+      return [];
+    }
+    const api = isFunctionEntry(entry.macro) ? QPI_API.filter((m) => !m.proc) : QPI_API;
+    return api.map(methodMember);
+  }
+
+  // state.mut()/get().<path>. | input/output/locals.<path>.  -> resolve the chain to a type, then offer
+  // that type's members (a user struct's fields or a container's method table).
+  const chain = line.match(CHAIN);
+  if (chain) {
+    const structs = collectStructs(src);
+    const entry = enclosingEntry(src, offset);
+    if (!entry) {
+      return []; // state / input / output / locals are only in scope in an entry body
+    }
+
+    let rootType: string;
+    if (chain[1].startsWith("state")) {
+      rootType = "StateData";
+    } else {
+      const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
+      // input/output are author-authored only in a user fn/proc; system hooks carry NoData / qpi.h IO.
+      if ((chain[1] === "input" || chain[1] === "output") && !isUserEntry(entry.macro)) {
+        return [];
+      }
+      // `locals` only exists in a _WITH_LOCALS entry that actually declares a <Name>_locals struct.
+      if (chain[1] === "locals" && !(entry.macro.endsWith("_WITH_LOCALS") && structs.has(entry.base + "_locals"))) {
+        return [];
+      }
+      rootType = entry.base + suffix;
+    }
+
+    const type = walkPath(rootType, chain[2].match(/\w+/g) ?? [], structs);
+    if (!type) {
+      return [];
+    }
+    const { fields, methods } = membersOfType(type, structs);
+    return [...fields.map(fieldMember), ...methods.map(methodMember)];
+  }
+
+  // state. -> get() always; mut() only where state may be mutated (not in a const FUNCTION body).
+  if (STATE_BARE.test(line)) {
+    const entry = enclosingEntry(src, offset);
+    if (!entry) {
+      return [];
+    }
+    const items: MemberItem[] = [];
+    if (!isFunctionEntry(entry.macro)) {
+      items.push({ label: "mut", insert: "mut().", detail: "writable StateData (marks the slot dirty)", method: true });
+    }
+    items.push({ label: "get", insert: "get().", detail: "read-only StateData", method: true });
+    return items;
+  }
+
+  return null;
+}
+
 let registered = false;
 
 export function registerQpiMembers(monaco: typeof Monaco): void {
@@ -290,6 +452,10 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
     triggerCharacters: ["."],
     provideCompletionItems(model, position) {
       const line = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column });
+      const items = memberCompletionAt(model.getValue(), line, model.getOffsetAt(position));
+      if (!items) {
+        return { suggestions: [] };
+      }
 
       const word = model.getWordUntilPosition(position);
       const range: Monaco.IRange = {
@@ -299,94 +465,16 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         endColumn: word.endColumn,
       };
 
-      const fieldItem = (f: Field): Monaco.languages.CompletionItem => ({
-        label: f.name,
-        kind: monaco.languages.CompletionItemKind.Field,
-        insertText: f.name,
-        detail: f.type,
-        range,
-      });
-      const methodItem = (m: Method): Monaco.languages.CompletionItem => ({
-        label: m.label,
-        kind: monaco.languages.CompletionItemKind.Method,
-        insertText: m.insert,
-        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        detail: m.detail,
-        range,
-      });
-
-      // qpi.<api> — only inside an entry body; a const function sees only the read-only host API.
-      if (QPI_ACCESS.test(line)) {
-        const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
-        if (!entry) {
-          return { suggestions: [] };
-        }
-        const api = isFunctionEntry(entry.macro) ? QPI_API.filter((m) => !m.proc) : QPI_API;
-        return { suggestions: api.map(methodItem) };
-      }
-
-      // state.mut()/get().<path>. | input/output/locals.<path>.  -> resolve the chain to a type, then
-      // offer that type's members (a user struct's fields or a container's method table).
-      const chain = line.match(CHAIN);
-      if (chain) {
-        const src = model.getValue();
-        const structs = collectStructs(src);
-        const entry = enclosingEntry(src, model.getOffsetAt(position));
-        if (!entry) {
-          return { suggestions: [] }; // state / input / output / locals are only in scope in an entry body
-        }
-
-        let rootType: string | null;
-        if (chain[1].startsWith("state")) {
-          rootType = "StateData";
-        } else {
-          const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
-          // input/output are author-authored only in a user fn/proc; system hooks carry NoData / qpi.h IO.
-          if ((chain[1] === "input" || chain[1] === "output") && !(entry && isUserEntry(entry.macro))) {
-            return { suggestions: [] };
-          }
-          // `locals` only exists in a _WITH_LOCALS entry that actually declares a <Name>_locals struct.
-          if (chain[1] === "locals" && !(entry && entry.macro.endsWith("_WITH_LOCALS") && structs.has(entry.base + "_locals"))) {
-            return { suggestions: [] };
-          }
-          rootType = entry ? entry.base + suffix : null;
-        }
-        if (!rootType) {
-          return { suggestions: [] };
-        }
-
-        const path = (chain[2].match(/\w+/g) ?? []); // the intermediate fields before the trailing partial
-        const type = walkPath(rootType, path, structs);
-        if (!type) {
-          return { suggestions: [] };
-        }
-
-        const { fields, methods } = membersOfType(type, structs);
-        return { suggestions: [...fields.map(fieldItem), ...methods.map(methodItem)] };
-      }
-
-      // state. -> get() always; mut() only where state may be mutated (not in a const FUNCTION body).
-      if (STATE_BARE.test(line)) {
-        const accessor = (name: string, doc: string): Monaco.languages.CompletionItem => ({
-          label: name,
-          kind: monaco.languages.CompletionItemKind.Method,
-          insertText: `${name}().`,
-          detail: doc,
+      return {
+        suggestions: items.map((it) => ({
+          label: it.label,
+          kind: it.method ? monaco.languages.CompletionItemKind.Method : monaco.languages.CompletionItemKind.Field,
+          insertText: it.insert,
+          insertTextRules: it.insert.includes("$") ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+          detail: it.detail,
           range,
-        });
-
-        const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
-        if (!entry) {
-          return { suggestions: [] }; // `state` is only in scope in an entry body
-        }
-        const suggestions = [accessor("get", "read-only StateData")];
-        if (!isFunctionEntry(entry.macro)) {
-          suggestions.unshift(accessor("mut", "writable StateData (marks the slot dirty)"));
-        }
-        return { suggestions };
-      }
-
-      return { suggestions: [] };
+        })),
+      };
     },
   });
 }
