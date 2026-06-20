@@ -3,7 +3,7 @@
 // this page via @qinit/engine (./engine). The engine/crypto modules are dynamically imported so a load
 // failure degrades to "compile only" rather than breaking the editor.
 import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
@@ -11,11 +11,13 @@ import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { Card, SectionHead, NeoBtn } from "./ui";
 import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
-import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
+import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep } from "./engine";
-import { ScenarioPanel, loadScenarios, saveScenarios, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
+import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
+import { getStore } from "./projects/store";
+import type { Project } from "./projects/types";
 import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
 
@@ -439,7 +441,12 @@ function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
 }
 
 export default function Ide() {
-  const [ws, setWs] = useState<Workspace>(() => loadWorkspace());
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [ws, setWs] = useState<Workspace>({ files: [], active: "" });
+  const [projectName, setProjectName] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
@@ -458,24 +465,14 @@ export default function Ide() {
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
   const [epochLen, setEpochLen] = useState(3000); // ticks per epoch (from the engine)
-  const [scenarios, setScenarios] = useState<Scenario[]>(() => loadScenarios());
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [scenResults, setScenResults] = useState<Record<string, ScenarioResult>>({});
   const [runningScen, setRunningScen] = useState<string | null>(null);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
   const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
-  const [openTabs, setOpenTabs] = useState<string[]>(() => {
-    try {
-      const arr = JSON.parse(localStorage.getItem("ide.openTabs") ?? "null");
-      if (Array.isArray(arr) && arr.every((x) => typeof x === "string")) {
-        return arr;
-      }
-    } catch {
-      // corrupt storage — start empty, the reconcile effect seeds from the active file
-    }
-    return [];
-  });
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
 
   const editorRef = useRef<EditorRef | null>(null);
@@ -485,6 +482,7 @@ export default function Ide() {
   const consoleRef = useRef<HTMLDivElement | null>(null);
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
+  const projectRef = useRef<Project | null>(null); // the loaded project doc (carries id/createdAt for save)
 
   // Auto-compile coordination (Remix-style background diagnostics). Refs so the debounce reads fresh
   // values without re-creating the callback.
@@ -507,11 +505,85 @@ export default function Ide() {
   contractNameRef.current = contractName;
   activeNameRef.current = ws.active;
 
-  // Persist the workspace (debounced) on every edit.
+  // Load the project for this route. Seeds the editor (files/active), open tabs and saved scenarios; an
+  // unknown id bounces back to the gallery. Async by design — the same call shape a cloud store would use.
   useEffect(() => {
-    const t = setTimeout(() => saveWorkspace(ws), 400);
+    let cancelled = false;
+    void (async () => {
+      if (!id) {
+        navigate("/ide");
+        return;
+      }
+      const p = await getStore().load(id);
+      if (cancelled) {
+        return;
+      }
+      if (!p) {
+        navigate("/ide");
+        return;
+      }
+      projectRef.current = p;
+      setWs({ files: p.files, active: p.active });
+      setScenarios(p.scenarios ?? []);
+      setOpenTabs(p.openTabs ?? []);
+      setProjectName(p.name);
+      void getStore().setCurrentId(p.id);
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, navigate]);
+
+  // Write the current editor state into the loaded project document and persist it. Shared by the debounced
+  // auto-save and the Ctrl+S handler.
+  const persistProject = useCallback((): void => {
+    const p = projectRef.current;
+    if (!p) {
+      return;
+    }
+    p.files = ws.files;
+    p.active = ws.active;
+    p.openTabs = openTabs;
+    p.scenarios = scenarios;
+    p.name = projectName;
+    void getStore().save(p);
+  }, [ws, openTabs, scenarios, projectName]);
+
+  // Persist the whole project document (debounced) whenever its contents change.
+  useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+    const t = setTimeout(persistProject, 400);
     return () => clearTimeout(t);
-  }, [ws]);
+  }, [persistProject, loaded]);
+
+  // Ctrl/Cmd+S — save now (flush the debounce) and swallow the browser's save dialog. Works IDE-wide, not
+  // just when the editor is focused. A ref keeps the listener registered once while always running the
+  // latest closure.
+  const persistRef = useRef(persistProject);
+  persistRef.current = persistProject;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        persistRef.current();
+        setSaved(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Clear the "saved" flash shortly after it shows.
+  useEffect(() => {
+    if (!saved) {
+      return;
+    }
+    const t = setTimeout(() => setSaved(false), 1300);
+    return () => clearTimeout(t);
+  }, [saved]);
 
   // Keep the console pinned to the newest line.
   useEffect(() => {
@@ -856,24 +928,21 @@ export default function Ide() {
   useEffect(() => {
     localStorage.setItem("ide.engineW", String(engineW));
   }, [engineW]);
-  useEffect(() => {
-    localStorage.setItem("ide.openTabs", JSON.stringify(openTabs));
-  }, [openTabs]);
-  useEffect(() => {
-    saveScenarios(scenarios);
-  }, [scenarios]);
 
   // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
   // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
   // creating or deleting a file just updates `ws`, and the right tabs follow.
   useEffect(() => {
+    if (!loaded) {
+      return;
+    }
     setOpenTabs((prev) => {
       const valid = prev.filter((n) => ws.files.some((f) => f.name === n));
       const next = valid.includes(ws.active) ? valid : [...valid, ws.active];
       const same = next.length === prev.length && next.every((v, i) => v === prev[i]);
       return same ? prev : next;
     });
-  }, [ws.files, ws.active]);
+  }, [ws.files, ws.active, loaded]);
 
   // The right-hand ENGINE panel mirrors the file you're editing: switching tab/file points it at that
   // contract's deployment (state + call forms), or clears it when the active contract isn't deployed yet.
@@ -1159,6 +1228,14 @@ export default function Ide() {
   const procedures = idl ? Object.entries(idl.procedures) : [];
   const functions = idl ? Object.entries(idl.functions) : [];
 
+  if (!loaded) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 13 }}>
+        loading project…
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
@@ -1170,7 +1247,10 @@ export default function Ide() {
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
         </Link>
         <span style={{ width: 1, height: 22, background: color.hair2 }} />
-        <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textMutedDk }}>{ws.active}</span>
+        <Link to="/ide" title="All projects" style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk, textDecoration: "none" }}>← projects</Link>
+        <span style={{ width: 8, height: 8, background: color.accent }} />
+        <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>{projectName || "…"}</span>
+        {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.accent }}>✓ saved</span>}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling"}>
             {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}

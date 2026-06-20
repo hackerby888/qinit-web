@@ -47,25 +47,7 @@ export interface ScenarioResult {
   error?: string;
 }
 
-const KEY = "ide.scenarios.v1";
-
-export function loadScenarios(): Scenario[] {
-  try {
-    const a = JSON.parse(localStorage.getItem(KEY) ?? "[]");
-    return Array.isArray(a) ? (a as Scenario[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function saveScenarios(s: Scenario[]): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(s));
-  } catch {
-    // private mode / quota — best-effort
-  }
-}
-
+// Scenarios are persisted inside the project document (see projects/store.ts), not in their own key.
 export const uid = (): string => Math.random().toString(36).slice(2, 9);
 
 // Compare a function's actual output against the expected literal. Numeric when both sides parse as
