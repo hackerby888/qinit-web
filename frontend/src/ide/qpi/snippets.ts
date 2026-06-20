@@ -1,24 +1,46 @@
-// QPI completion: snippets for the contract entry macros (PUBLIC_PROCEDURE / _WITH_LOCALS / REGISTER_* /
-// INITIALIZE), the QPI scalar/container types, and the framework builtins (state / input / output /
-// locals / qpi). Member access off these is resolved separately in ./members.
+// QPI completion: the contract macros (typing `PUBLIC_PROCEDURE` / `REGISTER_…` / `LOG_…` completes the
+// real macro name with a body/arg snippet), the QPI scalar/container types, and the framework builtins
+// (state / input / output / locals / qpi). Member access off these is resolved separately in ./members.
 import type * as Monaco from "monaco-editor";
-import { QPI_TYPES, QPI_BUILTINS } from "./vocab";
+import { QPI_TYPES, QPI_BUILTINS, QPI_MACROS } from "./vocab";
 
-interface Snip {
-  label: string;
-  detail: string;
-  doc: string;
-  insertText: string;
+// Macros that open a `{ … }` body: entry points take a Name arg, lifecycle/registration hooks take none.
+const ENTRY_MACROS = new Set([
+  "PUBLIC_PROCEDURE", "PUBLIC_FUNCTION", "PUBLIC_PROCEDURE_WITH_LOCALS", "PUBLIC_FUNCTION_WITH_LOCALS",
+  "PRIVATE_PROCEDURE", "PRIVATE_FUNCTION", "PRIVATE_PROCEDURE_WITH_LOCALS", "PRIVATE_FUNCTION_WITH_LOCALS",
+]);
+const HOOK_MACROS = new Set([
+  "INITIALIZE", "BEGIN_EPOCH", "END_EPOCH", "BEGIN_TICK", "END_TICK", "POST_INCOMING_TRANSFER",
+  "PRE_ACQUIRE_SHARES", "PRE_RELEASE_SHARES", "POST_ACQUIRE_SHARES", "POST_RELEASE_SHARES",
+  "SET_SHAREHOLDER_PROPOSAL", "SET_SHAREHOLDER_VOTES", "EXPAND", "REGISTER_USER_FUNCTIONS_AND_PROCEDURES",
+]);
+// Macros that expand to a single statement.
+const CALL_MACROS: Record<string, string> = {
+  REGISTER_USER_PROCEDURE: "REGISTER_USER_PROCEDURE(${1:Name}, ${2:1});",
+  REGISTER_USER_FUNCTION: "REGISTER_USER_FUNCTION(${1:Name}, ${2:1});",
+  LOG_INFO: "LOG_INFO(${1:message});",
+  LOG_DEBUG: "LOG_DEBUG(${1:message});",
+  LOG_WARNING: "LOG_WARNING(${1:message});",
+  LOG_ERROR: "LOG_ERROR(${1:message});",
+  LOG_PAUSE: "LOG_PAUSE();",
+  LOG_RESUME: "LOG_RESUME();",
+  STATIC_ASSERT: "STATIC_ASSERT(${1:condition});",
+};
+
+// The insert text for a macro completion: a body scaffold, a statement, or the bare name (e.g. the
+// CONTRACT_STATE_TYPE wrapper identifiers). `snippet` => the text has ${…} tab stops.
+function macroInsert(name: string): { insert: string; snippet: boolean } {
+  if (name in CALL_MACROS) {
+    return { insert: CALL_MACROS[name], snippet: true };
+  }
+  if (ENTRY_MACROS.has(name)) {
+    return { insert: name + "(${1:Name})\n{\n\t$0\n}", snippet: true };
+  }
+  if (HOOK_MACROS.has(name)) {
+    return { insert: name + "()\n{\n\t$0\n}", snippet: true };
+  }
+  return { insert: name, snippet: false };
 }
-
-const SNIPPETS: Snip[] = [
-  { label: "qpi-procedure", detail: "PUBLIC_PROCEDURE", doc: "A public procedure — mutates state, no locals, no return.", insertText: "PUBLIC_PROCEDURE(${1:Name})\n{\n\t$0\n}" },
-  { label: "qpi-function", detail: "PUBLIC_FUNCTION", doc: "A public function — reads state, no locals, sets output.", insertText: "PUBLIC_FUNCTION(${1:Name})\n{\n\t$0\n}" },
-  { label: "qpi-procedure-locals", detail: "PUBLIC_PROCEDURE_WITH_LOCALS", doc: "A public procedure that needs locals — declare them in a <Name>_locals struct, access via `locals.`.", insertText: "PUBLIC_PROCEDURE_WITH_LOCALS(${1:Name})\n{\n\t$0\n}" },
-  { label: "qpi-function-locals", detail: "PUBLIC_FUNCTION_WITH_LOCALS", doc: "A public function that needs locals — declare them in a <Name>_locals struct.", insertText: "PUBLIC_FUNCTION_WITH_LOCALS(${1:Name})\n{\n\t$0\n}" },
-  { label: "qpi-register", detail: "REGISTER_USER_FUNCTIONS_AND_PROCEDURES", doc: "Register functions/procedures so they're callable on-chain by index.", insertText: "REGISTER_USER_FUNCTIONS_AND_PROCEDURES()\n{\n\tREGISTER_USER_PROCEDURE(${1:Proc}, ${2:1});\n\tREGISTER_USER_FUNCTION(${3:Func}, ${4:1});\n}" },
-  { label: "qpi-initialize", detail: "INITIALIZE", doc: "The constructor hook — set initial state.", insertText: "INITIALIZE()\n{\n\t$0\n}" },
-];
 
 // The framework locals a contract body refers to — completed as plain identifiers (typing `stat` → `state`).
 const BUILTIN_DOC: Record<string, string> = {
@@ -54,15 +76,17 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         endColumn: word.endColumn,
       };
 
-      const snippets: Monaco.languages.CompletionItem[] = SNIPPETS.map((s) => ({
-        label: s.label,
-        kind: monaco.languages.CompletionItemKind.Snippet,
-        insertText: s.insertText,
-        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-        documentation: s.doc,
-        detail: s.detail,
-        range,
-      }));
+      const macros: Monaco.languages.CompletionItem[] = QPI_MACROS.map((name) => {
+        const { insert, snippet } = macroInsert(name);
+        return {
+          label: name,
+          kind: snippet ? monaco.languages.CompletionItemKind.Snippet : monaco.languages.CompletionItemKind.Keyword,
+          insertText: insert,
+          insertTextRules: snippet ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+          detail: "QPI macro",
+          range,
+        };
+      });
 
       const types: Monaco.languages.CompletionItem[] = QPI_TYPES.map((t) => ({
         label: t,
@@ -80,7 +104,7 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         range,
       }));
 
-      return { suggestions: [...snippets, ...types, ...builtins] };
+      return { suggestions: [...macros, ...types, ...builtins] };
     },
   });
 }
