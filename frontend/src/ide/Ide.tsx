@@ -303,6 +303,66 @@ function DeployedList({ deployed, selected, onSelect }: {
   );
 }
 
+// Open-file tabs over the editor (VSCode's editor tabs). The active file is always an open tab; a tab
+// shows a dirty dot when its source has edits not yet built, and a close ✕ on hover. The last tab can't
+// be closed — the editor always needs an active file.
+function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
+  tabs: string[];
+  active: string;
+  dirty: (name: string) => boolean;
+  onSelect: (name: string) => void;
+  onClose: (name: string, e: { stopPropagation(): void }) => void;
+}) {
+  return (
+    <div className="pix-tabs" style={{ display: "flex", height: 36, flex: "none", borderBottom: HAIR, background: color.panelDeep, overflowX: "auto", overflowY: "hidden" }}>
+      {tabs.map((name) => {
+        const on = name === active;
+        const d = dirty(name);
+        return (
+          <div
+            key={name}
+            className="pix-tab"
+            onClick={() => onSelect(name)}
+            onMouseDown={(e) => { if (e.button === 1) { onClose(name, e); } }}
+            title={name}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "0 10px",
+              flex: "none",
+              maxWidth: 200,
+              cursor: "pointer",
+              borderRight: `1px solid ${color.hair}`,
+              borderBottom: on ? `2px solid ${color.accent}` : "2px solid transparent",
+              background: on ? color.panel : "transparent",
+              color: on ? color.accent : color.textMutedDk,
+              fontFamily: font.mono,
+              fontSize: 12,
+            }}
+          >
+            <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+            <span style={{ position: "relative", width: 14, height: 14, flex: "none" }}>
+              {d && (
+                <span className="pix-tab-dot" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: color.yellow, fontSize: 10 }}>●</span>
+              )}
+              <button
+                className="pix-tab-x"
+                onClick={(e) => onClose(name, e)}
+                title="Close"
+                style={{ position: "absolute", inset: 0, border: "none", background: "transparent", color: color.textGhostDk, cursor: "pointer", fontFamily: font.mono, fontSize: 14, lineHeight: 1, padding: 0 }}
+              >
+                ×
+              </button>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Ide() {
   const [ws, setWs] = useState<Workspace>(() => loadWorkspace());
   const [phase, setPhase] = useState<Phase>("idle");
@@ -324,6 +384,18 @@ export default function Ide() {
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
   const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
+  const [openTabs, setOpenTabs] = useState<string[]>(() => {
+    try {
+      const arr = JSON.parse(localStorage.getItem("ide.openTabs") ?? "null");
+      if (Array.isArray(arr) && arr.every((x) => typeof x === "string")) {
+        return arr;
+      }
+    } catch {
+      // corrupt storage — start empty, the reconcile effect seeds from the active file
+    }
+    return [];
+  });
+  const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
@@ -336,6 +408,7 @@ export default function Ide() {
   // values without re-creating the callback.
   const sourceRef = useRef("");
   const contractNameRef = useRef("");
+  const activeNameRef = useRef(""); // active file name (with extension) — keys the dirty-tracking `built` map
   const autoSeqRef = useRef(0);
   const autoSentRef = useRef<string>("");   // last source we POSTed — dedupe undo/redo/whitespace churn
   const autoBusyRef = useRef(false);        // single in-flight
@@ -350,6 +423,7 @@ export default function Ide() {
 
   sourceRef.current = source;
   contractNameRef.current = contractName;
+  activeNameRef.current = ws.active;
 
   // Persist the workspace (debounced) on every edit.
   useEffect(() => {
@@ -373,7 +447,19 @@ export default function Ide() {
   }, []);
 
   const selectFile = (name: string) => {
+    setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setWs((w) => ({ ...w, active: name }));
+  };
+
+  // Picking a contract in the deployed list opens its source tab; the sync effect then points the panel
+  // at it. Falls back to a bare select if no open file matches (e.g. the source was renamed/closed).
+  const selectDeployed = (cn: string) => {
+    const file = ws.files.find((f) => baseName(f.name) === cn);
+    if (file) {
+      selectFile(file.name);
+    } else {
+      setSelected(cn);
+    }
   };
 
   const editSource = (src: string) => {
@@ -381,6 +467,7 @@ export default function Ide() {
   };
 
   const createFile = (name: string) => {
+    setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
   };
 
@@ -389,6 +476,13 @@ export default function Ide() {
       files: w.files.map((f) => (f.name === oldName ? { ...f, name: newName } : f)),
       active: w.active === oldName ? newName : w.active,
     }));
+    setBuilt((b) => {
+      if (!(oldName in b)) {
+        return b;
+      }
+      const { [oldName]: src, ...rest } = b;
+      return { ...rest, [newName]: src };
+    });
   };
 
   const deleteFile = (name: string) => {
@@ -486,6 +580,48 @@ export default function Ide() {
   useEffect(() => {
     localStorage.setItem("ide.engineW", String(engineW));
   }, [engineW]);
+  useEffect(() => {
+    localStorage.setItem("ide.openTabs", JSON.stringify(openTabs));
+  }, [openTabs]);
+
+  // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
+  // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
+  // creating or deleting a file just updates `ws`, and the right tabs follow.
+  useEffect(() => {
+    setOpenTabs((prev) => {
+      const valid = prev.filter((n) => ws.files.some((f) => f.name === n));
+      const next = valid.includes(ws.active) ? valid : [...valid, ws.active];
+      const same = next.length === prev.length && next.every((v, i) => v === prev[i]);
+      return same ? prev : next;
+    });
+  }, [ws.files, ws.active]);
+
+  // The right-hand ENGINE panel mirrors the file you're editing: switching tab/file points it at that
+  // contract's deployment (state + call forms), or clears it when the active contract isn't deployed yet.
+  useEffect(() => {
+    const cn = baseName(ws.active);
+    setSelected(deployed[cn] ? cn : null);
+  }, [ws.active, deployed]);
+
+  // Close a tab. The last tab can't be closed (the editor always needs an active file); closing the
+  // active tab moves focus to the nearest surviving neighbour.
+  const closeTab = (name: string, e: { stopPropagation(): void }) => {
+    e.stopPropagation();
+    if (openTabs.length <= 1) {
+      return;
+    }
+    const idx = openTabs.indexOf(name);
+    const remaining = openTabs.filter((n) => n !== name);
+    setOpenTabs(remaining);
+    if (name === ws.active) {
+      const fallback = remaining[Math.min(idx, remaining.length - 1)];
+      setWs((w) => ({ ...w, active: fallback }));
+    }
+  };
+
+  // A tab is dirty when its source has unbuilt edits — i.e. it compiled clean once, then changed.
+  const isDirty = (name: string): boolean =>
+    name in built && built[name] !== (ws.files.find((f) => f.name === name)?.source ?? "");
 
   // Drag a column splitter. The explorer grows with the cursor; the engine (right) grows as it moves left.
   const startResize = (which: "explorer" | "engine", e: { clientX: number; preventDefault(): void }) => {
@@ -538,6 +674,7 @@ export default function Ide() {
   const runAutoCompile = useCallback(async () => {
     const src = sourceRef.current;
     const name = contractNameRef.current;
+    const fileName = activeNameRef.current;
     if (!src.trim() || src === autoSentRef.current) {
       return;
     }
@@ -574,6 +711,7 @@ export default function Ide() {
 
     if (res.ok && res.wasm && res.idl) {
       warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy
+      setBuilt((b) => ({ ...b, [fileName]: src })); // clears this file's dirty dot
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs; intentionally stable
   }, []);
@@ -651,6 +789,7 @@ export default function Ide() {
       setSelected(contractName);
       setEngineInfo(await eng.info());
       setPhase("ready");
+      setBuilt((b) => ({ ...b, [ws.active]: source })); // clears the active tab's dirty dot
       void refreshBalances(await eng.ensureAccounts());
       void refreshState(contractName);
       appendLog(`deployed ${idlData.name} → slot ${slot} · ${res.size} B · ${shortId(address)}`);
@@ -722,7 +861,7 @@ export default function Ide() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
-      <style dangerouslySetInnerHTML={{ __html: `.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}` }} />
+      <style dangerouslySetInnerHTML={{ __html: `.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: FRAME, background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
@@ -761,10 +900,7 @@ export default function Ide() {
         <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize" }} />
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 14px", borderBottom: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12 }}>
-            <span style={{ width: 8, height: 8, background: color.accent }} />
-            <span style={{ color: color.textLight }}>{ws.active}</span>
-          </div>
+          <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 0 }}>
             <CodeEditor value={source} path={ws.active} onChange={editSource} onMount={onEditorMount} />
           </div>
@@ -817,7 +953,13 @@ export default function Ide() {
 
             {Object.keys(deployed).length > 0 ? (
               <>
-                <DeployedList deployed={deployed} selected={selected} onSelect={setSelected} />
+                <DeployedList deployed={deployed} selected={selected} onSelect={selectDeployed} />
+
+                {!sel && (
+                  <div style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textGhostDk, lineHeight: 1.6, padding: "2px 0" }}>
+                    {contractName} isn't deployed yet — hit <span style={{ color: color.accent }}>▶ Compile &amp; Run</span> to deploy this contract.
+                  </div>
+                )}
 
                 {sel && <StatePanel dump={stateView[sel.name]} />}
 
