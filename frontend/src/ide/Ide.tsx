@@ -42,6 +42,16 @@ type Phase = "idle" | "compiling" | "ready" | "error";
 type MonacoNS = Parameters<OnMount>[1];
 type EditorRef = Parameters<OnMount>[0];
 
+// One row of the Problems panel — a marker (qpi lexical/context, or clang) on the active model.
+interface ProblemItem {
+  severity: number; // monaco MarkerSeverity: 8 error, 4 warning, 2 info, 1 hint
+  message: string;
+  line: number;
+  col: number;
+  source: string;
+  code: string;
+}
+
 function TrafficLights() {
   return (
     <div style={{ display: "flex", gap: 7 }}>
@@ -310,6 +320,10 @@ export default function Ide() {
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
+  const [problems, setProblems] = useState<ProblemItem[]>([]);
+  const [problemsOpen, setProblemsOpen] = useState(false);
+  const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
+  const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
@@ -437,6 +451,67 @@ export default function Ide() {
     monacoRef.current = monaco;
     setupQpi(monaco, editor);
     import("./qpi/hover").then((m) => m.registerQpiHover(monaco)).catch(() => undefined);
+
+    // Aggregate all markers on the active model (qpi lexical + context, and clang) into the Problems panel.
+    const refreshProblems = () => {
+      const model = editor.getModel();
+      if (!model) {
+        return;
+      }
+      type Marker = { severity: number; message: string; startLineNumber: number; startColumn: number; source?: string; code?: unknown };
+      const ms = monaco.editor.getModelMarkers({ resource: model.uri }) as Marker[];
+      setProblems(ms.map((m): ProblemItem => ({ severity: m.severity, message: m.message, line: m.startLineNumber, col: m.startColumn, source: String(m.source ?? ""), code: String((m.code as { value?: unknown })?.value ?? m.code ?? "") })));
+    };
+    monaco.editor.onDidChangeMarkers(refreshProblems);
+    editor.onDidChangeModel(refreshProblems);
+  };
+
+  // Jump the editor to a problem's location.
+  const goToProblem = (p: ProblemItem) => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+    editor.setPosition({ lineNumber: p.line, column: p.col });
+    editor.revealLineInCenter(p.line);
+    editor.focus();
+  };
+
+  const errorCount = problems.filter((p) => p.severity === 8).length;
+  const warnCount = problems.filter((p) => p.severity === 4).length;
+
+  useEffect(() => {
+    localStorage.setItem("ide.explorerW", String(explorerW));
+  }, [explorerW]);
+  useEffect(() => {
+    localStorage.setItem("ide.engineW", String(engineW));
+  }, [engineW]);
+
+  // Drag a column splitter. The explorer grows with the cursor; the engine (right) grows as it moves left.
+  const startResize = (which: "explorer" | "engine", e: { clientX: number; preventDefault(): void }) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = which === "explorer" ? explorerW : engineW;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (which === "explorer") {
+        setExplorerW(Math.max(160, Math.min(380, startW + dx)));
+      } else {
+        setEngineW(Math.max(280, Math.min(560, startW - dx)));
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
   };
 
   const applyClangMarkers = (res: CompileResult) => {
@@ -647,6 +722,7 @@ export default function Ide() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
+      <style dangerouslySetInnerHTML={{ __html: `.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}` }} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: FRAME, background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
@@ -672,7 +748,7 @@ export default function Ide() {
         </div>
       </div>
 
-      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: "210px 1fr 340px", minHeight: 0 }}>
+      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${explorerW}px 5px 1fr 5px ${engineW}px`, minHeight: 0 }}>
         <FileExplorer
           files={ws.files}
           active={ws.active}
@@ -682,7 +758,9 @@ export default function Ide() {
           onDelete={deleteFile}
         />
 
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: color.panel }}>
+        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize" }} />
+
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 14px", borderBottom: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12 }}>
             <span style={{ width: 8, height: 8, background: color.accent }} />
             <span style={{ color: color.textLight }}>{ws.active}</span>
@@ -690,7 +768,35 @@ export default function Ide() {
           <div style={{ flex: 1, minHeight: 0 }}>
             <CodeEditor value={source} path={ws.active} onChange={editSource} onMount={onEditorMount} />
           </div>
+
+          {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
+          <div style={{ flex: "none", borderTop: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
+            <div onClick={() => setProblemsOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 10, height: 30, padding: "0 14px", flex: "none", cursor: "pointer", userSelect: "none", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".1em", color: color.textGhostDk }}>
+              <span>{problemsOpen ? "▾" : "▸"} PROBLEMS</span>
+              <span style={{ marginLeft: "auto", display: "flex", gap: 12 }}>
+                <span style={{ color: errorCount ? "#FF8B7E" : color.textGhostDk }}>⊘ {errorCount}</span>
+                <span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span>
+              </span>
+            </div>
+            {problemsOpen && (
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 6px 8px" }}>
+                {problems.length === 0 ? (
+                  <div style={{ padding: "4px 8px", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>no problems detected</div>
+                ) : (
+                  [...problems].sort((a, b) => b.severity - a.severity || a.line - b.line).map((p, i) => (
+                    <div key={i} onClick={() => goToProblem(p)} className="pix-problem-row" style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 8px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, lineHeight: 1.5 }}>
+                      <span style={{ flex: "none", color: p.severity === 8 ? "#FF8B7E" : p.severity === 4 ? color.yellow : color.textMutedDk }}>{p.severity === 8 ? "⊘" : p.severity === 4 ? "⚠" : "ⓘ"}</span>
+                      <span style={{ color: color.textMutedDk, wordBreak: "break-word" }}>{p.message}</span>
+                      <span style={{ marginLeft: "auto", flex: "none", color: color.textGhostDk }}>{p.source}{p.code ? ` (${p.code})` : ""} · {p.line}:{p.col}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize" }} />
 
         <div style={{ borderLeft: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: "12px 14px 8px", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".12em", color: color.textGhostDk, display: "flex", justifyContent: "space-between" }}>

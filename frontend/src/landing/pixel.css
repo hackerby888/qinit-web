@@ -21,7 +21,7 @@
 
 @media (max-width: 880px) {
   .pix-hero-grid, .pix-pillars, .pix-3col, .pix-2col, .pix-ide-body { grid-template-columns: 1fr !important; }
-  .pix-ide-tree, .pix-ide-panel { display: none !important; }
+  .pix-ide-tree, .pix-ide-panel, .pix-resizer { display: none !important; }
   .pix-quorum-strip { flex-direction: column !important; align-items: flex-start !important; }
 }
 @media (prefers-reduced-motion: reduce) {
