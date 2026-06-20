@@ -1,7 +1,8 @@
 // Project persistence behind one async interface. The IDE only ever talks to `ProjectStore`, so the local
 // backend here can later be swapped for a cloud one (REST over the existing Mongo backend, `/api/projects`)
 // with zero changes at the call sites — the methods are already async and modelled document-per-project.
-import { NEW_CONTRACT, type WorkspaceFile } from "../workspace";
+import type { WorkspaceFile } from "../workspace";
+import { EXAMPLES } from "../examples";
 import type { Scenario } from "../scenarios";
 import { PROJECT_SCHEMA_VERSION, metaOf, type Project, type ProjectMeta } from "./types";
 
@@ -30,9 +31,9 @@ export interface ProjectStore {
   setCurrentId(id: string): Promise<void>;
 }
 
-// A blank project's starter contract.
+// A new project's starter contracts — the example set (Counter, Adder, Bank, Token).
 function seedFor(name: string): Project {
-  const files: WorkspaceFile[] = [{ name: "Contract.h", source: NEW_CONTRACT }];
+  const files: WorkspaceFile[] = EXAMPLES.map((e) => ({ name: e.file, source: e.source }));
   return {
     id: uid(),
     name,
