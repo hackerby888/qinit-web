@@ -6,6 +6,7 @@ import { test, expect, describe } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { collectStructs, enclosingEntry, maskComments, QPI_API, CONTAINERS } from "./members";
+import { scanContext } from "./contextlint";
 import { coreContractsDir, listContracts, readFile } from "./test-helpers";
 
 const DIR = coreContractsDir();
@@ -91,6 +92,16 @@ describe("corpus: parser survives the real system contracts", () => {
     }
 
     expect(failures).toEqual([]);
+  });
+
+  test.skipIf(!DIR)("the context-aware diagnostics flag nothing in the (correct) real contracts", () => {
+    const violations: string[] = [];
+    for (const file of listContracts(DIR!)) {
+      for (const f of scanContext(readFile(DIR!, file))) {
+        violations.push(`${file}: ${f.rule} @ ${f.offset}`);
+      }
+    }
+    expect(violations).toEqual([]);
   });
 
   test.skipIf(!DIR)("container fields in real contracts are parsed with their template types", () => {
