@@ -3,12 +3,14 @@
 import type * as Monaco from "monaco-editor";
 import { registerQpiSnippets } from "./snippets";
 import { registerQpiMembers } from "./members";
+import { registerQpiSignatureHelp } from "./signature";
 import { registerQpiCodeActions } from "./codeactions";
 import { attachQpiDiagnostics } from "./markers";
 
 export function setupQpi(monaco: typeof Monaco, editor: Monaco.editor.IStandaloneCodeEditor): Monaco.IDisposable {
   registerQpiSnippets(monaco);
   registerQpiMembers(monaco);
+  registerQpiSignatureHelp(monaco);
   registerQpiCodeActions(monaco);
 
   return attachQpiDiagnostics(monaco, editor);

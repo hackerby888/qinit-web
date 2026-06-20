@@ -8,7 +8,7 @@
 //   qpi.              -> the QPI host API (transfer, invocator, …)
 import type * as Monaco from "monaco-editor";
 
-interface Field {
+export interface Field {
   name: string;
   type: string;
 }
@@ -73,7 +73,7 @@ function parseFields(body: string): Field[] {
 
 // All `struct <Name> … { … }` bodies in the source, name -> fields. Nested structs are captured under
 // their own bare name too (the outer container's parsed fields are simply never looked up).
-function collectStructs(src: string): Map<string, Field[]> {
+export function collectStructs(src: string): Map<string, Field[]> {
   const map = new Map<string, Field[]>();
   const re = /\bstruct\s+(\w+)[^{};]*\{/g;
   let m: RegExpExecArray | null;
@@ -98,7 +98,7 @@ const ENTRY_RE = /\b((?:PUBLIC|PRIVATE)_(?:FUNCTION|PROCEDURE)(?:_WITH_LOCALS)?|
 
 // The entry body the cursor sits in -> its base name for <Name>_input/_output/_locals. For a lifecycle
 // hook (INITIALIZE etc.) the macro itself is the base (e.g. INITIALIZE_locals).
-function enclosingEntryBase(src: string, offset: number): string | null {
+export function enclosingEntryBase(src: string, offset: number): string | null {
   let base: string | null = null;
   let m: RegExpExecArray | null;
   ENTRY_RE.lastIndex = 0;
@@ -112,7 +112,7 @@ function enclosingEntryBase(src: string, offset: number): string | null {
 }
 
 // The QPI host API surface on `qpi.` — labels + arg snippets + a short return-type hint.
-const QPI_API: { label: string; insert: string; detail: string }[] = [
+export const QPI_API: { label: string; insert: string; detail: string }[] = [
   { label: "invocator", insert: "invocator()", detail: "id — the tx signer / calling contract" },
   { label: "originator", insert: "originator()", detail: "id — the root initiator of the call chain" },
   { label: "invocationReward", insert: "invocationReward()", detail: "sint64 — Qu sent with the invocation" },
@@ -142,13 +142,13 @@ const QPI_API: { label: string; insert: string; detail: string }[] = [
 
 // The public method surface of the QPI container templates (qpi.h), offered when a member chain resolves
 // to a container-typed field (e.g. `state.get().balances.` where `balances` is a HashMap).
-interface Method {
+export interface Method {
   label: string;
   insert: string;
   detail: string;
 }
 
-const CONTAINERS: Record<string, Method[]> = {
+export const CONTAINERS: Record<string, Method[]> = {
   Array: [
     { label: "get", insert: "get(${1:index})", detail: "const T& — element at index" },
     { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void" },
@@ -194,7 +194,7 @@ const CONTAINERS: Record<string, Method[]> = {
 };
 
 // The container kind of a field type, if any — `HashMap<id, sint64>` -> "HashMap".
-function containerKind(type: string): string | null {
+export function containerKind(type: string): string | null {
   const m = type.match(/^(Array|BitArray|HashMap|HashSet|Collection)\s*</);
   return m ? m[1] : null;
 }
@@ -211,7 +211,7 @@ function membersOfType(type: string, structs: Map<string, Field[]>): { fields: F
 
 // Walk a dotted field path from a root struct to its final type. e.g. root "StateData" + ["config"]
 // -> the type of StateData::config. Bails (null) on an unknown field or a non-struct mid-path.
-function walkPath(rootType: string, path: string[], structs: Map<string, Field[]>): string | null {
+export function walkPath(rootType: string, path: string[], structs: Map<string, Field[]>): string | null {
   let cur = rootType;
   for (const name of path) {
     const fields = structs.get(cur);
