@@ -96,19 +96,28 @@ export function collectStructs(src: string): Map<string, Field[]> {
 
 const ENTRY_RE = /\b((?:PUBLIC|PRIVATE)_(?:FUNCTION|PROCEDURE)(?:_WITH_LOCALS)?|INITIALIZE|BEGIN_EPOCH|END_EPOCH|BEGIN_TICK|END_TICK|POST_INCOMING_TRANSFER|PRE_ACQUIRE_SHARES|PRE_RELEASE_SHARES|POST_ACQUIRE_SHARES|POST_RELEASE_SHARES)\s*\(\s*(\w*)\s*\)/g;
 
-// The entry body the cursor sits in -> its base name for <Name>_input/_output/_locals. For a lifecycle
-// hook (INITIALIZE etc.) the macro itself is the base (e.g. INITIALIZE_locals).
-export function enclosingEntryBase(src: string, offset: number): string | null {
-  let base: string | null = null;
+// The entry body the cursor sits in: its declaring macro + the base name for <Name>_input/_output/_locals.
+// For a lifecycle hook (INITIALIZE etc.) the macro itself is the base (e.g. INITIALIZE_locals).
+export function enclosingEntry(src: string, offset: number): { macro: string; base: string } | null {
+  let hit: { macro: string; base: string } | null = null;
   let m: RegExpExecArray | null;
   ENTRY_RE.lastIndex = 0;
   while ((m = ENTRY_RE.exec(src)) !== null) {
     if (m.index >= offset) {
       break;
     }
-    base = m[2] || m[1];
+    hit = { macro: m[1], base: m[2] || m[1] };
   }
-  return base;
+  return hit;
+}
+
+export function enclosingEntryBase(src: string, offset: number): string | null {
+  return enclosingEntry(src, offset)?.base ?? null;
+}
+
+// A FUNCTION body is const — it can read state (`state.get()`) but not mutate it (`state.mut()`).
+export function isFunctionEntry(macro: string): boolean {
+  return macro.includes("FUNCTION");
 }
 
 // The QPI host API surface on `qpi.` — labels + arg snippets + a short return-type hint.
@@ -282,9 +291,13 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         if (chain[1].startsWith("state")) {
           rootType = "StateData";
         } else {
-          const base = enclosingEntryBase(src, model.getOffsetAt(position));
+          const entry = enclosingEntry(src, model.getOffsetAt(position));
           const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
-          rootType = base ? base + suffix : null;
+          // `locals` only exists in a _WITH_LOCALS entry that actually declares a <Name>_locals struct.
+          if (chain[1] === "locals" && !(entry && entry.macro.endsWith("_WITH_LOCALS") && structs.has(entry.base + "_locals"))) {
+            return { suggestions: [] };
+          }
+          rootType = entry ? entry.base + suffix : null;
         }
         if (!rootType) {
           return { suggestions: [] };
@@ -300,7 +313,7 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         return { suggestions: [...fields.map(fieldItem), ...methods.map(methodItem)] };
       }
 
-      // state. -> mut() / get()
+      // state. -> get() always; mut() only where state may be mutated (not in a const FUNCTION body).
       if (STATE_BARE.test(line)) {
         const accessor = (name: string, doc: string): Monaco.languages.CompletionItem => ({
           label: name,
@@ -309,7 +322,13 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
           detail: doc,
           range,
         });
-        return { suggestions: [accessor("mut", "writable StateData (marks the slot dirty)"), accessor("get", "read-only StateData")] };
+
+        const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
+        const suggestions = [accessor("get", "read-only StateData")];
+        if (!entry || !isFunctionEntry(entry.macro)) {
+          suggestions.unshift(accessor("mut", "writable StateData (marks the slot dirty)"));
+        }
+        return { suggestions };
       }
 
       return { suggestions: [] };

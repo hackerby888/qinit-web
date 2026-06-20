@@ -3,6 +3,13 @@
 // (state / input / output / locals / qpi). Member access off these is resolved separately in ./members.
 import type * as Monaco from "monaco-editor";
 import { QPI_TYPES, QPI_BUILTINS, QPI_MACROS } from "./vocab";
+import { enclosingEntry, collectStructs } from "./members";
+
+// `locals` only makes sense inside a _WITH_LOCALS entry that declares a <Name>_locals struct.
+function localsAvailable(model: Monaco.editor.ITextModel, position: Monaco.Position): boolean {
+  const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
+  return !!entry && entry.macro.endsWith("_WITH_LOCALS") && collectStructs(model.getValue()).has(entry.base + "_locals");
+}
 
 // Macros that open a `{ … }` body: entry points take a Name arg, lifecycle/registration hooks take none.
 const ENTRY_MACROS = new Set([
@@ -96,7 +103,8 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         range,
       }));
 
-      const builtins: Monaco.languages.CompletionItem[] = QPI_BUILTINS.map((b) => ({
+      const showLocals = localsAvailable(model, position);
+      const builtins: Monaco.languages.CompletionItem[] = QPI_BUILTINS.filter((b) => b !== "locals" || showLocals).map((b) => ({
         label: b,
         kind: monaco.languages.CompletionItemKind.Variable,
         insertText: b,
