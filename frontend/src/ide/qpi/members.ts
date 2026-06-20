@@ -115,25 +115,32 @@ export function enclosingEntryBase(src: string, offset: number): string | null {
   return enclosingEntry(src, offset)?.base ?? null;
 }
 
-// A FUNCTION body is const — it can read state (`state.get()`) but not mutate it (`state.mut()`).
+// A FUNCTION body is const — it can read state (`state.get()`) but not mutate it (`state.mut()`), and its
+// qpi context is the read-only one (no transfer/burn/issueAsset/…).
 export function isFunctionEntry(macro: string): boolean {
   return macro.includes("FUNCTION");
 }
 
+// A user PUBLIC_/PRIVATE_ function/procedure — the only entries with author-authored input/output structs.
+// System hooks (INITIALIZE, BEGIN_TICK, …) carry NoData / qpi.h-defined IO instead.
+export function isUserEntry(macro: string): boolean {
+  return /^(?:PUBLIC|PRIVATE)_(?:FUNCTION|PROCEDURE)/.test(macro);
+}
+
 // The QPI host API surface on `qpi.` — labels + arg snippets + a short return-type hint.
-export const QPI_API: { label: string; insert: string; detail: string }[] = [
+export const QPI_API: Method[] = [
   { label: "invocator", insert: "invocator()", detail: "id — the tx signer / calling contract" },
   { label: "originator", insert: "originator()", detail: "id — the root initiator of the call chain" },
   { label: "invocationReward", insert: "invocationReward()", detail: "sint64 — Qu sent with the invocation" },
-  { label: "transfer", insert: "transfer(${1:destination}, ${2:amount})", detail: "sint64 — send Qu; returns remaining" },
-  { label: "burn", insert: "burn(${1:amount})", detail: "sint64 — destroy Qu" },
+  { label: "transfer", insert: "transfer(${1:destination}, ${2:amount})", detail: "sint64 — send Qu; returns remaining", proc: true },
+  { label: "burn", insert: "burn(${1:amount})", detail: "sint64 — destroy Qu", proc: true },
   { label: "getEntity", insert: "getEntity(${1:id}, ${2:entity})", detail: "bit — spectrum balance lookup" },
-  { label: "issueAsset", insert: "issueAsset(${1:name}, ${2:issuer}, ${3:decimals}, ${4:numberOfShares}, ${5:unitOfMeasurement})", detail: "sint64 — mint an asset" },
+  { label: "issueAsset", insert: "issueAsset(${1:name}, ${2:issuer}, ${3:decimals}, ${4:numberOfShares}, ${5:unitOfMeasurement})", detail: "sint64 — mint an asset", proc: true },
   { label: "isAssetIssued", insert: "isAssetIssued(${1:issuer}, ${2:assetName})", detail: "bit" },
   { label: "numberOfShares", insert: "numberOfShares(${1:asset}, ${2:ownership}, ${3:possession})", detail: "sint64" },
   { label: "numberOfPossessedShares", insert: "numberOfPossessedShares(${1:assetName}, ${2:issuer}, ${3:owner}, ${4:possessor}, ${5:ownershipManagingContract}, ${6:possessionManagingContract})", detail: "sint64" },
-  { label: "transferShareOwnershipAndPossession", insert: "transferShareOwnershipAndPossession(${1:assetName}, ${2:issuer}, ${3:owner}, ${4:possessor}, ${5:numberOfShares}, ${6:newOwnerAndPossessor})", detail: "sint64" },
-  { label: "distributeDividends", insert: "distributeDividends(${1:amountPerShare})", detail: "bit" },
+  { label: "transferShareOwnershipAndPossession", insert: "transferShareOwnershipAndPossession(${1:assetName}, ${2:issuer}, ${3:owner}, ${4:possessor}, ${5:numberOfShares}, ${6:newOwnerAndPossessor})", detail: "sint64", proc: true },
+  { label: "distributeDividends", insert: "distributeDividends(${1:amountPerShare})", detail: "bit", proc: true },
   { label: "nextId", insert: "nextId(${1:currentId})", detail: "id — next occupied spectrum id" },
   { label: "prevId", insert: "prevId(${1:currentId})", detail: "id" },
   { label: "tick", insert: "tick()", detail: "uint32 — current tick" },
@@ -155,6 +162,7 @@ export interface Method {
   label: string;
   insert: string;
   detail: string;
+  proc?: boolean; // a mutating qpi method (QpiContextProcedureCall) — not available in a const function
 }
 
 export const CONTAINERS: Record<string, Method[]> = {
@@ -275,9 +283,11 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         range,
       });
 
-      // qpi.<api>
+      // qpi.<api> — a const function only sees the read-only host API (no transfer/burn/issueAsset/…).
       if (QPI_ACCESS.test(line)) {
-        return { suggestions: QPI_API.map(methodItem) };
+        const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
+        const api = entry && isFunctionEntry(entry.macro) ? QPI_API.filter((m) => !m.proc) : QPI_API;
+        return { suggestions: api.map(methodItem) };
       }
 
       // state.mut()/get().<path>. | input/output/locals.<path>.  -> resolve the chain to a type, then
@@ -293,6 +303,10 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         } else {
           const entry = enclosingEntry(src, model.getOffsetAt(position));
           const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
+          // input/output are author-authored only in a user fn/proc; system hooks carry NoData / qpi.h IO.
+          if ((chain[1] === "input" || chain[1] === "output") && !(entry && isUserEntry(entry.macro))) {
+            return { suggestions: [] };
+          }
           // `locals` only exists in a _WITH_LOCALS entry that actually declares a <Name>_locals struct.
           if (chain[1] === "locals" && !(entry && entry.macro.endsWith("_WITH_LOCALS") && structs.has(entry.base + "_locals"))) {
             return { suggestions: [] };

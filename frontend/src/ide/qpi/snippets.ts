@@ -3,12 +3,26 @@
 // (state / input / output / locals / qpi). Member access off these is resolved separately in ./members.
 import type * as Monaco from "monaco-editor";
 import { QPI_TYPES, QPI_BUILTINS, QPI_MACROS } from "./vocab";
-import { enclosingEntry, collectStructs } from "./members";
+import { enclosingEntry, collectStructs, isUserEntry } from "./members";
 
-// `locals` only makes sense inside a _WITH_LOCALS entry that declares a <Name>_locals struct.
-function localsAvailable(model: Monaco.editor.ITextModel, position: Monaco.Position): boolean {
-  const entry = enclosingEntry(model.getValue(), model.getOffsetAt(position));
-  return !!entry && entry.macro.endsWith("_WITH_LOCALS") && collectStructs(model.getValue()).has(entry.base + "_locals");
+// Which framework builtins make sense where the cursor is: `qpi`/`state` everywhere; `input`/`output`
+// only in a user fn/proc (system hooks carry NoData / qpi.h IO); `locals` only in a _WITH_LOCALS entry
+// that declares a <Name>_locals struct.
+function allowedBuiltins(model: Monaco.editor.ITextModel, position: Monaco.Position): (b: string) => boolean {
+  const src = model.getValue();
+  const entry = enclosingEntry(src, model.getOffsetAt(position));
+  const userEntry = !!entry && isUserEntry(entry.macro);
+  const hasLocals = !!entry && entry.macro.endsWith("_WITH_LOCALS") && collectStructs(src).has(entry.base + "_locals");
+
+  return (b) => {
+    if (b === "input" || b === "output") {
+      return userEntry;
+    }
+    if (b === "locals") {
+      return hasLocals;
+    }
+    return true;
+  };
 }
 
 // Macros that open a `{ … }` body: entry points take a Name arg, lifecycle/registration hooks take none.
@@ -103,8 +117,8 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         range,
       }));
 
-      const showLocals = localsAvailable(model, position);
-      const builtins: Monaco.languages.CompletionItem[] = QPI_BUILTINS.filter((b) => b !== "locals" || showLocals).map((b) => ({
+      const allow = allowedBuiltins(model, position);
+      const builtins: Monaco.languages.CompletionItem[] = QPI_BUILTINS.filter(allow).map((b) => ({
         label: b,
         kind: monaco.languages.CompletionItemKind.Variable,
         insertText: b,
