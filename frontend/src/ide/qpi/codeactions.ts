@@ -71,6 +71,10 @@ export function registerQpiCodeActions(monaco: typeof Monaco): void {
             const range = new monaco.Range(lineNo, fix.start + 1, lineNo, fix.end + 1);
             actions.push(buildAction(model, `Rewrite as ${op === "/" ? "div" : "mod"}(…)`, marker, [{ range, text: fix.text }]));
           }
+        } else if (code === "qpi/mut-in-function") {
+          // The marker covers the `mut` token — swap it for `get`.
+          const range = new monaco.Range(marker.startLineNumber, marker.startColumn, marker.endLineNumber, marker.endColumn);
+          actions.push(buildAction(model, "Change to state.get() (a function can't mutate)", marker, [{ range, text: "get" }]));
         } else if (code === "qpi/stack-local") {
           const offset = model.getOffsetAt({ lineNumber: marker.startLineNumber, column: marker.startColumn });
           const endOffset = model.getOffsetAt({ lineNumber: marker.endLineNumber, column: marker.endColumn });

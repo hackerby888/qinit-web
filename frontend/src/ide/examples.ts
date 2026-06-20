@@ -171,8 +171,142 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 };
 `;
 
+const token = `// Token — a richer contract for the step debugger. A HashMap ledger of balances, deposits that credit
+// your tx value, internal Sends, Withdraw (a real \`transfer\` host call), and Burn (a \`burn\` host call),
+// each with a LOG_INFO. Run a procedure, then "🐞 step debug" its tx: walk the StateData diff (the
+// HashMap column changes), the host-event timeline, and the decoded log.
+using namespace QPI;
+
+struct CONTRACT_STATE2_TYPE
+{
+};
+
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        HashMap<id, uint64, 1024> balances;
+        uint64 totalDeposited;
+        uint64 totalBurned;
+    };
+
+    // A QPI log message: any struct ending in \`sint8 _terminator\`. The debugger decodes the bytes before
+    // it into named fields.
+    struct MoveLog
+    {
+        id account;
+        uint64 amount;
+        sint8 _terminator;
+    };
+
+    struct Deposit_input {};
+    struct Deposit_output { uint64 balance; };
+    struct Deposit_locals { uint64 bal; MoveLog log; };
+
+    struct Send_input { id to; uint64 amount; };
+    struct Send_output { bit ok; };
+    struct Send_locals { uint64 from; uint64 to; MoveLog log; };
+
+    struct Withdraw_input { uint64 amount; };
+    struct Withdraw_output { bit ok; };
+    struct Withdraw_locals { uint64 bal; MoveLog log; };
+
+    struct Burn_input { uint64 amount; };
+    struct Burn_output {};
+    struct Burn_locals {};
+
+    struct BalanceOf_input { id who; };
+    struct BalanceOf_output { uint64 balance; };
+    struct BalanceOf_locals { uint64 bal; };
+
+    // Credit the Qu you sent (value) to your ledger balance.
+    PUBLIC_PROCEDURE_WITH_LOCALS(Deposit)
+    {
+        locals.bal = 0;
+        state.get().balances.get(qpi.invocator(), locals.bal);
+        state.mut().balances.set(qpi.invocator(), locals.bal + qpi.invocationReward());
+        state.mut().totalDeposited += qpi.invocationReward();
+        output.balance = locals.bal + qpi.invocationReward();
+
+        locals.log.account = qpi.invocator();
+        locals.log.amount = qpi.invocationReward();
+        LOG_INFO(locals.log);
+    }
+
+    // Move ledger balance to another id (no Qu leaves the contract). Rejects (ok=0) if you're short.
+    PUBLIC_PROCEDURE_WITH_LOCALS(Send)
+    {
+        output.ok = 0;
+        locals.from = 0;
+        state.get().balances.get(qpi.invocator(), locals.from);
+        if (locals.from < input.amount)
+        {
+            return;
+        }
+        locals.to = 0;
+        state.get().balances.get(input.to, locals.to);
+        state.mut().balances.set(qpi.invocator(), locals.from - input.amount);
+        state.mut().balances.set(input.to, locals.to + input.amount);
+        output.ok = 1;
+
+        locals.log.account = input.to;
+        locals.log.amount = input.amount;
+        LOG_INFO(locals.log);
+    }
+
+    // Cash ledger balance out as real Qu — a \`transfer\` host call you'll see in the debugger.
+    PUBLIC_PROCEDURE_WITH_LOCALS(Withdraw)
+    {
+        output.ok = 0;
+        locals.bal = 0;
+        state.get().balances.get(qpi.invocator(), locals.bal);
+        if (locals.bal < input.amount)
+        {
+            return;
+        }
+        state.mut().balances.set(qpi.invocator(), locals.bal - input.amount);
+        qpi.transfer(qpi.invocator(), input.amount);
+        output.ok = 1;
+
+        locals.log.account = qpi.invocator();
+        locals.log.amount = input.amount;
+        LOG_INFO(locals.log);
+    }
+
+    // Burn Qu the contract holds — a \`burn\` host call.
+    PUBLIC_PROCEDURE_WITH_LOCALS(Burn)
+    {
+        qpi.burn(input.amount);
+        state.mut().totalBurned += input.amount;
+    }
+
+    PUBLIC_FUNCTION_WITH_LOCALS(BalanceOf)
+    {
+        locals.bal = 0;
+        state.get().balances.get(input.who, locals.bal);
+        output.balance = locals.bal;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Deposit, 1);
+        REGISTER_USER_PROCEDURE(Send, 2);
+        REGISTER_USER_PROCEDURE(Withdraw, 3);
+        REGISTER_USER_PROCEDURE(Burn, 4);
+        REGISTER_USER_FUNCTION(BalanceOf, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().totalDeposited = 0;
+        state.mut().totalBurned = 0;
+    }
+};
+`;
+
 export const EXAMPLES: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Adder.h", name: "Adder", slot: 28, source: adder },
   { file: "Bank.h", name: "Bank", slot: 28, source: bank },
+  { file: "Token.h", name: "Token", slot: 28, source: token },
 ];

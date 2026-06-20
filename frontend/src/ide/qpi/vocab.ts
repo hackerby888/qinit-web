@@ -8,7 +8,7 @@ export const QPI_TYPES = [
   "uint8", "uint16", "uint32", "uint64", "uint128",
   "sint8", "sint16", "sint32", "sint64",
   "bit", "id", "m256i",
-  "Array", "BitArray", "HashMap", "HashSet", "Collection",
+  "Array", "BitArray", "SlowAnySizeArray", "HashMap", "HashSet", "Collection", "LinkedList", "ProposalVoting",
   "Asset", "Entity", "ContractBase", "NoData", "ProposalAndVotingByComputors",
 ];
 

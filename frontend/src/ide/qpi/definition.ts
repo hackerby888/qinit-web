@@ -6,7 +6,7 @@ import type * as Monaco from "monaco-editor";
 
 // The source offset where `word` is *defined*, or null. Uses the regex `d` flag to read the captured
 // group's start index precisely.
-function definitionOffset(src: string, word: string): number | null {
+export function definitionOffset(src: string, word: string): number | null {
   const w = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const patterns = [
     // a function / procedure entry: PUBLIC_PROCEDURE(word) / PUBLIC_FUNCTION_WITH_LOCALS(word) / …

@@ -77,9 +77,10 @@ export function FileExplorer({ files, active, onSelect, onCreate, onRename, onDe
 
   return (
     <div style={{ borderRight: HAIR, background: color.panelDeep, padding: "14px 0", fontFamily: font.mono, fontSize: 12.5, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px 10px" }}>
-        <span style={{ color: color.textGhostDk, letterSpacing: ".12em", fontSize: 10.5 }}>EXPLORER</span>
-        <button onClick={() => { setAdding(true); setDraft(""); }} title="New file" style={{ ...iconBtn, fontSize: 15, color: color.accent }}>+</button>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
+        <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
+        <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
+        <button onClick={() => { setAdding(true); setDraft(""); }} title="New file" style={{ ...iconBtn, marginLeft: "auto", fontSize: 16, color: color.accent }}>+</button>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px", color: color.textMutedDk }}>
@@ -107,7 +108,7 @@ export function FileExplorer({ files, active, onSelect, onCreate, onRename, onDe
             key={f.name}
             onClick={() => onSelect(f.name)}
             onDoubleClick={() => { setRenaming(f.name); setRenameDraft(f.name); }}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px 5px 40px", cursor: "pointer", background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px 5px 37px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
           >
             <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>

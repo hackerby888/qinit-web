@@ -119,7 +119,7 @@ const toB64 = (s: string): string => btoa(unescape(encodeURIComponent(s)));
 const fromB64 = (b: string): string => decodeURIComponent(escape(atob(b)));
 
 export function shareUrl(ws: Workspace): string {
-  return `${location.origin}${location.pathname}#p=${toB64(JSON.stringify(ws))}`;
+  return `${location.origin}/ide#p=${toB64(JSON.stringify(ws))}`;
 }
 
 function decodeShareFromLocation(): Workspace | null {
@@ -136,4 +136,14 @@ function decodeShareFromLocation(): Workspace | null {
 
 function clearShareFromLocation(): void {
   history.replaceState(null, "", location.pathname + location.search);
+}
+
+// A shared workspace from a `#p=` URL, consumed by the projects gallery (which imports it as a new
+// project). Clears the hash so a reload doesn't re-import.
+export function decodeSharedWorkspace(): Workspace | null {
+  const ws = decodeShareFromLocation();
+  if (ws) {
+    clearShareFromLocation();
+  }
+  return ws;
 }

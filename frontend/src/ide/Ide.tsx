@@ -3,17 +3,22 @@
 // this page via @qinit/engine (./engine). The engine/crypto modules are dynamically imported so a load
 // failure degrades to "compile only" rather than breaking the editor.
 import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
+import { Card, SectionHead, NeoBtn } from "./ui";
 import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
-import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
+import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine, Account, TxDetail } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep } from "./engine";
+import { Debugger } from "./Debugger";
+import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
+import { getStore } from "./projects/store";
+import type { Project } from "./projects/types";
 import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
 
@@ -21,7 +26,7 @@ const FRAME = `3px solid ${color.ink}`;
 const HAIR = `3px solid ${color.hair}`;
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 
-type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string };
+type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array };
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
@@ -41,6 +46,17 @@ const assignSlot = (reg: Record<string, DeployedContract>, name: string): number
 type Phase = "idle" | "compiling" | "ready" | "error";
 type MonacoNS = Parameters<OnMount>[1];
 type EditorRef = Parameters<OnMount>[0];
+
+
+// One row of the Problems panel — a marker (qpi lexical/context, or clang) on the active model.
+interface ProblemItem {
+  severity: number; // monaco MarkerSeverity: 8 error, 4 warning, 2 info, 1 hint
+  message: string;
+  line: number;
+  col: number;
+  source: string;
+  code: string;
+}
 
 function TrafficLights() {
   return (
@@ -126,7 +142,7 @@ const fieldInput: CSSProperties = {
   outline: "none",
 };
 
-function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun }: {
+function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun, onDebug }: {
   kind: "function" | "procedure";
   id: string;
   entry: IdlEntry;
@@ -135,13 +151,15 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
   pending?: boolean;
   detail?: TxDetail;
   onRun: (input: Record<string, string>, value: number) => void;
+  onDebug?: (steps: DebugStep[], title: string) => void;
 }) {
   const [vals, setVals] = useState<Record<string, string>>({});
   const [value, setValue] = useState("0");
   const accent = kind === "function" ? color.accent : color.secondary;
 
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+    <Card frame={accent} shadow={3}>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 7, height: 7, background: accent, flex: "none" }} />
         <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
@@ -182,6 +200,9 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
 
       {detail && (
         <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textFaintDk, lineHeight: 1.6, borderTop: `1px solid ${color.hair}`, paddingTop: 5, display: "flex", flexDirection: "column", gap: 1 }}>
+          {onDebug && detail.steps && detail.steps.length > 0 && (
+            <button onClick={() => onDebug(detail.steps, `${entry.name}()`)} title="Step through this transaction" style={{ alignSelf: "flex-start", border: `1px solid ${color.hair2}`, background: color.void, color: color.accent, fontFamily: font.mono, fontSize: 10.5, padding: "2px 8px", cursor: "pointer", marginBottom: 4 }}>🐞 step debug</button>
+          )}
           {detail.caller && detail.caller !== "(none)" && <div>caller <span style={{ color: color.textMutedDk }}>{shortId(detail.caller)}</span></div>}
           {detail.in && detail.in !== "(none)" && <div>in <span style={{ color: color.textMutedDk }}>{detail.in}</span></div>}
           {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.before} → {d.after}</div>)}
@@ -189,7 +210,8 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
           {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
         </div>
       )}
-    </div>
+      </div>
+    </Card>
   );
 }
 
@@ -200,23 +222,25 @@ function StatePanel({ dump }: { dump?: StateDump }) {
     return null;
   }
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>STATE</div>
-      {dump.fields.map((f) => (
-        <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
-          <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
-          <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
-        </div>
-      ))}
-      {dump.cols.map((c) => (
-        <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
-          <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
-          {c.entries.map((e, i) => (
-            <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{e}</div>
-          ))}
-        </div>
-      ))}
-    </div>
+    <Card>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 5 }}>
+        <SectionHead label="STATE" accent={color.secondary} />
+        {dump.fields.map((f) => (
+          <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
+            <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
+            <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
+          </div>
+        ))}
+        {dump.cols.map((c) => (
+          <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
+            <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
+            {c.entries.map((e, i) => (
+              <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{e}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -242,25 +266,93 @@ const selectStyle: CSSProperties = {
 };
 
 // Pick the caller for a write + see its balance (Remix's account dropdown). Dev accounts are funded by
-// the engine faucet.
-function AccountsBar({ accounts, caller, onSelect, balances }: {
+// the engine faucet; the +fund control tops the selected account up with more qus straight from it.
+function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
   accounts: Account[];
   caller: string;
   onSelect: (id: string) => void;
   balances: Record<string, string>;
+  onFund: (id: string, qus: number) => void;
 }) {
+  const [amount, setAmount] = useState("1000000000");
   return (
-    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
-      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>ACCOUNTS · caller</div>
-      <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
-        {accounts.map((a, i) => (
-          <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
-        ))}
-      </select>
-      <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
-        balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
+    <Card>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <SectionHead label="ACCOUNTS" right={<span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>caller</span>} />
+        <select value={caller} onChange={(e) => onSelect(e.target.value)} style={selectStyle}>
+          {accounts.map((a, i) => (
+            <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
+          ))}
+        </select>
+        <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
+          balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput} />
+          <NeoBtn onClick={() => onFund(caller, Number(amount) || 0)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
+        </div>
       </div>
-    </div>
+    </Card>
+  );
+}
+
+// Deterministic testnet controls (Remix has none — we own the chain in-page). Pause/step time, jump an
+// epoch to fire BEGIN/END_EPOCH hooks, and reset/replay the whole session against a fresh chain.
+function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpoch, onReset, onReplay, onSpeed }: {
+  paused: boolean;
+  speed: number;
+  info: { tick: number; epoch: number } | null;
+  epochLen: number;
+  onToggle: () => void;
+  onStep: (n: number) => void;
+  onEpoch: () => void;
+  onReset: () => void;
+  onReplay: () => void;
+  onSpeed: (ticksPerSec: number) => void;
+}) {
+  const tick = info?.tick ?? 0;
+  const within = epochLen > 0 ? tick % epochLen : 0;
+  const nextBoundary = tick + (epochLen > 0 ? epochLen - within : 1);
+  const pct = epochLen > 0 ? (within / epochLen) * 100 : 0;
+  return (
+    <Card frame={color.accentDeep} shadow={5}>
+      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 9 }}>
+        <SectionHead
+          label="TESTNET"
+          right={
+            <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>
+              tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
+            </span>
+          }
+        />
+
+        <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 9.5, color: color.textGhostDk }}>
+          <span style={{ flex: 1, height: 8, background: color.void, border: `1px solid ${color.hair}`, position: "relative", overflow: "hidden" }}>
+            <span style={{ position: "absolute", inset: 0, width: `${pct}%`, background: color.accentDeep }} />
+          </span>
+          <span>{within}/{epochLen}</span>
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
+          <NeoBtn onClick={onToggle} active={paused} title={paused ? "Resume auto-tick" : "Pause auto-tick"}>{paused ? "▶ run" : "⏸ pause"}</NeoBtn>
+          <NeoBtn onClick={() => onStep(1)} title="Advance 1 tick">⏭ +1</NeoBtn>
+          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks">⏩ +10</NeoBtn>
+          <NeoBtn onClick={onEpoch} accent={color.secondary} title={`Jump to tick ${nextBoundary} (the next epoch boundary) — fires END_EPOCH → BEGIN_EPOCH`}>⤓ epoch</NeoBtn>
+          <NeoBtn onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset</NeoBtn>
+          <NeoBtn onClick={onReplay} title="Replay every tx this session from genesis">↻ replay</NeoBtn>
+          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
+            speed
+            <select value={speed} onChange={(e) => onSpeed(Number(e.target.value))} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}>
+              <option value={1}>1×</option>
+              <option value={2}>2×</option>
+              <option value={5}>5×</option>
+              <option value={10}>10×</option>
+            </select>
+          </span>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -273,14 +365,14 @@ function DeployedList({ deployed, selected, onSelect }: {
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>DEPLOYED CONTRACTS</div>
+      <SectionHead label="DEPLOYED" />
       {Object.values(deployed).map((d) => {
         const on = d.name === selected;
         return (
           <div
             key={d.name}
             onClick={() => onSelect(d.name)}
-            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 9px", cursor: "pointer", border: `1px solid ${on ? color.accent : color.hair}`, background: on ? `${color.accent}12` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
+            style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 9px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : color.hair2}`, border: `1px solid ${on ? color.accent : color.hair}`, borderLeftWidth: 3, background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
           >
             <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
             <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
@@ -293,8 +385,74 @@ function DeployedList({ deployed, selected, onSelect }: {
   );
 }
 
+// Open-file tabs over the editor (VSCode's editor tabs). The active file is always an open tab; a tab
+// shows a dirty dot when its source has edits not yet built, and a close ✕ on hover. The last tab can't
+// be closed — the editor always needs an active file.
+function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
+  tabs: string[];
+  active: string;
+  dirty: (name: string) => boolean;
+  onSelect: (name: string) => void;
+  onClose: (name: string, e: { stopPropagation(): void }) => void;
+}) {
+  return (
+    <div className="pix-tabs" style={{ display: "flex", height: 36, flex: "none", borderBottom: HAIR, background: color.panelDeep, overflowX: "auto", overflowY: "hidden" }}>
+      {tabs.map((name) => {
+        const on = name === active;
+        const d = dirty(name);
+        return (
+          <div
+            key={name}
+            className="pix-tab"
+            onClick={() => onSelect(name)}
+            onMouseDown={(e) => { if (e.button === 1) { onClose(name, e); } }}
+            title={name}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "0 10px",
+              flex: "none",
+              maxWidth: 200,
+              cursor: "pointer",
+              borderRight: `1px solid ${color.hair}`,
+              borderBottom: on ? `2px solid ${color.accent}` : "2px solid transparent",
+              background: on ? color.panel : "transparent",
+              color: on ? color.accent : color.textMutedDk,
+              fontFamily: font.mono,
+              fontSize: 12,
+            }}
+          >
+            <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+            <span style={{ position: "relative", width: 14, height: 14, flex: "none" }}>
+              {d && (
+                <span className="pix-tab-dot" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: color.yellow, fontSize: 10 }}>●</span>
+              )}
+              <button
+                className="pix-tab-x"
+                onClick={(e) => onClose(name, e)}
+                title="Close"
+                style={{ position: "absolute", inset: 0, border: "none", background: "transparent", color: color.textGhostDk, cursor: "pointer", fontFamily: font.mono, fontSize: 14, lineHeight: 1, padding: 0 }}
+              >
+                ×
+              </button>
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function Ide() {
-  const [ws, setWs] = useState<Workspace>(() => loadWorkspace());
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const [ws, setWs] = useState<Workspace>({ files: [], active: "" });
+  const [projectName, setProjectName] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
+  const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string } | null>(null); // open step debugger
   const [phase, setPhase] = useState<Phase>("idle");
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
@@ -310,18 +468,33 @@ export default function Ide() {
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
+  const [paused, setPaused] = useState(false);
+  const [speed, setSpeed] = useState(1); // auto-ticks per second
+  const [epochLen, setEpochLen] = useState(3000); // ticks per epoch (from the engine)
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [scenResults, setScenResults] = useState<Record<string, ScenarioResult>>({});
+  const [runningScen, setRunningScen] = useState<string | null>(null);
+  const [problems, setProblems] = useState<ProblemItem[]>([]);
+  const [problemsOpen, setProblemsOpen] = useState(false);
+  const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
+  const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
   const engineRef = useRef<IdeEngine | null>(null);
+  const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
   const consoleRef = useRef<HTMLDivElement | null>(null);
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
+  const projectRef = useRef<Project | null>(null); // the loaded project doc (carries id/createdAt for save)
 
   // Auto-compile coordination (Remix-style background diagnostics). Refs so the debounce reads fresh
   // values without re-creating the callback.
   const sourceRef = useRef("");
   const contractNameRef = useRef("");
+  const activeNameRef = useRef(""); // active file name (with extension) — keys the dirty-tracking `built` map
   const autoSeqRef = useRef(0);
   const autoSentRef = useRef<string>("");   // last source we POSTed — dedupe undo/redo/whitespace churn
   const autoBusyRef = useRef(false);        // single in-flight
@@ -336,12 +509,87 @@ export default function Ide() {
 
   sourceRef.current = source;
   contractNameRef.current = contractName;
+  activeNameRef.current = ws.active;
 
-  // Persist the workspace (debounced) on every edit.
+  // Load the project for this route. Seeds the editor (files/active), open tabs and saved scenarios; an
+  // unknown id bounces back to the gallery. Async by design — the same call shape a cloud store would use.
   useEffect(() => {
-    const t = setTimeout(() => saveWorkspace(ws), 400);
+    let cancelled = false;
+    void (async () => {
+      if (!id) {
+        navigate("/ide");
+        return;
+      }
+      const p = await getStore().load(id);
+      if (cancelled) {
+        return;
+      }
+      if (!p) {
+        navigate("/ide");
+        return;
+      }
+      projectRef.current = p;
+      setWs({ files: p.files, active: p.active });
+      setScenarios(p.scenarios ?? []);
+      setOpenTabs(p.openTabs ?? []);
+      setProjectName(p.name);
+      void getStore().setCurrentId(p.id);
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, navigate]);
+
+  // Write the current editor state into the loaded project document and persist it. Shared by the debounced
+  // auto-save and the Ctrl+S handler.
+  const persistProject = useCallback((): void => {
+    const p = projectRef.current;
+    if (!p) {
+      return;
+    }
+    p.files = ws.files;
+    p.active = ws.active;
+    p.openTabs = openTabs;
+    p.scenarios = scenarios;
+    p.name = projectName;
+    void getStore().save(p);
+  }, [ws, openTabs, scenarios, projectName]);
+
+  // Persist the whole project document (debounced) whenever its contents change.
+  useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+    const t = setTimeout(persistProject, 400);
     return () => clearTimeout(t);
-  }, [ws]);
+  }, [persistProject, loaded]);
+
+  // Ctrl/Cmd+S — save now (flush the debounce) and swallow the browser's save dialog. Works IDE-wide, not
+  // just when the editor is focused. A ref keeps the listener registered once while always running the
+  // latest closure.
+  const persistRef = useRef(persistProject);
+  persistRef.current = persistProject;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        persistRef.current();
+        setSaved(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Clear the "saved" flash shortly after it shows.
+  useEffect(() => {
+    if (!saved) {
+      return;
+    }
+    const t = setTimeout(() => setSaved(false), 1300);
+    return () => clearTimeout(t);
+  }, [saved]);
 
   // Keep the console pinned to the newest line.
   useEffect(() => {
@@ -359,7 +607,19 @@ export default function Ide() {
   }, []);
 
   const selectFile = (name: string) => {
+    setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setWs((w) => ({ ...w, active: name }));
+  };
+
+  // Picking a contract in the deployed list opens its source tab; the sync effect then points the panel
+  // at it. Falls back to a bare select if no open file matches (e.g. the source was renamed/closed).
+  const selectDeployed = (cn: string) => {
+    const file = ws.files.find((f) => baseName(f.name) === cn);
+    if (file) {
+      selectFile(file.name);
+    } else {
+      setSelected(cn);
+    }
   };
 
   const editSource = (src: string) => {
@@ -367,6 +627,7 @@ export default function Ide() {
   };
 
   const createFile = (name: string) => {
+    setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
   };
 
@@ -375,6 +636,13 @@ export default function Ide() {
       files: w.files.map((f) => (f.name === oldName ? { ...f, name: newName } : f)),
       active: w.active === oldName ? newName : w.active,
     }));
+    setBuilt((b) => {
+      if (!(oldName in b)) {
+        return b;
+      }
+      const { [oldName]: src, ...rest } = b;
+      return { ...rest, [newName]: src };
+    });
   };
 
   const deleteFile = (name: string) => {
@@ -425,6 +693,200 @@ export default function Ide() {
   };
 
 
+  const deployImages = (): DeployImage[] =>
+    Object.values(deployedRef.current).map((d) => ({ slot: d.slot, wasm: d.wasm, name: d.name }));
+
+  // Re-pull everything the engine panel shows after a manual time change (step/epoch/reset/replay) — the
+  // auto-ticker's onTick/onTxProcessed callbacks don't fire for these.
+  const refreshEngineViews = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    setEngineInfo(await eng.info());
+    await refreshBalances(await eng.ensureAccounts());
+    for (const name of Object.keys(deployedRef.current)) {
+      await refreshState(name);
+    }
+  };
+
+  const togglePause = () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    if (eng.isRunning()) {
+      eng.pause();
+      setPaused(true);
+      appendLog("engine paused — drive time with +1 / +10 / epoch");
+    } else {
+      eng.resume();
+      setPaused(false);
+      appendLog("engine resumed");
+    }
+  };
+
+  const stepTicks = async (n: number) => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    await eng.step(n);
+    await refreshEngineViews();
+  };
+
+  const advanceEpoch = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    const info = await eng.advanceEpoch();
+    appendLog(`advanced to epoch ${info.epoch} — fired END_EPOCH → BEGIN_EPOCH`);
+    await refreshEngineViews();
+  };
+
+  const resetChain = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    await eng.reset(deployImages());
+    setPaused(false);
+    setPending({});
+    appendLog("chain reset to genesis — contracts re-deployed, INITIALIZE re-run");
+    await refreshEngineViews();
+  };
+
+  const replayChain = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    appendLog("replaying the session from genesis…");
+    await eng.replay(deployImages());
+    setPaused(false);
+    setPending({});
+    appendLog("replay complete");
+    await refreshEngineViews();
+  };
+
+  const changeSpeed = (ticksPerSec: number) => {
+    setSpeed(ticksPerSec);
+    engineRef.current?.setSpeed(Math.round(1000 / ticksPerSec));
+  };
+
+  const fundFromFaucet = async (id: string, qus: number) => {
+    const eng = engineRef.current;
+    if (!eng || qus <= 0) {
+      return;
+    }
+    eng.fundAccount(id, BigInt(qus));
+    appendLog(`faucet → ${shortId(id)} +${qus.toLocaleString("en-US")} qus`);
+    await refreshBalances(await eng.ensureAccounts());
+  };
+
+  // ---- scenario runner (saved contract tests built on reset/replay) ----
+
+  const acctLabel = (seed: string): string => {
+    const i = accounts.findIndex((a) => a.seed === seed);
+    return i >= 0 ? `acct ${i}` : "acct";
+  };
+
+  // Snapshot the writes you ran on the selected contract into a new saved scenario.
+  const captureScenario = () => {
+    const d = sel;
+    if (!d) {
+      return;
+    }
+    const mine = (engineRef.current?.exportHistory() ?? []).filter((h) => h.contract.name === d.name);
+    if (!mine.length) {
+      appendLog("nothing to capture — run a procedure on this contract first");
+      return;
+    }
+    const calls: CallStep[] = mine.map((h) => ({
+      procId: h.procId,
+      procName: h.entry.name,
+      input: Object.fromEntries(Object.entries(h.input).map(([k, v]) => [k, String(v)])),
+      callerSeed: h.caller.seed,
+      callerLabel: acctLabel(h.caller.seed),
+      value: h.caller.amount,
+    }));
+    const n = scenarios.filter((x) => x.contract === d.name).length + 1;
+    const s: Scenario = { id: uid(), name: `${d.name} test ${n}`, contract: d.name, calls, asserts: [] };
+    setScenarios((xs) => [...xs, s]);
+    appendLog(`captured ${calls.length} call(s) into "${s.name}" — add assertions, then run`);
+  };
+
+  // Reset the chain, replay the scenario's calls, then evaluate its assertions against the result.
+  const runScenario = async (s: Scenario) => {
+    const eng = engineRef.current;
+    const d = deployedRef.current[s.contract];
+    if (!eng) {
+      return;
+    }
+    if (!d) {
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: `${s.contract} not deployed` } }));
+      return;
+    }
+    if (s.calls.some((c) => !d.idl.procedures[c.procId])) {
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: "contract changed — a captured procedure is gone" } }));
+      return;
+    }
+
+    setRunningScen(s.id);
+    try {
+      const steps: ReplayStep[] = s.calls.map((c) => {
+        const entry = d.idl.procedures[c.procId];
+        return {
+          slot: d.slot,
+          procId: c.procId,
+          entry,
+          input: coerce(entry, c.input),
+          key: `${d.name}:scenario:${c.procId}`,
+          caller: { seed: c.callerSeed, amount: c.value },
+          contract: { name: d.name, source: d.source },
+        };
+      });
+      await eng.runSteps(deployImages(), steps);
+
+      const out: AssertResult[] = [];
+      for (const a of s.asserts) {
+        const entry = d.idl.functions[a.fnId];
+        if (!entry) {
+          out.push({ ok: false, actual: "(no such function)" });
+          continue;
+        }
+        const res = await eng.callFunction(d.slot, a.fnId, entry, coerce(entry, a.input));
+        const actual = res && typeof res === "object" ? (res as Record<string, unknown>)[a.field] : res;
+        out.push({ ok: compare(a.op, actual, a.expected), actual: actual === undefined ? "undefined" : String(actual) });
+      }
+      setScenResults((r) => ({ ...r, [s.id]: { results: out } }));
+      appendLog(`scenario "${s.name}": ${out.filter((x) => x.ok).length}/${out.length} assertions passed`);
+    } catch (e) {
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: (e as Error).message } }));
+    } finally {
+      setRunningScen(null);
+      await refreshEngineViews();
+    }
+  };
+
+  const deleteScenario = (id: string) => {
+    setScenarios((xs) => xs.filter((x) => x.id !== id));
+    setScenResults((r) => {
+      const next = { ...r };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const addAssert = (id: string, a: AssertStep) => {
+    setScenarios((xs) => xs.map((s) => (s.id === id ? { ...s, asserts: [...s.asserts, a] } : s)));
+  };
+
+  const deleteAssert = (id: string, idx: number) => {
+    setScenarios((xs) => xs.map((s) => (s.id === id ? { ...s, asserts: s.asserts.filter((_, i) => i !== idx) } : s)));
+  };
+
   // Live label for a queued tx — counts down as the chain ticks toward its target.
   const pendingLabel = (targetTick: number): string => {
     const cur = engineInfo?.tick ?? 0;
@@ -437,6 +899,109 @@ export default function Ide() {
     monacoRef.current = monaco;
     setupQpi(monaco, editor);
     import("./qpi/hover").then((m) => m.registerQpiHover(monaco)).catch(() => undefined);
+
+    // Aggregate all markers on the active model (qpi lexical + context, and clang) into the Problems panel.
+    const refreshProblems = () => {
+      const model = editor.getModel();
+      if (!model) {
+        return;
+      }
+      type Marker = { severity: number; message: string; startLineNumber: number; startColumn: number; source?: string; code?: unknown };
+      const ms = monaco.editor.getModelMarkers({ resource: model.uri }) as Marker[];
+      setProblems(ms.map((m): ProblemItem => ({ severity: m.severity, message: m.message, line: m.startLineNumber, col: m.startColumn, source: String(m.source ?? ""), code: String((m.code as { value?: unknown })?.value ?? m.code ?? "") })));
+    };
+    monaco.editor.onDidChangeMarkers(refreshProblems);
+    editor.onDidChangeModel(refreshProblems);
+  };
+
+  // Jump the editor to a problem's location.
+  const goToProblem = (p: ProblemItem) => {
+    const editor = editorRef.current;
+    if (!editor) {
+      return;
+    }
+    editor.setPosition({ lineNumber: p.line, column: p.col });
+    editor.revealLineInCenter(p.line);
+    editor.focus();
+  };
+
+  const errorCount = problems.filter((p) => p.severity === 8).length;
+  const warnCount = problems.filter((p) => p.severity === 4).length;
+
+  useEffect(() => {
+    localStorage.setItem("ide.explorerW", String(explorerW));
+  }, [explorerW]);
+  useEffect(() => {
+    localStorage.setItem("ide.engineW", String(engineW));
+  }, [engineW]);
+
+  // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
+  // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
+  // creating or deleting a file just updates `ws`, and the right tabs follow.
+  useEffect(() => {
+    if (!loaded) {
+      return;
+    }
+    setOpenTabs((prev) => {
+      const valid = prev.filter((n) => ws.files.some((f) => f.name === n));
+      const next = valid.includes(ws.active) ? valid : [...valid, ws.active];
+      const same = next.length === prev.length && next.every((v, i) => v === prev[i]);
+      return same ? prev : next;
+    });
+  }, [ws.files, ws.active, loaded]);
+
+  // The right-hand ENGINE panel mirrors the file you're editing: switching tab/file points it at that
+  // contract's deployment (state + call forms), or clears it when the active contract isn't deployed yet.
+  useEffect(() => {
+    const cn = baseName(ws.active);
+    setSelected(deployed[cn] ? cn : null);
+  }, [ws.active, deployed]);
+
+  // Close a tab. The last tab can't be closed (the editor always needs an active file); closing the
+  // active tab moves focus to the nearest surviving neighbour.
+  const closeTab = (name: string, e: { stopPropagation(): void }) => {
+    e.stopPropagation();
+    if (openTabs.length <= 1) {
+      return;
+    }
+    const idx = openTabs.indexOf(name);
+    const remaining = openTabs.filter((n) => n !== name);
+    setOpenTabs(remaining);
+    if (name === ws.active) {
+      const fallback = remaining[Math.min(idx, remaining.length - 1)];
+      setWs((w) => ({ ...w, active: fallback }));
+    }
+  };
+
+  // A tab is dirty when its source has unbuilt edits — i.e. it compiled clean once, then changed.
+  const isDirty = (name: string): boolean =>
+    name in built && built[name] !== (ws.files.find((f) => f.name === name)?.source ?? "");
+
+  // Drag a column splitter. The explorer grows with the cursor; the engine (right) grows as it moves left.
+  const startResize = (which: "explorer" | "engine", e: { clientX: number; preventDefault(): void }) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = which === "explorer" ? explorerW : engineW;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      if (which === "explorer") {
+        setExplorerW(Math.max(160, Math.min(380, startW + dx)));
+      } else {
+        setEngineW(Math.max(280, Math.min(560, startW - dx)));
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
   };
 
   const applyClangMarkers = (res: CompileResult) => {
@@ -463,6 +1028,7 @@ export default function Ide() {
   const runAutoCompile = useCallback(async () => {
     const src = sourceRef.current;
     const name = contractNameRef.current;
+    const fileName = activeNameRef.current;
     if (!src.trim() || src === autoSentRef.current) {
       return;
     }
@@ -499,6 +1065,7 @@ export default function Ide() {
 
     if (res.ok && res.wasm && res.idl) {
       warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy
+      setBuilt((b) => ({ ...b, [fileName]: src })); // clears this file's dirty dot
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs; intentionally stable
   }, []);
@@ -510,6 +1077,58 @@ export default function Ide() {
     }, 800);
     return () => clearTimeout(t);
   }, [source, contractName, runAutoCompile]);
+
+  // Spin up the in-process engine: create it, start the auto-ticker, fund the dev accounts, publish the
+  // first tick. Idempotent — returns the running engine if already up. Called on mount (so the testnet
+  // panel is live from the start) and before the first deploy.
+  const ensureEngine = useCallback((): Promise<IdeEngine> => {
+    if (engineRef.current) {
+      return Promise.resolve(engineRef.current);
+    }
+    if (engineInitRef.current) {
+      return engineInitRef.current; // a start is already in flight — share it
+    }
+    engineInitRef.current = (async () => {
+      const { IdeEngine } = await import("./engine");
+      const eng = new IdeEngine();
+      eng.onTick = (info) => setEngineInfo(info);
+      eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
+        setPending((p) => {
+          const next = { ...p };
+          delete next[key];
+          return next;
+        });
+        setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
+        appendLog(`${name}() processed @ tick ${tick}`);
+        if (detail) {
+          setTxDetail((t) => ({ ...t, [key]: detail }));
+          if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
+          if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
+          detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
+          detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
+          detail.logs.forEach((l) => appendLog(`  log ${l}`));
+        }
+        eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
+        void refreshState(key.split(":")[0]);
+      };
+      eng.start();
+      engineRef.current = eng;
+      setEpochLen(eng.epochLength());
+      const accs = await eng.ensureAccounts();
+      setAccounts(accs);
+      setCaller(accs[0]?.id ?? "");
+      void refreshBalances(accs);
+      setEngineInfo(await eng.info());
+      return eng;
+    })();
+    return engineInitRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters; intentionally stable
+  }, []);
+
+  // Bring the testnet panel up on load — accounts funded, clock ticking, controls usable before any deploy.
+  useEffect(() => {
+    void ensureEngine().catch(() => undefined);
+  }, [ensureEngine]);
 
   const compile = async () => {
     setPhase("compiling");
@@ -536,46 +1155,18 @@ export default function Ide() {
     const idlData = res.idl;
 
     try {
-      const { IdeEngine } = await import("./engine");
-      if (!engineRef.current) {
-        const eng = new IdeEngine();
-        eng.onTick = (info) => setEngineInfo(info);
-        eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
-          setPending((p) => {
-            const next = { ...p };
-            delete next[key];
-            return next;
-          });
-          setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
-          appendLog(`${name}() processed @ tick ${tick}`);
-          if (detail) {
-            setTxDetail((t) => ({ ...t, [key]: detail }));
-            if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
-            if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
-            detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
-            detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
-            detail.logs.forEach((l) => appendLog(`  log ${l}`));
-          }
-          eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
-          void refreshState(key.split(":")[0]);
-        };
-        eng.start();
-        engineRef.current = eng;
-        const accs = await eng.ensureAccounts();
-        setAccounts(accs);
-        setCaller(accs[0]?.id ?? "");
-        void refreshBalances(accs);
-      }
-
-      const eng = engineRef.current;
-      await eng.deploy(slot, base64ToBytes(res.wasm), idlData);
+      const eng = await ensureEngine();
+      const wasmBytes = base64ToBytes(res.wasm);
+      await eng.deploy(slot, wasmBytes, idlData);
+      eng.registerSource(slot, source, contractName); // so the step debugger decodes this contract's StateData
       const address = await eng.addressOf(slot);
-      const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source } };
+      const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source, wasm: wasmBytes } };
       deployedRef.current = reg;
       setDeployed(reg);
       setSelected(contractName);
       setEngineInfo(await eng.info());
       setPhase("ready");
+      setBuilt((b) => ({ ...b, [ws.active]: source })); // clears the active tab's dirty dot
       void refreshBalances(await eng.ensureAccounts());
       void refreshState(contractName);
       appendLog(`deployed ${idlData.name} → slot ${slot} · ${res.size} B · ${shortId(address)}`);
@@ -644,9 +1235,18 @@ export default function Ide() {
   const procedures = idl ? Object.entries(idl.procedures) : [];
   const functions = idl ? Object.entries(idl.functions) : [];
 
+  if (!loaded) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 13 }}>
+        loading project…
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
+      <style dangerouslySetInnerHTML={{ __html: `.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: FRAME, background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
@@ -654,7 +1254,10 @@ export default function Ide() {
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
         </Link>
         <span style={{ width: 1, height: 22, background: color.hair2 }} />
-        <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textMutedDk }}>{ws.active}</span>
+        <Link to="/ide" title="All projects" style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk, textDecoration: "none" }}>← projects</Link>
+        <span style={{ width: 8, height: 8, background: color.accent }} />
+        <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>{projectName || "…"}</span>
+        {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.accent }}>✓ saved</span>}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling"}>
             {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
@@ -672,7 +1275,7 @@ export default function Ide() {
         </div>
       </div>
 
-      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: "210px 1fr 340px", minHeight: 0 }}>
+      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${explorerW}px 5px 1fr 5px ${engineW}px`, minHeight: 0 }}>
         <FileExplorer
           files={ws.files}
           active={ws.active}
@@ -682,23 +1285,68 @@ export default function Ide() {
           onDelete={deleteFile}
         />
 
-        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, background: color.panel }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 14px", borderBottom: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12 }}>
-            <span style={{ width: 8, height: 8, background: color.accent }} />
-            <span style={{ color: color.textLight }}>{ws.active}</span>
-          </div>
+        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize" }} />
+
+        <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
+          <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 0 }}>
             <CodeEditor value={source} path={ws.active} onChange={editSource} onMount={onEditorMount} />
           </div>
+
+          {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
+          <div style={{ flex: "none", borderTop: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
+            <div onClick={() => setProblemsOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 14px", flex: "none", cursor: "pointer", userSelect: "none", fontFamily: font.display, fontSize: 12.5, color: color.textLightHi }}>
+              <span style={{ color: color.textGhostDk, fontFamily: font.mono, fontSize: 10 }}>{problemsOpen ? "▾" : "▸"}</span>
+              <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#FF8B7E" : color.yellow }} />
+              <span>PROBLEMS</span>
+              <span style={{ marginLeft: "auto", display: "flex", gap: 12, fontFamily: font.mono, fontSize: 11 }}>
+                <span style={{ color: errorCount ? "#FF8B7E" : color.textGhostDk }}>⊘ {errorCount}</span>
+                <span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span>
+              </span>
+            </div>
+            {problemsOpen && (
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 6px 8px" }}>
+                {problems.length === 0 ? (
+                  <div style={{ padding: "4px 8px", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>no problems detected</div>
+                ) : (
+                  [...problems].sort((a, b) => b.severity - a.severity || a.line - b.line).map((p, i) => (
+                    <div key={i} onClick={() => goToProblem(p)} className="pix-problem-row" style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 8px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, lineHeight: 1.5 }}>
+                      <span style={{ flex: "none", color: p.severity === 8 ? "#FF8B7E" : p.severity === 4 ? color.yellow : color.textMutedDk }}>{p.severity === 8 ? "⊘" : p.severity === 4 ? "⚠" : "ⓘ"}</span>
+                      <span style={{ color: color.textMutedDk, wordBreak: "break-word" }}>{p.message}</span>
+                      <span style={{ marginLeft: "auto", flex: "none", color: color.textGhostDk }}>{p.source}{p.code ? ` (${p.code})` : ""} · {p.line}:{p.col}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
+        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize" }} />
+
         <div style={{ borderLeft: HAIR, background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
-          <div style={{ padding: "12px 14px 8px", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".12em", color: color.textGhostDk, display: "flex", justifyContent: "space-between" }}>
-            <span>ENGINE</span>
-            {sel && <span style={{ color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
+          <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: HAIR }}>
+            <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
+            <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
+            {sel && <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {engineInfo && (
+              <EngineControls
+                paused={paused}
+                speed={speed}
+                info={engineInfo}
+                epochLen={epochLen}
+                onToggle={togglePause}
+                onStep={(n) => void stepTicks(n)}
+                onEpoch={() => void advanceEpoch()}
+                onReset={() => void resetChain()}
+                onReplay={() => void replayChain()}
+                onSpeed={changeSpeed}
+              />
+            )}
+
             {phase === "compiling" && <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>compiling on the node toolchain…</div>}
 
             {phase === "error" && (
@@ -707,11 +1355,17 @@ export default function Ide() {
               </div>
             )}
 
-            {accounts.length > 0 && <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} />}
+            {accounts.length > 0 && <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} onFund={(id, qus) => void fundFromFaucet(id, qus)} />}
 
             {Object.keys(deployed).length > 0 ? (
               <>
-                <DeployedList deployed={deployed} selected={selected} onSelect={setSelected} />
+                <DeployedList deployed={deployed} selected={selected} onSelect={selectDeployed} />
+
+                {!sel && (
+                  <div style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textGhostDk, lineHeight: 1.6, padding: "2px 0" }}>
+                    {contractName} isn't deployed yet — hit <span style={{ color: color.accent }}>▶ Compile &amp; Run</span> to deploy this contract.
+                  </div>
+                )}
 
                 {sel && <StatePanel dump={stateView[sel.name]} />}
 
@@ -739,6 +1393,7 @@ export default function Ide() {
                       output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
                       detail={txDetail[key]}
                       onRun={(input, value) => runProcedure(id, entry, input, value)}
+                      onDebug={(steps, title) => setDebug({ steps, title })}
                     />
                   );
                 })}
@@ -753,14 +1408,31 @@ export default function Ide() {
             ) : (
               phase === "idle" && <PanelHint />
             )}
+
+            {(sel || scenarios.some((s) => s.contract === contractName)) && (
+              <ScenarioPanel
+                scenarios={scenarios.filter((s) => s.contract === contractName)}
+                results={scenResults}
+                running={runningScen}
+                idl={sel?.idl ?? null}
+                contractName={contractName}
+                canCapture={!!sel}
+                onCapture={captureScenario}
+                onRun={(s) => void runScenario(s)}
+                onDelete={deleteScenario}
+                onAddAssert={addAssert}
+                onDeleteAssert={deleteAssert}
+              />
+            )}
           </div>
 
           {/* console — contract logs / run output, its own region with real room */}
           <div style={{ flex: "0 0 42%", minHeight: 160, display: "flex", flexDirection: "column", borderTop: FRAME, background: color.void }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px 6px", fontFamily: font.mono, fontSize: 10, letterSpacing: ".12em", color: color.textGhostDk }}>
-              <span>CONSOLE</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 7px" }}>
+              <span style={{ width: 8, height: 8, flex: "none", background: color.secondary }} />
+              <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>CONSOLE</span>
               {log.length > 0 && (
-                <button onClick={() => setLog([])} style={{ border: "none", background: "transparent", color: color.textGhostDk, fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", cursor: "pointer" }}>
+                <button onClick={() => setLog([])} style={{ marginLeft: "auto", border: "none", background: "transparent", color: color.textGhostDk, fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", cursor: "pointer" }}>
                   CLEAR
                 </button>
               )}
@@ -794,6 +1466,8 @@ export default function Ide() {
         {result?.hash && <span>hash {result.hash.slice(0, 12)}</span>}
         <span style={{ marginLeft: "auto" }}>in-process engine</span>
       </div>
+
+      {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} />}
     </div>
   );
 }

@@ -4,18 +4,19 @@
 import type * as Monaco from "monaco-editor";
 import { scanQpi, scanLocals, scanLocalsForm, type QpiFinding } from "./lint/qpi-rules";
 import { idlChecks } from "./lint/idl-checks";
+import { scanContext, type ContextFinding } from "./contextlint";
 
 const OWNER = "qpi";
 
 export function runQpiDiagnostics(monaco: typeof Monaco, model: Monaco.editor.ITextModel): void {
   const src = model.getValue();
-  const findings: QpiFinding[] = [...scanQpi(src), ...scanLocals(src), ...scanLocalsForm(src), ...idlChecks(src)];
+  const findings: (QpiFinding | ContextFinding)[] = [...scanQpi(src), ...scanLocals(src), ...scanLocalsForm(src), ...idlChecks(src), ...scanContext(src)];
 
   const markers: Monaco.editor.IMarkerData[] = findings.map((f) => {
     const start = model.getPositionAt(f.offset);
     const end = model.getPositionAt(f.offset + f.length);
     return {
-      severity: f.severity === "info" ? monaco.MarkerSeverity.Info : monaco.MarkerSeverity.Warning,
+      severity: f.severity === "error" ? monaco.MarkerSeverity.Error : f.severity === "info" ? monaco.MarkerSeverity.Info : monaco.MarkerSeverity.Warning,
       message: f.message,
       startLineNumber: start.lineNumber,
       startColumn: start.column,
