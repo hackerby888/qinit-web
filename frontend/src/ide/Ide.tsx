@@ -13,7 +13,7 @@ import { FileExplorer } from "./FileExplorer";
 import { loadWorkspace, saveWorkspace, shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { setupQpi } from "./qpi";
 import { compileContract, base64ToBytes, type CompileResult } from "./api";
-import type { IdeEngine, Account, TxDetail } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage } from "./engine";
 import type { StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
 
@@ -21,7 +21,7 @@ const FRAME = `3px solid ${color.ink}`;
 const HAIR = `3px solid ${color.hair}`;
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 
-type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string };
+type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array };
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
@@ -252,13 +252,15 @@ const selectStyle: CSSProperties = {
 };
 
 // Pick the caller for a write + see its balance (Remix's account dropdown). Dev accounts are funded by
-// the engine faucet.
-function AccountsBar({ accounts, caller, onSelect, balances }: {
+// the engine faucet; the +fund control tops the selected account up with more qus straight from it.
+function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
   accounts: Account[];
   caller: string;
   onSelect: (id: string) => void;
   balances: Record<string, string>;
+  onFund: (id: string, qus: number) => void;
 }) {
+  const [amount, setAmount] = useState("1000000000");
   return (
     <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>ACCOUNTS · caller</div>
@@ -270,6 +272,66 @@ function AccountsBar({ accounts, caller, onSelect, balances }: {
       <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
         balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
+        <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput} />
+        <button
+          onClick={() => onFund(caller, Number(amount) || 0)}
+          title="Credit this account from the testnet faucet"
+          style={{ border: `2px solid ${color.ink}`, background: color.accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 12px", cursor: "pointer", flex: "none" }}
+        >
+          +Fund
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Deterministic testnet controls (Remix has none — we own the chain in-page). Pause/step time, jump an
+// epoch to fire BEGIN/END_EPOCH hooks, and reset/replay the whole session against a fresh chain.
+function EngineControls({ paused, speed, info, onToggle, onStep, onEpoch, onReset, onReplay, onSpeed }: {
+  paused: boolean;
+  speed: number;
+  info: { tick: number; epoch: number } | null;
+  onToggle: () => void;
+  onStep: (n: number) => void;
+  onEpoch: () => void;
+  onReset: () => void;
+  onReplay: () => void;
+  onSpeed: (ticksPerSec: number) => void;
+}) {
+  const ctlBtn: CSSProperties = {
+    border: `1px solid ${color.hair2}`,
+    background: color.void,
+    color: color.textLight,
+    fontFamily: font.mono,
+    fontSize: 11,
+    padding: "3px 8px",
+    cursor: "pointer",
+    flex: "none",
+  };
+  return (
+    <div style={{ border: `1px solid ${color.hair}`, background: color.panel, padding: 8, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+      <span style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, width: "100%" }}>
+        TESTNET · tick <span style={{ color: color.accent }}>{info?.tick ?? 0}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
+      </span>
+      <button onClick={onToggle} title={paused ? "Resume auto-tick" : "Pause auto-tick"} style={{ ...ctlBtn, background: paused ? color.accent : color.void, color: paused ? color.void : color.textLight }}>
+        {paused ? "▶ run" : "⏸ pause"}
+      </button>
+      <button onClick={() => onStep(1)} title="Advance 1 tick" style={ctlBtn}>⏭ +1</button>
+      <button onClick={() => onStep(10)} title="Advance 10 ticks" style={ctlBtn}>⏩ +10</button>
+      <button onClick={onEpoch} title="Advance one epoch — fires END_EPOCH then BEGIN_EPOCH" style={ctlBtn}>⤓ epoch</button>
+      <button onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)" style={ctlBtn}>↺ reset</button>
+      <button onClick={onReplay} title="Replay every tx this session from genesis" style={ctlBtn}>↻ replay</button>
+      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
+        speed
+        <select value={speed} onChange={(e) => onSpeed(Number(e.target.value))} style={{ ...ctlBtn, padding: "2px 4px" }}>
+          <option value={1}>1×</option>
+          <option value={2}>2×</option>
+          <option value={5}>5×</option>
+          <option value={10}>10×</option>
+        </select>
+      </span>
     </div>
   );
 }
@@ -380,6 +442,8 @@ export default function Ide() {
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
+  const [paused, setPaused] = useState(false);
+  const [speed, setSpeed] = useState(1); // auto-ticks per second
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
@@ -400,6 +464,7 @@ export default function Ide() {
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
   const engineRef = useRef<IdeEngine | null>(null);
+  const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
   const consoleRef = useRef<HTMLDivElement | null>(null);
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
@@ -532,6 +597,98 @@ export default function Ide() {
     }
   };
 
+
+  const deployImages = (): DeployImage[] =>
+    Object.values(deployedRef.current).map((d) => ({ slot: d.slot, wasm: d.wasm, name: d.name }));
+
+  // Re-pull everything the engine panel shows after a manual time change (step/epoch/reset/replay) — the
+  // auto-ticker's onTick/onTxProcessed callbacks don't fire for these.
+  const refreshEngineViews = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    setEngineInfo(await eng.info());
+    await refreshBalances(await eng.ensureAccounts());
+    for (const name of Object.keys(deployedRef.current)) {
+      await refreshState(name);
+    }
+  };
+
+  const togglePause = () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    if (eng.isRunning()) {
+      eng.pause();
+      setPaused(true);
+      appendLog("engine paused — drive time with +1 / +10 / epoch");
+    } else {
+      eng.resume();
+      setPaused(false);
+      appendLog("engine resumed");
+    }
+  };
+
+  const stepTicks = async (n: number) => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    await eng.step(n);
+    await refreshEngineViews();
+  };
+
+  const advanceEpoch = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    const info = await eng.advanceEpoch();
+    appendLog(`advanced to epoch ${info.epoch} — fired END_EPOCH → BEGIN_EPOCH`);
+    await refreshEngineViews();
+  };
+
+  const resetChain = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    await eng.reset(deployImages());
+    setPaused(false);
+    setPending({});
+    appendLog("chain reset to genesis — contracts re-deployed, INITIALIZE re-run");
+    await refreshEngineViews();
+  };
+
+  const replayChain = async () => {
+    const eng = engineRef.current;
+    if (!eng) {
+      return;
+    }
+    appendLog("replaying the session from genesis…");
+    await eng.replay(deployImages());
+    setPaused(false);
+    setPending({});
+    appendLog("replay complete");
+    await refreshEngineViews();
+  };
+
+  const changeSpeed = (ticksPerSec: number) => {
+    setSpeed(ticksPerSec);
+    engineRef.current?.setSpeed(Math.round(1000 / ticksPerSec));
+  };
+
+  const fundFromFaucet = async (id: string, qus: number) => {
+    const eng = engineRef.current;
+    if (!eng || qus <= 0) {
+      return;
+    }
+    eng.fundAccount(id, BigInt(qus));
+    appendLog(`faucet → ${shortId(id)} +${qus.toLocaleString("en-US")} qus`);
+    await refreshBalances(await eng.ensureAccounts());
+  };
 
   // Live label for a queued tx — counts down as the chain ticks toward its target.
   const pendingLabel = (targetTick: number): string => {
@@ -724,6 +881,57 @@ export default function Ide() {
     return () => clearTimeout(t);
   }, [source, contractName, runAutoCompile]);
 
+  // Spin up the in-process engine: create it, start the auto-ticker, fund the dev accounts, publish the
+  // first tick. Idempotent — returns the running engine if already up. Called on mount (so the testnet
+  // panel is live from the start) and before the first deploy.
+  const ensureEngine = useCallback((): Promise<IdeEngine> => {
+    if (engineRef.current) {
+      return Promise.resolve(engineRef.current);
+    }
+    if (engineInitRef.current) {
+      return engineInitRef.current; // a start is already in flight — share it
+    }
+    engineInitRef.current = (async () => {
+      const { IdeEngine } = await import("./engine");
+      const eng = new IdeEngine();
+      eng.onTick = (info) => setEngineInfo(info);
+      eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
+        setPending((p) => {
+          const next = { ...p };
+          delete next[key];
+          return next;
+        });
+        setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
+        appendLog(`${name}() processed @ tick ${tick}`);
+        if (detail) {
+          setTxDetail((t) => ({ ...t, [key]: detail }));
+          if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
+          if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
+          detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
+          detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
+          detail.logs.forEach((l) => appendLog(`  log ${l}`));
+        }
+        eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
+        void refreshState(key.split(":")[0]);
+      };
+      eng.start();
+      engineRef.current = eng;
+      const accs = await eng.ensureAccounts();
+      setAccounts(accs);
+      setCaller(accs[0]?.id ?? "");
+      void refreshBalances(accs);
+      setEngineInfo(await eng.info());
+      return eng;
+    })();
+    return engineInitRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters; intentionally stable
+  }, []);
+
+  // Bring the testnet panel up on load — accounts funded, clock ticking, controls usable before any deploy.
+  useEffect(() => {
+    void ensureEngine().catch(() => undefined);
+  }, [ensureEngine]);
+
   const compile = async () => {
     setPhase("compiling");
     const slot = assignSlot(deployed, contractName);
@@ -749,41 +957,11 @@ export default function Ide() {
     const idlData = res.idl;
 
     try {
-      const { IdeEngine } = await import("./engine");
-      if (!engineRef.current) {
-        const eng = new IdeEngine();
-        eng.onTick = (info) => setEngineInfo(info);
-        eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
-          setPending((p) => {
-            const next = { ...p };
-            delete next[key];
-            return next;
-          });
-          setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
-          appendLog(`${name}() processed @ tick ${tick}`);
-          if (detail) {
-            setTxDetail((t) => ({ ...t, [key]: detail }));
-            if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
-            if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
-            detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
-            detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
-            detail.logs.forEach((l) => appendLog(`  log ${l}`));
-          }
-          eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
-          void refreshState(key.split(":")[0]);
-        };
-        eng.start();
-        engineRef.current = eng;
-        const accs = await eng.ensureAccounts();
-        setAccounts(accs);
-        setCaller(accs[0]?.id ?? "");
-        void refreshBalances(accs);
-      }
-
-      const eng = engineRef.current;
-      await eng.deploy(slot, base64ToBytes(res.wasm), idlData);
+      const eng = await ensureEngine();
+      const wasmBytes = base64ToBytes(res.wasm);
+      await eng.deploy(slot, wasmBytes, idlData);
       const address = await eng.addressOf(slot);
-      const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source } };
+      const reg = { ...deployedRef.current, [contractName]: { name: contractName, slot, address, idl: idlData, source, wasm: wasmBytes } };
       deployedRef.current = reg;
       setDeployed(reg);
       setSelected(contractName);
@@ -941,6 +1119,20 @@ export default function Ide() {
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 14px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {engineInfo && (
+              <EngineControls
+                paused={paused}
+                speed={speed}
+                info={engineInfo}
+                onToggle={togglePause}
+                onStep={(n) => void stepTicks(n)}
+                onEpoch={() => void advanceEpoch()}
+                onReset={() => void resetChain()}
+                onReplay={() => void replayChain()}
+                onSpeed={changeSpeed}
+              />
+            )}
+
             {phase === "compiling" && <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>compiling on the node toolchain…</div>}
 
             {phase === "error" && (
@@ -949,7 +1141,7 @@ export default function Ide() {
               </div>
             )}
 
-            {accounts.length > 0 && <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} />}
+            {accounts.length > 0 && <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} onFund={(id, qus) => void fundFromFaucet(id, qus)} />}
 
             {Object.keys(deployed).length > 0 ? (
               <>

@@ -13,6 +13,8 @@ declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
 declare module "@qinit/engine" {
   export class InProcessEngine {
     constructor(opts?: { slotBase?: number; slotCount?: number });
+    // The chain-sim, exposed for epoch control (the tick path goes through advanceTick).
+    readonly sim: { beginEpoch(): void; endEpoch(): void; epochN: number };
     deploy(slot: number, wasm: Uint8Array, name?: string): unknown;
     querySmartContract(contractIndex: number, inputType: number, input: Uint8Array): Promise<Uint8Array>;
     broadcastTx(txBytes: Uint8Array): Promise<{ moneyFlew?: boolean; [k: string]: unknown }>;

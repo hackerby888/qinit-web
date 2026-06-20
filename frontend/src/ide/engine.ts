@@ -45,6 +45,25 @@ export interface TxProcessed {
   detail?: TxDetail;
 }
 
+// One replayable write — the args of a submitProcedure call, kept so the whole session can be re-run
+// against a fresh chain (reset + replay).
+interface ReplayStep {
+  slot: number;
+  procId: string;
+  entry: IdlEntry;
+  input: Record<string, unknown>;
+  key: string;
+  caller: { seed: string; amount: number };
+  contract: { name: string; source: string };
+}
+
+// A contract as it must be re-deployed on reset — its wasm + slot + name (INITIALIZE re-runs on deploy).
+export interface DeployImage {
+  slot: number;
+  wasm: Uint8Array;
+  name: string;
+}
+
 export class IdeEngine {
   private engine = new InProcessEngine();
   private seed: string | null = null;
@@ -52,6 +71,8 @@ export class IdeEngine {
   private ticker: ReturnType<typeof setInterval> | null = null;
   private mempool: PendingTx[] = [];
   private accounts: Account[] = [];
+  private speedMs = 1000;
+  private history: ReplayStep[] = []; // every applied write this session, for replay
 
   onTick: ((info: { tick: number; epoch: number }) => void) | null = null;
   onTxProcessed: ((e: TxProcessed) => void) | null = null;
@@ -62,16 +83,14 @@ export class IdeEngine {
     this.engine.deploy(slot, wasm, idl.name);
   }
 
-  // Emulate the live network: advance one tick per second. Each tick runs the contracts' BEGIN/END_TICK
+  // Emulate the live network: advance one tick per `speedMs`. Each tick runs the contracts' BEGIN/END_TICK
   // hooks, then any mempool tx whose target tick has arrived is processed — its SC invocation runs now.
   start(): void {
     if (this.ticker) {
       return;
     }
     void this.engine.setDebug(true); // capture per-tx debug traces for the inspector
-    this.ticker = setInterval(() => {
-      void this.tick();
-    }, 1000);
+    this.schedule();
   }
 
   stop(): void {
@@ -81,7 +100,112 @@ export class IdeEngine {
     }
   }
 
-  private async tick(): Promise<void> {
+  private schedule(): void {
+    this.ticker = setInterval(() => {
+      void this.tickOnce();
+    }, this.speedMs);
+  }
+
+  // ---- tick controls (deterministic dev testing — drive time by hand instead of the wall clock) ----
+
+  isRunning(): boolean {
+    return this.ticker !== null;
+  }
+
+  // Stop the auto-ticker; the chain holds at the current tick until resume()/step().
+  pause(): void {
+    if (this.ticker) {
+      clearInterval(this.ticker);
+      this.ticker = null;
+    }
+  }
+
+  resume(): void {
+    if (this.ticker) {
+      return;
+    }
+    this.schedule();
+  }
+
+  // Ticks per second knob — re-arms the timer at the new cadence if it's running.
+  setSpeed(ms: number): void {
+    this.speedMs = Math.max(50, ms);
+    if (this.ticker) {
+      clearInterval(this.ticker);
+      this.schedule();
+    }
+  }
+
+  speed(): number {
+    return this.speedMs;
+  }
+
+  // Advance exactly n ticks now (each: BEGIN_TICK asc -> due mempool txs -> END_TICK desc), independent of
+  // the auto-ticker. Lets a paused chain be stepped one tick at a time or jumped forward.
+  async step(n = 1): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      await this.tickOnce();
+    }
+  }
+
+  // Fire one epoch boundary in core's lifecycle order (contract_def.h SystemProcedureID): END_EPOCH for the
+  // closing epoch (descending slot), bump the epoch counter, BEGIN_EPOCH for the new one (ascending slot).
+  // On the live node these straddle the last/first tick of an epoch; here they fire back-to-back so
+  // lifecycle / revenue logic can be exercised without ticking through a whole epoch.
+  async advanceEpoch(): Promise<{ tick: number; epoch: number }> {
+    this.engine.sim.endEpoch();
+    this.engine.sim.epochN++;
+    this.engine.sim.beginEpoch();
+    const info = await this.engine.tickInfo();
+    this.onTick?.(info);
+    return info;
+  }
+
+  // Credit an account straight from the testnet faucet (sim.fund -> spectrum credit).
+  fundAccount(id: string, amount: bigint): void {
+    this.engine.fund(identityToBytes(id), amount);
+  }
+
+  // Wipe the chain back to genesis: a fresh engine, every contract re-deployed from its wasm (re-running
+  // INITIALIZE), the same dev accounts re-funded, tick/epoch back to 0, mempool + history cleared.
+  async reset(images: DeployImage[]): Promise<void> {
+    this.stop();
+    await this.ensureK12();
+    this.engine = new InProcessEngine();
+    void this.engine.setDebug(true);
+    this.mempool = [];
+    this.history = [];
+
+    for (const img of [...images].sort((a, b) => a.slot - b.slot)) {
+      this.engine.deploy(img.slot, img.wasm, img.name);
+    }
+    await this.reseedAccounts();
+    this.start();
+  }
+
+  // Reset to genesis, then re-apply every write this session in order — each landed on its own ticks, so
+  // ordering is preserved. Reproduces the exact state from a clean chain.
+  async replay(images: DeployImage[]): Promise<void> {
+    const steps = this.history.slice();
+    await this.reset(images);
+    for (const s of steps) {
+      await this.submitProcedure(s.slot, s.procId, s.entry, s.input, s.key, s.caller, s.contract);
+      await this.step(TICKS_AHEAD + 1); // tick until it lands
+    }
+  }
+
+  // Re-seed the faucet and re-fund the existing dev accounts into a fresh engine, keeping their identities
+  // stable across a reset (so the caller dropdown / balances stay meaningful).
+  private async reseedAccounts(): Promise<void> {
+    await this.engine.seedFaucet();
+    for (const a of this.accounts) {
+      if (a.seed !== this.seed) {
+        this.engine.fund(identityToBytes(a.id), 1_000_000_000_000n);
+      }
+    }
+  }
+
+  private async tickOnce(): Promise<void> {
     this.engine.advanceTick(1);
     const info = await this.engine.tickInfo();
 
@@ -153,6 +277,7 @@ export class IdeEngine {
     });
 
     this.mempool.push({ targetTick, bytes: tx.bytes, name: entry.name, key, contractName: contract.name, contractSource: contract.source });
+    this.history.push({ slot, procId, entry, input, key, caller, contract });
     return { targetTick };
   }
 
