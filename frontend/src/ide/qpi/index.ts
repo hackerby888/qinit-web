@@ -4,6 +4,7 @@ import type * as Monaco from "monaco-editor";
 import { registerQpiSnippets } from "./snippets";
 import { registerQpiMembers } from "./members";
 import { registerQpiSignatureHelp } from "./signature";
+import { registerQpiDefinition } from "./definition";
 import { registerQpiCodeActions } from "./codeactions";
 import { attachQpiDiagnostics } from "./markers";
 
@@ -11,6 +12,7 @@ export function setupQpi(monaco: typeof Monaco, editor: Monaco.editor.IStandalon
   registerQpiSnippets(monaco);
   registerQpiMembers(monaco);
   registerQpiSignatureHelp(monaco);
+  registerQpiDefinition(monaco);
   registerQpiCodeActions(monaco);
 
   return attachQpiDiagnostics(monaco, editor);
