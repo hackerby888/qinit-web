@@ -41,6 +41,30 @@ export function logout(): void {
   clearToken();
 }
 
+// Auth-expiry signal — fired when a cloud request is rejected for a stale/invalid token, so the UI can warn
+// ("session expired, sign in again") and drop back to the local store instead of failing silently.
+type Listener = () => void;
+const expiredListeners = new Set<Listener>();
+
+export function onAuthExpired(fn: Listener): () => void {
+  expiredListeners.add(fn);
+  return () => {
+    expiredListeners.delete(fn);
+  };
+}
+
+// Called on a 401 from any authed request: clear the dead token and notify listeners (once — only if we
+// actually had a token, so a routine signed-out 401 doesn't trigger the "expired" UX).
+export function handleUnauthorized(): void {
+  if (!getToken()) {
+    return;
+  }
+  clearToken();
+  for (const fn of expiredListeners) {
+    fn();
+  }
+}
+
 // On app load, consume the OAuth callback fragment (#token / #auth_error) and clean the URL.
 export function captureAuthRedirect(): { error?: string } {
   const hash = window.location.hash;
@@ -68,7 +92,7 @@ export async function fetchMe(): Promise<Me | null> {
     const r = await fetch("/api/me", { headers: { Authorization: `Bearer ${t}` } });
     if (!r.ok) {
       if (r.status === 401) {
-        clearToken();
+        handleUnauthorized();
       }
       return null;
     }

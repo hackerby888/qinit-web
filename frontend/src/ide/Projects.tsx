@@ -8,7 +8,7 @@ import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { Card, NeoBtn } from "./ui";
 import { getStore, getLocalStore } from "./projects/store";
-import { captureAuthRedirect, fetchMe, login, logout, type Me } from "./auth";
+import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./auth";
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace } from "./workspace";
@@ -51,23 +51,50 @@ export default function Projects() {
   const [metas, setMetas] = useState<ProjectMeta[] | null>(null);
   const [me, setMe] = useState<Me | null>(null);
   const [authErr, setAuthErr] = useState<string>("");
+  const [loadErr, setLoadErr] = useState<string>("");
+  const [expired, setExpired] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  const [importPrompt, setImportPrompt] = useState<ProjectMeta[] | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const wasAuthed = useRef(false);
+  const importUser = useRef<Me | null>(null);
 
   const reload = useCallback(async () => {
-    setMetas(await getStore().list());
+    try {
+      setMetas(await getStore().list());
+      setLoadErr("");
+    } catch (e) {
+      setLoadErr((e as Error).message);
+      setMetas((prev) => prev ?? []);
+    }
   }, []);
 
-  // On first login, offer to copy local projects into the cloud account (once per account).
+  // On first login, offer to copy local projects into the cloud account (once per account). Opens a modal
+  // rather than a native confirm; the actual copy runs in runImport once the user chooses.
   const offerImport = useCallback(async (user: Me) => {
     const flag = `qinit.import.${user.id}`;
     if (localStorage.getItem(flag)) {
       return;
     }
     const [cloud, local] = await Promise.all([getStore().list(), getLocalStore().list()]);
-    if (cloud.length === 0 && local.length > 0 && window.confirm(`Import ${local.length} local project(s) into your account?`)) {
+    if (cloud.length === 0 && local.length > 0) {
+      importUser.current = user;
+      setImportPrompt(local);
+    } else {
+      localStorage.setItem(flag, "done");
+    }
+  }, []);
+
+  const runImport = async () => {
+    const user = importUser.current;
+    const local = importPrompt;
+    setImportPrompt(null);
+    if (!user || !local) {
+      return;
+    }
+    try {
       for (const m of local) {
         const p = await getLocalStore().load(m.id);
         if (p) {
@@ -78,9 +105,20 @@ export default function Projects() {
           await getStore().save(cp);
         }
       }
+      localStorage.setItem(`qinit.import.${user.id}`, "done");
+    } catch (e) {
+      setLoadErr(`import failed: ${(e as Error).message}`);
     }
-    localStorage.setItem(flag, "done");
-  }, []);
+    await reload();
+  };
+
+  const skipImport = () => {
+    const user = importUser.current;
+    if (user) {
+      localStorage.setItem(`qinit.import.${user.id}`, "done");
+    }
+    setImportPrompt(null);
+  };
 
   useEffect(() => {
     void (async () => {
@@ -91,6 +129,7 @@ export default function Projects() {
       const user = await fetchMe();
       setMe(user);
       if (user) {
+        wasAuthed.current = true;
         await offerImport(user);
       }
 
@@ -111,9 +150,24 @@ export default function Projects() {
     })();
   }, [reload, navigate, offerImport]);
 
+  // A cloud request rejected the token mid-session — drop to the local store and warn (only if we were
+  // actually signed in, so a stale token on first load just quietly reverts to local).
+  useEffect(() => {
+    const off = onAuthExpired(() => {
+      setMe(null);
+      if (wasAuthed.current) {
+        wasAuthed.current = false;
+        setExpired(true);
+      }
+      void reload();
+    });
+    return off;
+  }, [reload]);
+
   const signOut = () => {
     logout();
     setMe(null);
+    wasAuthed.current = false;
     void reload();
   };
 
@@ -175,6 +229,16 @@ export default function Projects() {
     <div style={{ minHeight: "100vh", background: color.void, color: color.textLight, fontFamily: font.body }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
+      {importPrompt && <ImportModal count={importPrompt.length} onImport={() => void runImport()} onSkip={skipImport} />}
+      {expired && (
+        <ExpiredToast
+          onSignIn={() => {
+            setExpired(false);
+            setLoginOpen(true);
+          }}
+          onDismiss={() => setExpired(false)}
+        />
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 22px", height: 54, borderBottom: `3px solid ${color.ink}`, background: color.panelDeep }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
@@ -207,6 +271,13 @@ export default function Projects() {
         {authErr && (
           <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #FF8B7E`, background: "#FF8B7E14", fontFamily: font.mono, fontSize: 12, color: "#FF8B7E" }}>
             sign-in failed: {authErr}
+          </div>
+        )}
+
+        {loadErr && (
+          <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #FF8B7E`, background: "#FF8B7E14", fontFamily: font.mono, fontSize: 12, color: "#FF8B7E", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ flex: 1 }}>couldn't load your projects: {loadErr}</span>
+            <NeoBtn onClick={() => void reload()} accent="#FF8B7E" title="Try again">retry</NeoBtn>
           </div>
         )}
 
@@ -360,5 +431,49 @@ function GitHubIcon() {
     <svg width="18" height="18" viewBox="0 0 16 16" fill={color.textLightHi} aria-hidden="true">
       <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
     </svg>
+  );
+}
+
+// First-login prompt — copy the local projects into the freshly signed-in account, or keep them local.
+function ImportModal({ count, onImport, onSkip }: { count: number; onImport: () => void; onSkip: () => void }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#000000B0", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}>
+      <div style={{ width: 360, maxWidth: "100%" }}>
+        <Card frame={color.accentDeep} shadow={6}>
+          <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ width: 11, height: 11, flex: "none", background: color.accent }} />
+              <span style={{ fontFamily: font.display, fontSize: 18, color: color.textLightHi }}>Import local projects?</span>
+            </div>
+
+            <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk, lineHeight: 1.5 }}>
+              You have {count} project{count === 1 ? "" : "s"} stored in this browser. Copy {count === 1 ? "it" : "them"} into your account so {count === 1 ? "it syncs" : "they sync"} across devices?
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <NeoBtn onClick={onSkip} title="Keep them in this browser only">keep local</NeoBtn>
+              <NeoBtn onClick={onImport} active title="Copy them into your account">import {count}</NeoBtn>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Mid-session 401 — a fixed top banner letting the user re-authenticate. Already reverted to the local store.
+function ExpiredToast({ onSignIn, onDismiss }: { onSignIn: () => void; onDismiss: () => void }) {
+  return (
+    <div style={{ position: "fixed", top: 14, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 250, pointerEvents: "none" }}>
+      <div style={{ pointerEvents: "auto" }}>
+        <Card frame="#FFC857" shadow={5}>
+          <div style={{ padding: "10px 14px", display: "flex", alignItems: "center", gap: 14 }}>
+            <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textLightHi }}>Session expired — your projects reverted to local.</span>
+            <NeoBtn onClick={onSignIn} active title="Sign in again">sign in</NeoBtn>
+            <button onClick={onDismiss} title="Dismiss" style={{ all: "unset", cursor: "pointer", fontFamily: font.mono, fontSize: 13, color: color.textGhostDk, padding: "2px 4px" }}>✕</button>
+          </div>
+        </Card>
+      </div>
+    </div>
   );
 }

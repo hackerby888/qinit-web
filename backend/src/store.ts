@@ -11,6 +11,7 @@ export interface User {
   name: string;
   avatar?: string;
   createdAt: number;
+  currentProjectId?: string; // last-opened project, synced across devices
 }
 
 // A stored project document — the IDE's Project shape plus the owning userId. Kept as an opaque blob (the
@@ -93,6 +94,28 @@ export async function saveProject(userId: string, doc: { id: string; name: strin
     return;
   }
   memProjects.set(pkey(userId, doc.id), row);
+}
+
+// The last-opened project for this user — a tiny per-account UI pref, synced so a second device reopens it.
+export async function getCurrentProject(userId: string): Promise<string | null> {
+  const db = await getDb();
+  if (db) {
+    const u = await db.collection<User>("users").findOne({ id: userId }, { projection: { _id: 0, currentProjectId: 1 } });
+    return u?.currentProjectId ?? null;
+  }
+  return memUsers.get(userId)?.currentProjectId ?? null;
+}
+
+export async function setCurrentProject(userId: string, projectId: string): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.collection<User>("users").updateOne({ id: userId }, { $set: { currentProjectId: projectId } });
+    return;
+  }
+  const u = memUsers.get(userId);
+  if (u) {
+    u.currentProjectId = projectId;
+  }
 }
 
 export async function deleteProject(userId: string, id: string): Promise<void> {
