@@ -101,6 +101,11 @@ export function buildQueueState(): { active: number; queued: number; limit: numb
   return { active, queued, limit: LIMIT };
 }
 
+// Number of memoized build results — surfaced on the admin dashboard (cache hits skip the clang pool).
+export function buildCacheSize(): number {
+  return cache.size;
+}
+
 // Run `fn` once a build slot is free; releases the slot (and wakes the next waiter) when done.
 async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
   if (active >= LIMIT) {
