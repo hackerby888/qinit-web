@@ -1,18 +1,11 @@
 // Workspace file explorer: switch / create / rename / delete contract files. Create + rename use inline
 // inputs (no blocking prompts); delete asks once. Names are normalised to a `.h` file.
-import { useState, type CSSProperties } from "react";
+import { Fragment, useState, type CSSProperties, type ReactElement } from "react";
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
+import { buildFileTree, normalizePath, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
-
-const normalize = (raw: string): string => {
-  const n = raw.trim().replace(/[^\w.\-]/g, "");
-  if (!n) {
-    return "";
-  }
-  return /\.[A-Za-z0-9]+$/.test(n) ? n : `${n}.h`;
-};
 
 export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onJump }: {
   files: WorkspaceFile[];
@@ -25,16 +18,19 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   onJump: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [addPrefix, setAddPrefix] = useState(""); // folder the new file lands in ("" = root)
   const [draft, setDraft] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
 
   const inlineInput: CSSProperties = {
-    width: "calc(100% - 28px)",
-    margin: "2px 14px",
+    flex: 1,
+    minWidth: 0,
+    margin: "2px 14px 2px 0",
     background: color.void,
     border: `1px solid ${color.accentDeep}`,
     color: color.textLight,
@@ -57,8 +53,14 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
 
   const taken = (n: string, except?: string) => files.some((f) => f.name === n && f.name !== except);
 
+  const startAdd = (prefix: string) => {
+    setAddPrefix(prefix);
+    setAdding(true);
+    setDraft("");
+  };
+
   const commitNew = () => {
-    const n = normalize(draft);
+    const n = normalizePath(addPrefix ? `${addPrefix}/${draft}` : draft);
     if (n && !taken(n)) {
       onCreate(n);
     }
@@ -67,7 +69,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   const commitRename = (old: string) => {
-    const n = normalize(renameDraft);
+    const n = normalizePath(renameDraft);
     if (n && !taken(n, old) && n !== old) {
       onRename(old, n);
     }
@@ -80,63 +82,102 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     }
   };
 
+  const toggle = (path: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(path) ? next.delete(path) : next.add(path);
+      return next;
+    });
+  };
+
+  const tree = buildFileTree(files.map((f) => f.name));
+  const indent = (depth: number): number => 14 + depth * 14;
+
+  const addInput = (
+    <input
+      autoFocus
+      value={draft}
+      placeholder="NewContract.h"
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commitNew}
+      onKeyDown={(e) => { if (e.key === "Enter") { commitNew(); } if (e.key === "Escape") { setAdding(false); } }}
+      style={inlineInput}
+    />
+  );
+
+  // Folders render before files (buildFileTree sorts that way); each level indents one more step. Rename and
+  // the per-folder "new file" input slot into their position in the tree so they read in place.
+  const renderNodes = (nodes: TreeNode[], depth: number): ReactElement[] =>
+    nodes.flatMap((node): ReactElement[] => {
+      if (node.kind === "dir") {
+        const open = !collapsed.has(node.path);
+        return [
+          <div
+            key={`d:${node.path}`}
+            onClick={() => toggle(node.path)}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk }}
+          >
+            <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
+            <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
+          </div>,
+          ...(open ? renderNodes(node.children, depth + 1) : []),
+          ...(open && adding && addPrefix === node.path
+            ? [<Fragment key={`a:${node.path}`}>{addInput}</Fragment>]
+            : []),
+        ];
+      }
+
+      if (renaming === node.path) {
+        return [
+          <div key={`r:${node.path}`} style={{ display: "flex", paddingLeft: indent(depth) }}>
+            {(
+              <input
+                autoFocus
+                value={renameDraft}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onBlur={() => commitRename(node.path)}
+                onKeyDown={(e) => { if (e.key === "Enter") { commitRename(node.path); } if (e.key === "Escape") { setRenaming(null); } }}
+                style={inlineInput}
+              />
+            )}
+          </div>,
+        ];
+      }
+
+      const on = node.path === active;
+      return [
+        <div
+          key={`f:${node.path}`}
+          onClick={() => onSelect(node.path)}
+          onDoubleClick={() => { setRenaming(node.path); setRenameDraft(node.path); }}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", paddingLeft: indent(depth) + 9, cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
+        >
+          <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />
+          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
+          <button onClick={(e) => { e.stopPropagation(); setRenaming(node.path); setRenameDraft(node.path); }} title="Rename" style={iconBtn}>✎</button>
+          {files.length > 1 && (
+            <button onClick={(e) => { e.stopPropagation(); del(node.path); }} title="Delete" style={iconBtn}>×</button>
+          )}
+        </div>,
+      ];
+    });
+
   return (
     <div style={{ borderRight: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12.5, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
-        <button onClick={() => { setAdding(true); setDraft(""); }} title="New file" style={{ ...iconBtn, marginLeft: "auto", fontSize: 16, color: color.accent }}>+</button>
+        <button onClick={() => startAdd("")} title="New file" style={{ ...iconBtn, marginLeft: "auto", fontSize: 16, color: color.accent }}>+</button>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px", color: color.textMutedDk }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px 6px", color: color.textMutedDk }}>
         <span style={{ width: 8, height: 8, background: color.textGhostDk, flex: "none" }} />my-contract
       </div>
-      <div style={{ paddingLeft: 26, color: color.textGhostDk, fontSize: 11, paddingBottom: 2 }}>contracts</div>
 
-      {files.map((f) => {
-        if (renaming === f.name) {
-          return (
-            <input
-              key={f.name}
-              autoFocus
-              value={renameDraft}
-              onChange={(e) => setRenameDraft(e.target.value)}
-              onBlur={() => commitRename(f.name)}
-              onKeyDown={(e) => { if (e.key === "Enter") { commitRename(f.name); } if (e.key === "Escape") { setRenaming(null); } }}
-              style={inlineInput}
-            />
-          );
-        }
-        const on = f.name === active;
-        return (
-          <div
-            key={f.name}
-            onClick={() => onSelect(f.name)}
-            onDoubleClick={() => { setRenaming(f.name); setRenameDraft(f.name); }}
-            style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px 5px 37px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
-          >
-            <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</span>
-            <button onClick={(e) => { e.stopPropagation(); setRenaming(f.name); setRenameDraft(f.name); }} title="Rename" style={iconBtn}>✎</button>
-            {files.length > 1 && (
-              <button onClick={(e) => { e.stopPropagation(); del(f.name); }} title="Delete" style={iconBtn}>×</button>
-            )}
-          </div>
-        );
-      })}
-
-      {adding && (
-        <input
-          autoFocus
-          value={draft}
-          placeholder="NewContract.h"
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commitNew}
-          onKeyDown={(e) => { if (e.key === "Enter") { commitNew(); } if (e.key === "Escape") { setAdding(false); } }}
-          style={inlineInput}
-        />
-      )}
+      {renderNodes(tree, 0)}
+      {adding && addPrefix === "" && addInput}
 
       <Outline source={source} onJump={onJump} />
       </div>

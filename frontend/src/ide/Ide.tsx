@@ -13,6 +13,7 @@ import { CodeEditor } from "./editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
+import { fileLabel } from "./filetree";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -606,7 +607,7 @@ function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
             }}
           >
             <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileLabel(name)}</span>
             <span style={{ position: "relative", width: 14, height: 14, flex: "none" }}>
               {d && (
                 <span className="pix-tab-dot" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: color.yellow, fontSize: 10 }}>●</span>
