@@ -43,9 +43,14 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<{ message: string; onYes: () => void } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [contextDir, setContextDir] = useState(""); // where the toolbar New File/Folder lands (selected folder; "" = root)
+  const [hover, setHover] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null); // folder currently under a dragged file
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
+  const HOVER = "#ffffff10";
+  const DROP = `${color.accent}33`;
 
   // Inline rename / new-name field. Sits inside a flex row (so flex:1 fills horizontally, not vertically) with
   // a fixed height — otherwise, as a direct child of the column it stretches to fill and looks oversized.
@@ -75,6 +80,14 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   const taken = (n: string, except?: string) => files.some((f) => f.name === n && f.name !== except);
+
+  // Move a dragged file into a folder ("" = root) by renaming it to the new path. No-op on collision or self.
+  const moveTo = (path: string, targetDir: string) => {
+    const dest = targetDir ? `${targetDir}/${fileLabel(path)}` : fileLabel(path);
+    if (dest !== path && !taken(dest)) {
+      onRename(path, dest);
+    }
+  };
 
   const startAdd = (prefix: string) => {
     setMkdir(false);
@@ -253,14 +266,21 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
           : (
             <div
               key={`d:${node.path}`}
-              onClick={() => toggle(node.path)}
+              onClick={() => { setContextDir(node.path); toggle(node.path); }}
               onContextMenu={(e) => openMenu(e, dirMenu(node.path))}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk }}
+              onMouseEnter={() => setHover(node.path)}
+              onMouseLeave={() => setHover((h) => (h === node.path ? null : h))}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(node.path); }}
+              onDragLeave={() => setDragOver((d) => (d === node.path ? null : d))}
+              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const p = e.dataTransfer.getData("text/plain"); if (p) { moveTo(p, node.path); } setDragOver(null); }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk, background: dragOver === node.path ? DROP : hover === node.path ? HOVER : "transparent" }}
             >
               <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
-              <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
-              {files.some((f) => !f.name.startsWith(`${node.path}/`)) && (
+              {hover === node.path && (
+                <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
+              )}
+              {hover === node.path && files.some((f) => !f.name.startsWith(`${node.path}/`)) && (
                 <button onClick={(e) => { e.stopPropagation(); delFolder(node.path); }} title={`Delete folder ${node.path}`} style={iconBtn}>×</button>
               )}
             </div>
@@ -296,15 +316,21 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       return [
         <div
           key={`f:${node.path}`}
-          onClick={() => onSelect(node.path)}
+          draggable
+          onDragStart={(e) => { e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
+          onClick={() => { setContextDir(dirOf(node.path)); onSelect(node.path); }}
           onDoubleClick={() => { setRenaming(node.path); setRenameDraft(node.path); }}
           onContextMenu={(e) => openMenu(e, fileMenu(node.path))}
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", paddingLeft: indent(depth) + 9, cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
+          onMouseEnter={() => setHover(node.path)}
+          onMouseLeave={() => setHover((h) => (h === node.path ? null : h))}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", paddingLeft: indent(depth) + 9, cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : hover === node.path ? HOVER : "transparent", color: on ? color.accent : color.textMutedDk }}
         >
           <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
-          <button onClick={(e) => { e.stopPropagation(); setRenaming(node.path); setRenameDraft(node.path); }} title="Rename" style={iconBtn}>✎</button>
-          {files.length > 1 && (
+          {(on || hover === node.path) && (
+            <button onClick={(e) => { e.stopPropagation(); setRenaming(node.path); setRenameDraft(node.path); }} title="Rename" style={iconBtn}>✎</button>
+          )}
+          {(on || hover === node.path) && files.length > 1 && (
             <button onClick={(e) => { e.stopPropagation(); del(node.path); }} title="Delete" style={iconBtn}>×</button>
           )}
         </div>,
@@ -313,12 +339,18 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
 
   return (
     <div style={{ borderRight: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12.5, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div onContextMenu={(e) => openMenu(e, rootMenu())} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}>
+      <div
+        onContextMenu={(e) => openMenu(e, rootMenu())}
+        onClick={(e) => { if (e.target === e.currentTarget) { setContextDir(""); } }}
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+        onDrop={(e) => { e.preventDefault(); const p = e.dataTransfer.getData("text/plain"); if (p) { moveTo(p, ""); } setDragOver(null); }}
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}
+      >
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
-        <button onClick={() => startMkdir("")} title="New folder" style={{ ...iconBtn, marginLeft: "auto", fontSize: 14, color: color.accent }}>⊞</button>
-        <button onClick={() => startAdd("")} title="New file" style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
+        <button onClick={() => { expand(contextDir); startMkdir(contextDir); }} title={`New folder in ${contextDir || "root"}`} style={{ ...iconBtn, marginLeft: "auto", fontSize: 14, color: color.accent }}>⊞</button>
+        <button onClick={() => { expand(contextDir); startAdd(contextDir); }} title={`New file in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px 6px", color: color.textMutedDk }}>
@@ -439,7 +471,8 @@ function Outline({ source, onJump }: { source: string; onJump: (name: string) =>
   }
 
   return (
-    <div style={{ marginTop: 14, borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, paddingTop: 10 }}>
+    // Stop the explorer's right-click menu from firing over the outline — these are symbols, not files.
+    <div onContextMenu={(e) => e.stopPropagation()} style={{ marginTop: 14, borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, paddingTop: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 6px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>OUTLINE</span>
