@@ -133,6 +133,16 @@ function broadcastAwareness(room: Room, changed: number[], originWs: unknown): v
 
 // ---- write-back (single writer when Redis present) ----
 
+// Single-writer election for cross-instance write-back: the instance that wins the Redis SET-NX lock writes;
+// the current lock holder may also write (it's renewing its own lease). Everyone else yields — they converge
+// to the same doc via relay, so a skipped write loses nothing. Pure, so it's unit-testable without Redis.
+export function electedWriter(setNxResult: string | null, currentHolder: string | null, self: string): boolean {
+  if (setNxResult === "OK") {
+    return true;
+  }
+  return currentHolder === self;
+}
+
 function scheduleSave(room: Room): void {
   if (room.saveTimer) {
     clearTimeout(room.saveTimer);
@@ -155,7 +165,7 @@ async function writeBack(room: Room): Promise<void> {
     const got = await pub.set(key, instanceId, "PX", 10000, "NX").catch(() => null);
     if (got !== "OK") {
       const holder = await pub.get(key).catch(() => null);
-      if (holder !== instanceId) {
+      if (!electedWriter(got, holder, instanceId)) {
         return;
       }
       await pub.pexpire(key, 10000).catch(() => {});
