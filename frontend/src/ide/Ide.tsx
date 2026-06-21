@@ -12,6 +12,10 @@ import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
+import { useCollab, type CollabCtx, type Peer } from "./useCollab";
+import { colorFor, type CollabStatus } from "./collab";
+import { createShareLink } from "./shareApi";
+import { getToken, fetchMe, type Me } from "./auth";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, fetchBuildQueue, type CompileResult, type BuildQueue } from "./api";
@@ -37,6 +41,42 @@ const hair = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 
 type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array; calls?: string[] };
+
+// A compact toolbar toggle that hides/shows the left file explorer or the right engine panel.
+function PanelToggle({ hidden, side, onClick }: { hidden: boolean; side: "left" | "right"; onClick: () => void }) {
+  const label = side === "left" ? (hidden ? "❯ files" : "❮ files") : (hidden ? "engine ❮" : "engine ❯");
+  return (
+    <button
+      onClick={onClick}
+      title={`${hidden ? "Show" : "Hide"} ${side === "left" ? "file explorer" : "engine panel"}`}
+      style={{ border: `1px solid ${color.hair2}`, background: hidden ? "transparent" : color.void, color: hidden ? color.textGhostDk : color.textLight, fontFamily: font.mono, fontSize: 11, padding: "3px 8px", cursor: "pointer", flex: "none" }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// The collab presence strip — stacked peer avatars + a connection/live status pill in the editor toolbar.
+function CollabBar({ status, peers, mode, selfName, selfColor }: { status: CollabStatus; peers: Peer[]; mode: "view" | "edit"; selfName: string; selfColor: string }) {
+  const dot = status === "connected" ? "#3ECF8E" : status === "connecting" ? color.yellow : "#FF8B7E";
+  const label = status === "connected" ? (mode === "view" ? "viewing" : "live") : status === "connecting" ? "connecting…" : "reconnecting…";
+  const all = [{ name: `${selfName} (you)`, color: selfColor }, ...peers];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex" }}>
+        {all.slice(0, 6).map((u, i) => (
+          <span key={i} title={u.name} style={{ width: 22, height: 22, marginLeft: i ? -6 : 0, borderRadius: "50%", background: u.color, color: "#0B0B0B", border: `2px solid ${color.panel}`, fontFamily: font.mono, fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            {u.name.trim().charAt(0).toUpperCase() || "?"}
+          </span>
+        ))}
+      </div>
+      <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>
+        <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot }} />
+        {label}{peers.length ? ` · ${peers.length + 1} editing` : ""}
+      </span>
+    </div>
+  );
+}
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
@@ -517,9 +557,15 @@ function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
   );
 }
 
-export default function Ide() {
+export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+
+  // Collaboration: null for plain local/owner editing; set when opened via a share link or when the owner
+  // goes live (Share → edit). `editorReady` lets the collab binding wait for Monaco to mount.
+  const [collab, setCollab] = useState<CollabCtx | null>(initialCollab ?? null);
+  const [editorReady, setEditorReady] = useState(false);
+  const [me, setMe] = useState<Me | null>(null);
 
   // IDE chrome theme. The initializer applies the persisted palette before the first paint (mutating the
   // shared `color` singleton), so the whole subtree renders in the right theme on mount.
@@ -566,6 +612,8 @@ export default function Ide() {
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
   const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
   const [consoleH, setConsoleH] = useState(() => Number(localStorage.getItem("ide.consoleH")) || 300);
+  const [leftHidden, setLeftHidden] = useState(() => localStorage.getItem("ide.leftHidden") === "1");
+  const [rightHidden, setRightHidden] = useState(() => localStorage.getItem("ide.rightHidden") === "1");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
       return JSON.parse(localStorage.getItem("ide.sections") ?? "{}");
@@ -612,9 +660,36 @@ export default function Ide() {
 
   const activeIsTest = /\.tsx?$/.test(ws.active); // a .ts test file -> run-tests, not compile
 
+  // Collab identity for the awareness name (the signed-in user, else "You").
+  useEffect(() => {
+    void fetchMe().then(setMe);
+  }, []);
+
+  // The collaborative session (no-op when `collab` is null). It seeds the file list from the shared doc on
+  // sync (onInit) and keeps it live (onFiles), so the explorer / tabs / auto-compile run against live content.
+  const collabApi = useCollab({
+    ctx: collab,
+    token: collab?.projectId ? getToken() ?? undefined : undefined,
+    editorRef,
+    monacoRef,
+    editorReady,
+    active: ws.active,
+    onInit: (files) => {
+      setWs((w) => ({ files, active: w.active || files[0]?.name || "" }));
+      setOpenTabs((t) => (t.length ? t : files.slice(0, 1).map((f) => f.name)));
+      setLoaded(true);
+    },
+    onFiles: (files) => {
+      setWs((w) => ({ files, active: files.some((f) => f.name === w.active) ? w.active : files[0]?.name ?? "" }));
+    },
+  });
+
   // Load the project for this route. Seeds the editor (files/active), open tabs and saved scenarios; an
   // unknown id bounces back to the gallery. Async by design — the same call shape a cloud store would use.
   useEffect(() => {
+    if (collab) {
+      return; // collab seeds the workspace from the shared doc (useCollab onInit), not the local store
+    }
     let cancelled = false;
     void (async () => {
       if (!id) {
@@ -640,11 +715,14 @@ export default function Ide() {
     return () => {
       cancelled = true;
     };
-  }, [id, navigate]);
+  }, [id, navigate, collab]);
 
   // Write the current editor state into the loaded project document and persist it. Shared by the debounced
   // auto-save and the Ctrl+S handler.
   const persistProject = useCallback((): void => {
+    if (collab) {
+      return; // in collab the server is the sole cloud writer (avoids double-write clobber)
+    }
     const p = projectRef.current;
     if (!p) {
       return;
@@ -655,7 +733,7 @@ export default function Ide() {
     p.scenarios = scenarios;
     p.name = projectName;
     void getStore().save(p);
-  }, [ws, openTabs, scenarios, projectName]);
+  }, [ws, openTabs, scenarios, projectName, collab]);
 
   // Persist the whole project document (debounced) whenever its contents change.
   useEffect(() => {
@@ -724,6 +802,22 @@ export default function Ide() {
     setTheme(next);
   };
 
+  const toggleLeft = () => {
+    setLeftHidden((v) => {
+      const next = !v;
+      localStorage.setItem("ide.leftHidden", next ? "1" : "0");
+      return next;
+    });
+  };
+
+  const toggleRight = () => {
+    setRightHidden((v) => {
+      const next = !v;
+      localStorage.setItem("ide.rightHidden", next ? "1" : "0");
+      return next;
+    });
+  };
+
   const selectFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     setWs((w) => ({ ...w, active: name }));
@@ -741,19 +835,32 @@ export default function Ide() {
   };
 
   const editSource = (src: string) => {
+    if (collab) {
+      return; // collab: the shared doc (observeDeep → onFiles) is the source of truth, not this handler
+    }
     setWs((w) => ({ ...w, files: w.files.map((f) => (f.name === w.active ? { ...f, source: src } : f)) }));
   };
 
   const createFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    if (collab) {
+      collabApi.ops.create(name, NEW_CONTRACT); // files come back via onFiles; active is local
+      setWs((w) => ({ ...w, active: name }));
+      return;
+    }
     setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
   };
 
   const renameFile = (oldName: string, newName: string) => {
-    setWs((w) => ({
-      files: w.files.map((f) => (f.name === oldName ? { ...f, name: newName } : f)),
-      active: w.active === oldName ? newName : w.active,
-    }));
+    if (collab) {
+      collabApi.ops.rename(oldName, newName);
+      setWs((w) => ({ ...w, active: w.active === oldName ? newName : w.active }));
+    } else {
+      setWs((w) => ({
+        files: w.files.map((f) => (f.name === oldName ? { ...f, name: newName } : f)),
+        active: w.active === oldName ? newName : w.active,
+      }));
+    }
     setBuilt((b) => {
       if (!(oldName in b)) {
         return b;
@@ -764,6 +871,11 @@ export default function Ide() {
   };
 
   const deleteFile = (name: string) => {
+    if (collab) {
+      collabApi.ops.remove(name);
+      setWs((w) => ({ ...w, active: w.active === name ? "" : w.active }));
+      return;
+    }
     setWs((w) => {
       const files = w.files.filter((f) => f.name !== name);
       const active = w.active === name ? (files[0]?.name ?? "") : w.active;
@@ -771,14 +883,37 @@ export default function Ide() {
     });
   };
 
-  const share = async () => {
-    const url = shareUrl(ws);
+  const copyLink = async (url: string, note: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      appendLog("share link copied to clipboard");
+      appendLog(`${note}: ${url}`);
     } catch {
-      appendLog("share link: " + url);
+      appendLog(`${note}: ${url}`);
     }
+  };
+
+  const share = async () => {
+    // Already in a shared session — copy the current link.
+    if (collab) {
+      await copyLink(location.href, "collab link copied");
+      return;
+    }
+    // Signed-in cloud project: mint a live edit link, flush the latest edits, then go live as the owner.
+    if (getToken() && id) {
+      try {
+        if (projectRef.current) {
+          await getStore().save(projectRef.current);
+        }
+        const link = await createShareLink(id, "edit");
+        await copyLink(location.origin + link.url, "collab link copied — others can edit live");
+        setCollab({ projectId: id, mode: "edit", displayName: me?.name ?? "You", color: colorFor(id) });
+        return;
+      } catch (e) {
+        appendLog("share failed: " + (e as Error).message);
+      }
+    }
+    // Anonymous / local project — fall back to the legacy self-contained link.
+    await copyLink(shareUrl(ws), "share link copied to clipboard");
   };
 
   const callerSeed = (): string => accounts.find((a) => a.id === caller)?.seed ?? "";
@@ -1070,6 +1205,7 @@ export default function Ide() {
     editor.onDidChangeModel(refreshProblems);
 
     updateQinitTypes();
+    setEditorReady(true);
   };
 
   // Jump the editor to a problem's location.
@@ -1441,7 +1577,7 @@ export default function Ide() {
   // Compile + deploy the active contract and the whole graph it calls. Each CALL/INVOKE_OTHER_CONTRACT(<Name>)
   // resolves to the project's <Name>.h, which is deployed FIRST at a lower slot (the qubic lower-index rule),
   // so a single ▶ brings up the whole graph. Post-order DFS: callees land before their callers.
-  const compile = async () => {
+  const runCompile = async () => {
     setPhase("compiling");
 
     const done = new Map<string, number>(); // name -> slot deployed this pass
@@ -1537,6 +1673,29 @@ export default function Ide() {
     } catch (e) {
       setPhase("error");
       appendLog("deploy failed: " + (e as Error).message);
+    }
+  };
+
+  // Build entry point. In a collab session, only one build per project may run at a time — claim the shared
+  // lock first (deterministic tiebreak for simultaneous clicks) and release it when the build settles.
+  const compile = async () => {
+    if (collab) {
+      if (collabApi.building.byOther) {
+        appendLog(`${collabApi.building.by} is building — one build per project at a time`);
+        return;
+      }
+      const granted = await collabApi.claimBuild();
+      if (!granted) {
+        appendLog("another collaborator just started a build — try again in a moment");
+        return;
+      }
+    }
+    try {
+      await runCompile();
+    } finally {
+      if (collab) {
+        collabApi.releaseBuild();
+      }
     }
   };
 
@@ -1680,8 +1839,8 @@ export default function Ide() {
               {testRun?.running ? "Running…" : "▶ Run tests"}
             </ToolButton>
           ) : (
-            <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling"}>
-              {phase === "compiling" ? "Compiling…" : "▶ Compile & Run"}
+            <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling" || collabApi.building.byOther}>
+              {phase === "compiling" ? "Compiling…" : collabApi.building.byOther ? `${collabApi.building.by} building…` : "▶ Compile & Run"}
             </ToolButton>
           )}
           <ToolButton onClick={share}>Share</ToolButton>
@@ -1700,29 +1859,38 @@ export default function Ide() {
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: hair(), background: color.panel, flex: "none" }}>
         <TrafficLights />
         <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textFaintDk, marginLeft: 6 }}>qinit ide — my-contract</span>
-        <div style={{ marginLeft: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
+          <PanelToggle hidden={leftHidden} side="left" onClick={toggleLeft} />
+          <PanelToggle hidden={rightHidden} side="right" onClick={toggleRight} />
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
+          {collab && <CollabBar status={collabApi.status} peers={collabApi.peers} mode={collab.mode} selfName={collab.displayName} selfColor={collab.color} />}
           <EngineStrip info={engineInfo} mempool={Object.keys(pending).length} />
         </div>
       </div>
 
-      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${explorerW}px 5px 1fr 5px ${engineW}px`, minHeight: 0 }}>
-        <FileExplorer
-          files={ws.files}
-          active={ws.active}
-          source={source}
-          onSelect={selectFile}
-          onCreate={createFile}
-          onRename={renameFile}
-          onDelete={deleteFile}
-          onJump={jumpToSymbol}
-        />
+      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${leftHidden ? 0 : explorerW}px ${leftHidden ? 0 : 5}px 1fr ${rightHidden ? 0 : 5}px ${rightHidden ? 0 : engineW}px`, minHeight: 0 }}>
+        {/* Explorer + its resizer stay grid items even when hidden (col widths collapse to 0, content clips) —
+            display:none here would remove them and shift the editor into the 0px column. */}
+        <div style={{ minWidth: 0, overflow: "hidden", display: "grid" }}>
+          <FileExplorer
+            files={ws.files}
+            active={ws.active}
+            source={source}
+            onSelect={selectFile}
+            onCreate={createFile}
+            onRename={renameFile}
+            onDelete={deleteFile}
+            onJump={jumpToSymbol}
+          />
+        </div>
 
-        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize" }} />
+        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize", pointerEvents: leftHidden ? "none" : "auto" }} />
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 0 }}>
-            <CodeEditor value={source} path={ws.active} theme={theme === "flat" ? "qinit-flat" : "qinit-dark"} onChange={editSource} onMount={onEditorMount} />
+            <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={theme === "flat" ? "qinit-flat" : "qinit-dark"} onChange={editSource} onMount={onEditorMount} />
           </div>
 
           {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
@@ -1754,9 +1922,9 @@ export default function Ide() {
           </div>
         </div>
 
-        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize" }} />
+        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize", display: rightHidden ? "none" : "block" }} />
 
-        <div style={{ borderLeft: hair(), background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
+        <div style={{ borderLeft: hair(), background: color.panelDeep, display: rightHidden ? "none" : "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: hair() }}>
             <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
             <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
