@@ -2,12 +2,27 @@
 // shape (the same Project JSON it stores locally); the server just persists/lists it. Create + update both go
 // through PUT (upsert) keyed by the client-generated id.
 import type { Request, Response } from "express";
-import { listProjects, getProject, saveProject, deleteProject } from "./store";
+import { listProjects, getProject, saveProject, deleteProject, getCurrentProject, setCurrentProject } from "./store";
 
 type AuthedRequest = Request & { userId: string };
 
 export async function projectsList(req: Request, res: Response): Promise<void> {
   res.json(await listProjects((req as AuthedRequest).userId));
+}
+
+// Last-opened project id, synced per account so a second device reopens the same project.
+export async function currentGet(req: Request, res: Response): Promise<void> {
+  res.json({ id: await getCurrentProject((req as AuthedRequest).userId) });
+}
+
+export async function currentPut(req: Request, res: Response): Promise<void> {
+  const id = (req.body as { id?: unknown })?.id;
+  if (typeof id !== "string") {
+    res.status(400).json({ error: "invalid id" });
+    return;
+  }
+  await setCurrentProject((req as AuthedRequest).userId, id);
+  res.json({ ok: true });
 }
 
 export async function projectGet(req: Request, res: Response): Promise<void> {

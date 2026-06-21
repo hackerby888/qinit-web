@@ -5,7 +5,7 @@ import type { WorkspaceFile } from "../workspace";
 import { EXAMPLES } from "../examples";
 import { PROJECT_SCHEMA_VERSION, type Project, type ProjectMeta } from "./types";
 import type { ProjectStore } from "./store";
-import { authHeaders } from "../auth";
+import { authHeaders, handleUnauthorized } from "../auth";
 
 const CURRENT_KEY = "ide.project.current";
 const uid = (): string => Math.random().toString(36).slice(2, 10);
@@ -32,6 +32,9 @@ async function req(path: string, init: RequestInit = {}): Promise<Response> {
     headers: { "content-type": "application/json", ...authHeaders(), ...(init.headers ?? {}) },
   });
   if (!r.ok) {
+    if (r.status === 401) {
+      handleUnauthorized();
+    }
     throw new Error(`projects API ${r.status} ${r.statusText}`);
   }
   return r;
@@ -85,11 +88,29 @@ export class CloudProjectStore implements ProjectStore {
     return copy;
   }
 
+  // Synced per account so another device reopens the same project; localStorage is a cache/offline fallback.
   async getCurrentId(): Promise<string | null> {
+    try {
+      const r = await fetch("/api/projects/current", { headers: authHeaders() });
+      if (r.ok) {
+        const j = (await r.json()) as { id?: string | null };
+        if (j.id) {
+          localStorage.setItem(CURRENT_KEY, j.id);
+          return j.id;
+        }
+      }
+    } catch {
+      // offline — fall back to the local cache below
+    }
     return localStorage.getItem(CURRENT_KEY);
   }
 
   async setCurrentId(id: string): Promise<void> {
     localStorage.setItem(CURRENT_KEY, id);
+    try {
+      await req("/current", { method: "PUT", body: JSON.stringify({ id }) });
+    } catch {
+      // best-effort sync; the local cache already holds it
+    }
   }
 }

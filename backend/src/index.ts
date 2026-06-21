@@ -4,7 +4,7 @@ import { getDb } from "./db";
 import { latestRelease, bumpVisits } from "./release";
 import { compile, buildQueueState } from "./compile";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
-import { projectsList, projectGet, projectPut, projectDelete } from "./projects";
+import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut } from "./projects";
 
 const app = express();
 app.use(cors());
@@ -48,7 +48,10 @@ app.get("/api/auth/:provider/callback", wrap(authCallback));
 app.get("/api/me", requireAuth, wrap(me));
 
 // Cloud projects — per-account, behind auth. The client owns the document; PUT upserts by id.
+// The `current` (last-opened) routes must precede `:id` or "current" is parsed as a project id.
 app.get("/api/projects", requireAuth, wrap(projectsList));
+app.get("/api/projects/current", requireAuth, wrap(currentGet));
+app.put("/api/projects/current", requireAuth, wrap(currentPut));
 app.get("/api/projects/:id", requireAuth, wrap(projectGet));
 app.put("/api/projects/:id", requireAuth, wrap(projectPut));
 app.delete("/api/projects/:id", requireAuth, wrap(projectDelete));
