@@ -4,7 +4,7 @@
 import { totalmem, freemem, loadavg, cpus } from "node:os";
 import { getDb } from "./db";
 import { redisUrl } from "./redis";
-import { buildQueueState, buildCacheSize } from "./compile";
+import { buildQueueState, buildCacheSize } from "./buildpool";
 import { collabMetrics } from "./collab";
 
 export interface MetricSample {

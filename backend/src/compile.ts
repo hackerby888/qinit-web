@@ -4,9 +4,13 @@
 // byte-identical to the node. Builds are serialized (clang is heavy) and memoized by a hash of the input.
 import { buildContract } from "@qinit/build";
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
-import { tmpdir, cpus } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
+import { withSlot, cacheGet, cacheSet } from "./buildpool";
+
+// The pool stats live in buildpool.ts (sibling-free) so metrics can read them without importing this module.
+export { buildQueueState, buildCacheSize } from "./buildpool";
 
 // An inter-contract callee: another project contract this one calls (CALL/INVOKE_OTHER_CONTRACT). Its
 // source is written to a sibling .h so the build can compile its types at `slot` (the deployed index).
@@ -86,45 +90,6 @@ function sanitizeName(raw: string | undefined): string {
   return n.length ? n : "Contract";
 }
 
-const cache = new Map<string, CompileResponse>();
-
-// Build concurrency pool. One clang on one TU is single-threaded, so the throughput lever is running several
-// builds at once — up to LIMIT in parallel, the rest queued. Default ~ (cores − 1) capped at 8 (clang is also
-// RAM-heavy); QINIT_BUILD_CONCURRENCY overrides.
-const LIMIT = Math.max(1, Number(process.env.QINIT_BUILD_CONCURRENCY) || Math.min(8, Math.max(1, (cpus()?.length ?? 4) - 1)));
-let active = 0;  // builds running now
-let queued = 0;  // builds waiting for a slot
-const waiters: Array<() => void> = [];
-
-// Snapshot of the pool, for the /api/compile/queue endpoint the IDE polls while a build is pending.
-export function buildQueueState(): { active: number; queued: number; limit: number } {
-  return { active, queued, limit: LIMIT };
-}
-
-// Number of memoized build results — surfaced on the admin dashboard (cache hits skip the clang pool).
-export function buildCacheSize(): number {
-  return cache.size;
-}
-
-// Run `fn` once a build slot is free; releases the slot (and wakes the next waiter) when done.
-async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (active >= LIMIT) {
-    queued++;
-    await new Promise<void>((resolve) => waiters.push(resolve));
-    queued--;
-  }
-  active++;
-  try {
-    return await fn();
-  } finally {
-    active--;
-    const next = waiters.shift();
-    if (next) {
-      next();
-    }
-  }
-}
-
 async function runBuild(req: CompileRequest): Promise<CompileResponse> {
   const corePath = resolveCorePath();
   if (!corePath) {
@@ -182,21 +147,21 @@ export async function compile(req: CompileRequest): Promise<CompileResponse> {
     .update(`${req.slot ?? 28}\0${req.name ?? ""}\0${req.skipVerify ? 1 : 0}\0${JSON.stringify(req.callees ?? [])}\0${req.source}`)
     .digest("hex");
 
-  const hit = cache.get(key);
+  const hit = cacheGet<CompileResponse>(key);
   if (hit) {
     return hit;
   }
 
   return withSlot(async () => {
     // Re-check: an identical build may have finished (and cached) while this one waited for a slot.
-    const queuedHit = cache.get(key);
+    const queuedHit = cacheGet<CompileResponse>(key);
     if (queuedHit) {
       return queuedHit;
     }
 
     const res = await runBuild(req);
     if (res.ok) {
-      cache.set(key, res);
+      cacheSet(key, res);
     }
     return res;
   });
