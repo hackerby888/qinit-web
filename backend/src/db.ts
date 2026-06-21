@@ -7,6 +7,10 @@ let tried = false;
 export async function getDb(): Promise<Db | null> {
   if (db || tried) return db;
   tried = true;
+  // QINIT_NO_DB forces the in-memory data layer (tests / explicit opt-out) — never touch a real Mongo.
+  if (process.env.QINIT_NO_DB === "1") {
+    return db;
+  }
   const uri = process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017";
   try {
     const client = new MongoClient(uri, { serverSelectionTimeoutMS: 2000 });

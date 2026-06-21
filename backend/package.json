@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts"
+    "start": "bun src/index.ts",
+    "test": "bun test",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "cors": "^2.8.5",

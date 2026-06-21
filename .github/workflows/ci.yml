@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Self-contained: the store / auth / collab units don't touch the sibling qinit monorepo, Mongo, or Redis
+  # (the test preload pins the in-memory data layer), so this always runs and is the default required check.
+  backend-tests:
+    name: backend unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install
+        working-directory: backend
+        run: bun install --frozen-lockfile
+
+      - name: test
+        working-directory: backend
+        run: bun test
+
+  # Typechecks both packages + runs the frontend qpi unit tests. These pull the sibling qinit monorepo
+  # (an unpublished dev path: ../../Qinit), so this job is opt-in: set a repo variable QINIT_REPO
+  # ("owner/qinit") to enable it, QINIT_REF to pin the matching branch/tag, and — if the sibling is private —
+  # a QINIT_PAT secret with read access. Until then the backend-tests job above is the active check.
+  typecheck:
+    name: typecheck + web tests
+    if: ${{ vars.QINIT_REPO != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout qinit-web
+        uses: actions/checkout@v4
+        with:
+          path: Qinit-web
+
+      - name: checkout qinit (sibling monorepo)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.QINIT_REPO }}
+          ref: ${{ vars.QINIT_REF }}
+          token: ${{ secrets.QINIT_PAT || github.token }}
+          path: Qinit
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install qinit (sibling)
+        working-directory: Qinit
+        run: bun install
+
+      - name: install backend
+        working-directory: Qinit-web/backend
+        run: bun install --frozen-lockfile
+
+      - name: install frontend
+        working-directory: Qinit-web/frontend
+        run: bun install --frozen-lockfile
+
+      - name: typecheck backend
+        working-directory: Qinit-web/backend
+        run: bun run typecheck
+
+      - name: typecheck frontend
+        working-directory: Qinit-web/frontend
+        run: bun run typecheck
+
+      - name: frontend unit tests
+        working-directory: Qinit-web/frontend
+        run: bun test src/ide/qpi

@@ -14,13 +14,13 @@ const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
 const b64url = (s: string): string => Buffer.from(s).toString("base64url");
 const hmac = (data: string): string => createHmac("sha256", SECRET).update(data).digest("base64url");
 
-// ---- JWT (HS256) ----
-function signJwt(payload: Record<string, unknown>): string {
+// ---- JWT (HS256) ---- (signJwt/verifyJwt are exported for unit tests; not part of the HTTP surface)
+export function signJwt(payload: Record<string, unknown>): string {
   const data = `${b64url(JSON.stringify({ alg: "HS256", typ: "JWT" }))}.${b64url(JSON.stringify(payload))}`;
   return `${data}.${hmac(data)}`;
 }
 
-function verifyJwt(token: string): Record<string, unknown> | null {
+export function verifyJwt(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
   if (parts.length !== 3) {
     return null;
