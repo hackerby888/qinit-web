@@ -95,6 +95,53 @@ export function buildFileTree(paths: string[]): TreeNode[] {
   return root.children;
 }
 
+// Every name a workspace path occupies: the file paths themselves plus every folder prefix they imply. Used
+// to detect a collision for either a file or a folder (folders are virtual, so a folder "occupies" a name
+// only by virtue of the files beneath it).
+export function occupiedNames(paths: string[]): Set<string> {
+  const taken = new Set<string>();
+  for (const p of paths) {
+    if (!p) {
+      continue;
+    }
+    taken.add(p);
+    const parts = p.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      taken.add(parts.slice(0, i).join("/"));
+    }
+  }
+  return taken;
+}
+
+// Return `path` if free, else the next free "<stem>-2", "<stem>-3"… variant (suffix before the extension for
+// files, at the end for folders). Used to keep both items when a drag-move would collide.
+export function freeName(taken: Set<string>, path: string, isDir: boolean): string {
+  if (!taken.has(path)) {
+    return path;
+  }
+
+  const slash = path.lastIndexOf("/");
+  const dir = slash < 0 ? "" : path.slice(0, slash + 1);
+  const name = slash < 0 ? path : path.slice(slash + 1);
+
+  let stem = name;
+  let ext = "";
+  if (!isDir) {
+    const dot = name.lastIndexOf(".");
+    if (dot > 0) {
+      stem = name.slice(0, dot);
+      ext = name.slice(dot);
+    }
+  }
+
+  for (let i = 2; ; i++) {
+    const candidate = `${dir}${stem}-${i}${ext}`;
+    if (!taken.has(candidate)) {
+      return candidate;
+    }
+  }
+}
+
 function sortNodes(nodes: TreeNode[]): void {
   nodes.sort((a, b) => {
     if (a.kind !== b.kind) {

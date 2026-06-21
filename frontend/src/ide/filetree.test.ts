@@ -1,6 +1,6 @@
 // Folder tree: path labelling, normalisation (incl. traversal guards), and nested tree assembly.
 import { test, expect, describe } from "bun:test";
-import { fileLabel, dirOf, normalizePath, normalizeDir, buildFileTree, type TreeDir, type TreeFile } from "./filetree";
+import { fileLabel, dirOf, normalizePath, normalizeDir, occupiedNames, freeName, buildFileTree, type TreeDir, type TreeFile } from "./filetree";
 
 describe("fileLabel / dirOf", () => {
   test("root-level file has no dir and labels itself", () => {
@@ -52,6 +52,28 @@ describe("normalizeDir", () => {
     expect(normalizeDir("../lib//")).toBe("lib");
     expect(normalizeDir("..")).toBe("");
     expect(normalizeDir("")).toBe("");
+  });
+});
+
+describe("occupiedNames / freeName", () => {
+  test("occupiedNames includes files and every folder prefix", () => {
+    const taken = occupiedNames(["lib/net/a.h", "b.h"]);
+    expect([...taken].sort()).toEqual(["b.h", "lib", "lib/net", "lib/net/a.h"]);
+  });
+
+  test("freeName returns the path when free", () => {
+    const taken = occupiedNames(["a.h"]);
+    expect(freeName(taken, "b.h", false)).toBe("b.h");
+  });
+
+  test("freeName suffixes a colliding file before the extension, in the same folder", () => {
+    const taken = occupiedNames(["lib/a.h", "lib/a-2.h"]);
+    expect(freeName(taken, "lib/a.h", false)).toBe("lib/a-3.h");
+  });
+
+  test("freeName suffixes a colliding folder at the end", () => {
+    const taken = occupiedNames(["lib/x.h"]); // folder "lib" is occupied
+    expect(freeName(taken, "lib", true)).toBe("lib-2");
   });
 });
 
