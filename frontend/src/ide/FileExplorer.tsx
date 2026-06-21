@@ -280,6 +280,9 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
               {hover === node.path && (
                 <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
               )}
+              {hover === node.path && (
+                <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startMkdir(node.path); }} title={`New folder in ${node.path}`} style={{ ...iconBtn, fontSize: 11 }}>⊞</button>
+              )}
               {hover === node.path && files.some((f) => !f.name.startsWith(`${node.path}/`)) && (
                 <button onClick={(e) => { e.stopPropagation(); delFolder(node.path); }} title={`Delete folder ${node.path}`} style={iconBtn}>×</button>
               )}
@@ -357,7 +360,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
         <span style={{ width: 8, height: 8, background: color.textGhostDk, flex: "none" }} />my-contract
       </div>
 
-      {mkdir && inputRow("mkdir", 0, dirInput)}
+      {mkdir && mkdirPrefix === "" && inputRow("mkdir", 0, dirInput)}
       {renderNodes(tree, 0)}
       {adding && addPrefix === "" && inputRow("add-root", 0, addInput)}
 
