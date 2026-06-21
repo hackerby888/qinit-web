@@ -419,6 +419,7 @@ async function detectBootGap(): Promise<void> {
 }
 
 let started = false;
+let samplerTimer: ReturnType<typeof setInterval> | null = null;
 
 // Start the background sampler. Called once from index.ts (never at import, so unit tests stay side-effect
 // free). Best-effort throughout — a metrics failure must never disturb the API.
@@ -435,11 +436,20 @@ export function startMetricsSampler(): void {
     await detectBootGap().catch(() => {});
     await recordSample().catch(() => {});
 
-    const timer = setInterval(() => {
+    samplerTimer = setInterval(() => {
       void recordSample().catch(() => {});
     }, interval);
-    timer.unref?.();
+    samplerTimer.unref?.();
   })();
+}
+
+// Stop the background sampler (graceful shutdown).
+export function stopMetricsSampler(): void {
+  if (samplerTimer) {
+    clearInterval(samplerTimer);
+    samplerTimer = null;
+  }
+  started = false;
 }
 
 // ---- report (endpoint) ----

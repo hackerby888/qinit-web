@@ -11,6 +11,8 @@ import { requireAdmin, adminMetrics, adminHistory, adminIncidents } from "./admi
 import { startMetricsSampler } from "./metrics";
 import { assertBootConfig, corsOptions } from "./security";
 import { rateLimit } from "./ratelimit";
+import { readinessSnapshot, installGracefulShutdown } from "./lifecycle";
+import { log } from "./log";
 
 // Refuse to start in production with an insecure config (weak SESSION_SECRET, etc.).
 assertBootConfig();
@@ -44,14 +46,19 @@ app.use("/api/auth", authLimiter);
 type Handler = (req: express.Request, res: express.Response) => unknown;
 const wrap = (fn: Handler) => (req: express.Request, res: express.Response): void => {
   Promise.resolve(fn(req, res)).catch((e) => {
-    console.error("[api]", e);
+    log.error("api handler failed", { method: req.method, path: req.path, error: String((e as Error)?.message ?? e) });
     if (!res.headersSent) {
       res.status(500).json({ error: String((e as Error)?.message ?? e) });
     }
   });
 };
 
+// Liveness — the process is up (always 200). Readiness — can it serve durably (Mongo up): 200 / 503.
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/ready", (_req, res) => {
+  const r = readinessSnapshot();
+  res.status(r.ready ? 200 : 503).json(r);
+});
 
 // Browser IDE: compile a qpi.h contract to wasm (the frontend runs it in-page via @qinit/engine).
 app.post("/api/compile", compileLimiter, async (req, res) => {
@@ -111,6 +118,16 @@ const port = Number(process.env.PORT ?? 8787);
 // Explicit http.Server so the collab WebSocket can attach to the upgrade event alongside Express.
 const server = http.createServer(app);
 attachCollab(server);
-startMetricsSampler();
-// Warm the DB connection (optional), then listen regardless.
-getDb().finally(() => server.listen(port, () => console.log(`[qinit-web] api listening on :${port}`)));
+installGracefulShutdown(server);
+
+// Warm the DB first: in production a failed Mongo connect throws (db.ts), so we abort the boot rather than
+// serve with silent, non-durable storage. Dev tolerates it (in-memory fallback).
+getDb()
+  .then(() => {
+    startMetricsSampler();
+    server.listen(port, () => log.info("api listening", { port }));
+  })
+  .catch((e) => {
+    log.error("boot failed", { error: (e as Error).message });
+    process.exit(1);
+  });
