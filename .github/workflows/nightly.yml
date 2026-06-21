@@ -1,0 +1,79 @@
+name: Nightly
+
+# Heavier checks kept off the PR path: a collab convergence load test + a headless-Chrome IDE e2e smoke.
+# Runs on a schedule and on manual dispatch. Like the typecheck job, it needs the sibling qinit monorepo
+# (override the defaults with repo vars QINIT_REPO / QINIT_REF + a QINIT_PAT secret if private).
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: e2e + collab load
+    runs-on: ubuntu-latest
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+
+    steps:
+      - name: checkout qinit-web
+        uses: actions/checkout@v4
+        with:
+          path: Qinit-web
+
+      - name: checkout qinit (sibling monorepo)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.QINIT_REPO || 'hackerby888/qinit' }}
+          ref: ${{ vars.QINIT_REF }}
+          token: ${{ secrets.QINIT_PAT || github.token }}
+          path: Qinit
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+
+      - name: install
+        run: |
+          cd Qinit && bun install && cd ..
+          cd Qinit-web/backend && bun install --frozen-lockfile && cd ../..
+          cd Qinit-web/frontend && bun install --frozen-lockfile && cd ../..
+
+      - name: build frontend
+        working-directory: Qinit-web/frontend
+        run: bun run build
+
+      - name: boot backend
+        working-directory: Qinit-web/backend
+        env:
+          PORT: "8787"
+          QINIT_DEV_AUTH: "1"
+          MONGODB_URI: mongodb://127.0.0.1:27017
+        run: |
+          bun src/index.ts > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8787/api/health >/dev/null && break; sleep 0.5; done
+          curl -sf http://127.0.0.1:8787/api/health
+
+      - name: collab load test
+        working-directory: Qinit-web/backend
+        run: bun ../scripts/collab-load.ts 16 http://127.0.0.1:8787
+
+      - name: serve frontend + e2e smoke
+        working-directory: Qinit-web/frontend
+        run: |
+          bun run preview --port 4173 --strictPort > /tmp/preview.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:4173/ >/dev/null && break; sleep 0.5; done
+          "${{ steps.chrome.outputs.chrome-path }}" --headless=new --no-sandbox --disable-gpu --remote-debugging-port=9222 about:blank > /tmp/chrome.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.5; done
+          bun ../scripts/e2e/ide-smoke.mjs http://localhost:4173
+
+      - name: backend log (on failure)
+        if: failure()
+        run: cat /tmp/backend.log || true

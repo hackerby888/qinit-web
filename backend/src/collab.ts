@@ -15,6 +15,7 @@ import * as decoding from "lib0/decoding";
 import { getProject, saveProject, getShare } from "./store";
 import { userIdFromToken } from "./auth";
 import { makeRedis } from "./redis";
+import { log } from "./log";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -111,7 +112,7 @@ if (sub) {
         awarenessProtocol.applyAwarenessUpdate(room.awareness, payload, "redis");
       }
     } catch (e) {
-      console.error("[collab] redis relay error:", (e as Error).message);
+      log.error("collab redis relay error", { error: (e as Error).message });
     }
   });
 }
@@ -194,7 +195,7 @@ async function writeBack(room: Room): Promise<void> {
       void pub.set(`collab:${room.roomId}:state`, state, "PX", STATE_TTL).catch(() => {});
     }
   } catch (e) {
-    console.error("[collab] write-back failed for", room.roomId, "—", (e as Error).message);
+    log.error("collab write-back failed", { room: room.roomId, error: (e as Error).message });
   }
 }
 
@@ -246,7 +247,7 @@ async function getOrCreateRoom(info: ConnInfo): Promise<Room> {
       });
     }
   } catch (e) {
-    console.error("[collab] seed failed for", room.roomId, "—", (e as Error).message);
+    log.error("collab seed failed", { room: room.roomId, error: (e as Error).message });
   }
 
   doc.on("update", (update: Uint8Array, origin: unknown) => {
@@ -336,13 +337,13 @@ function onMessage(room: Room, ws: WebSocket, data: Uint8Array, write: boolean):
       awarenessProtocol.applyAwarenessUpdate(room.awareness, decoding.readVarUint8Array(decoder), ws);
     }
   } catch (e) {
-    console.error("[collab] bad message dropped:", (e as Error).message);
+    log.error("collab bad message dropped", { error: (e as Error).message });
   }
 }
 
 function onConnection(ws: WebSocket, info: ConnInfo): void {
   void getOrCreateRoom(info).catch((e) => {
-    console.error("[collab] room init failed:", (e as Error).message);
+    log.error("collab room init failed", { error: (e as Error).message });
     ws.close();
     return null;
   }).then((room) => {
@@ -402,13 +403,32 @@ async function authorize(url: URL): Promise<ConnInfo | null> {
 
     return null;
   } catch (e) {
-    console.error("[collab] authorize failed:", (e as Error).message);
+    log.error("collab authorize failed", { error: (e as Error).message });
     return null;
   }
 }
 
+let collabWss: WebSocketServer | null = null;
+
+// Graceful shutdown: close every live collab socket, the WS server, and the Redis pub/sub clients.
+export async function closeCollab(): Promise<void> {
+  for (const room of rooms.values()) {
+    for (const ws of room.conns) {
+      try {
+        ws.close(1001, "server shutting down");
+      } catch {
+        // already closing
+      }
+    }
+  }
+
+  collabWss?.close();
+  await Promise.allSettled([pub?.quit(), sub?.quit()]);
+}
+
 export function attachCollab(server: Server): void {
   const wss = new WebSocketServer({ noServer: true });
+  collabWss = wss;
   wss.on("connection", onConnection);
 
   server.on("upgrade", (req, socket, head) => {
@@ -435,7 +455,7 @@ export function attachCollab(server: Server): void {
         });
       })
       .catch((e) => {
-        console.error("[collab] upgrade failed:", (e as Error).message);
+        log.error("collab upgrade failed", { error: (e as Error).message });
         socket.destroy();
       });
   });

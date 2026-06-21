@@ -26,13 +26,11 @@ jobs:
         working-directory: backend
         run: bun test
 
-  # Typechecks both packages + runs the frontend qpi unit tests. These pull the sibling qinit monorepo
-  # (an unpublished dev path: ../../Qinit), so this job is opt-in: set a repo variable QINIT_REPO
-  # ("owner/qinit") to enable it, QINIT_REF to pin the matching branch/tag, and — if the sibling is private —
-  # a QINIT_PAT secret with read access. Until then the backend-tests job above is the active check.
+  # Typechecks both packages + runs the frontend unit tests. These pull the sibling qinit monorepo (the dev
+  # path ../../Qinit). Required on every PR — override the defaults with repo vars QINIT_REPO / QINIT_REF and,
+  # if the sibling is private, a QINIT_PAT secret with read access.
   typecheck:
     name: typecheck + web tests
-    if: ${{ vars.QINIT_REPO != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: checkout qinit-web
@@ -43,7 +41,7 @@ jobs:
       - name: checkout qinit (sibling monorepo)
         uses: actions/checkout@v4
         with:
-          repository: ${{ vars.QINIT_REPO }}
+          repository: ${{ vars.QINIT_REPO || 'hackerby888/qinit' }}
           ref: ${{ vars.QINIT_REF }}
           token: ${{ secrets.QINIT_PAT || github.token }}
           path: Qinit
@@ -74,4 +72,4 @@ jobs:
 
       - name: frontend unit tests
         working-directory: Qinit-web/frontend
-        run: bun test src/ide/qpi
+        run: bun test src/ide

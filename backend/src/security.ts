@@ -2,6 +2,7 @@
 // refuses to start in production with an insecure config. The pure helpers (isWeakSecret / parseOrigins /
 // originAllowed) are unit-tested.
 import type { CorsOptions } from "cors";
+import { log } from "./log";
 
 const DEFAULT_SECRET = "dev-insecure-secret-change-me";
 
@@ -65,6 +66,6 @@ export function assertBootConfig(): void {
   }
 
   if (isProd && parseOrigins(process.env.CORS_ORIGINS).length === 0 && !process.env.FRONTEND_URL) {
-    console.warn("[security] production with no CORS_ORIGINS/FRONTEND_URL — only localhost origins are allowed.");
+    log.warn("production with no CORS_ORIGINS/FRONTEND_URL — only localhost origins are allowed");
   }
 }
