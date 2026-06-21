@@ -195,6 +195,11 @@ export default function Projects() {
     }
   };
 
+  const startRename = (m: ProjectMeta) => {
+    setRenaming(m.id);
+    setDraft(m.name);
+  };
+
   const commitRename = async (id: string) => {
     const name = draft.trim();
     if (name) {
@@ -301,13 +306,20 @@ export default function Projects() {
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onBlur={() => commitRename(m.id)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { void commitRename(m.id); } if (e.key === "Escape") { setRenaming(null); } }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        void commitRename(m.id);
+                      }
+                      if (e.key === "Escape") {
+                        setRenaming(null);
+                      }
+                    }}
                     style={inlineInput}
                   />
                 ) : (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
-                    <span onDoubleClick={() => { setRenaming(m.id); setDraft(m.name); }} style={{ fontFamily: font.display, fontSize: 16, color: color.textLightHi, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                    <span onDoubleClick={() => startRename(m)} style={{ fontFamily: font.display, fontSize: 16, color: color.textLightHi, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
                   </div>
                 )}
 
@@ -319,7 +331,7 @@ export default function Projects() {
 
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   <NeoBtn onClick={() => void open(m.id)} active title="Open in the editor">▶ open</NeoBtn>
-                  <NeoBtn onClick={() => { setRenaming(m.id); setDraft(m.name); }} title="Rename">✎</NeoBtn>
+                  <NeoBtn onClick={() => startRename(m)} title="Rename">✎</NeoBtn>
                   <NeoBtn onClick={() => void duplicate(m.id)} title="Duplicate">⧉</NeoBtn>
                   <NeoBtn onClick={() => void exportOne(m.id)} title="Export to .json">⤓</NeoBtn>
                   <NeoBtn onClick={() => void del(m.id, m.name)} title="Delete" accent="#FF8B7E">✕</NeoBtn>

@@ -90,12 +90,12 @@ export const TYPE_SEG: Seg[] = [
   { t: " counter;\n\n  ", r: "def" },
   { t: "PUBLIC_PROCEDURE", r: "sec", b: true },
   { t: "(Inc)", r: "acc", b: true },
-  { t: " { state.mut().counter += ", r: "def" },
+  { t: " {\n    state.mut().counter += ", r: "def" },
   { t: "1", r: "acc" },
-  { t: "; }\n  ", r: "def" },
+  { t: ";\n  }\n  ", r: "def" },
   { t: "PUBLIC_FUNCTION", r: "sec", b: true },
   { t: "(Get)", r: "acc", b: true },
-  { t: " { output.value = state.get().counter; }\n}", r: "def" },
+  { t: " {\n    output.value = state.get().counter;\n  }\n}", r: "def" },
 ];
 
 // IDE editor (static): REAL @qinit/engine usage — the TS SC engine, not a fake "@qinit/qubic" quorum.

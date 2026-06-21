@@ -50,7 +50,7 @@ export function Nav() {
 
 export function Hero() {
   return (
-    <header style={{ position: "relative", padding: "74px 32px 64px", overflow: "hidden", background: color.void, color: color.textLight, borderBottom: `3px solid ${color.ink}`, ...dotGrid(true) }}>
+    <header style={{ position: "relative", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", padding: "48px 32px", overflow: "hidden", background: color.void, color: color.textLight, borderBottom: `3px solid ${color.ink}`, ...dotGrid(true) }}>
       <DotField />
       <div style={{ position: "absolute", top: -120, left: "50%", transform: "translateX(-50%)", width: 680, height: 520, borderRadius: "50%", background: `radial-gradient(circle, ${color.accent}14 0%, transparent 66%)`, pointerEvents: "none" }} />
 
@@ -184,14 +184,14 @@ export function CodeShowcase() {
         </div>
       </div>
 
-      <NotchBox frame={color.ink} face={color.panel} shadow={7} lift={false} faceStyle={{ position: "relative" }}>
+      <NotchBox frame={color.ink} face={color.panel} shadow={7} lift={false} style={{ minWidth: 0 }} faceStyle={{ position: "relative", minWidth: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 14px", borderBottom: `3px solid ${color.hair}`, background: color.panelDeep }}>
           <span style={{ width: 11, height: 11, background: color.accent }} />
           <span style={{ width: 11, height: 11, background: color.swatchOff }} />
           <span style={{ width: 11, height: 11, background: color.swatchOff }} />
           <span style={{ fontFamily: font.mono, fontSize: 12, marginLeft: 6, color: color.textFaintDk }}>Counter.h</span>
         </div>
-        <Typewriter segs={TYPE_SEG} style={{ padding: 22, fontSize: 13.5, lineHeight: 1.85, overflowX: "auto", minHeight: 252 }} />
+        <Typewriter segs={TYPE_SEG} style={{ padding: 22, fontSize: 13.5, lineHeight: 1.85, height: 330, minWidth: 0, overflow: "hidden", whiteSpace: "pre" }} />
         <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "repeating-linear-gradient(transparent 0 2px, rgba(255,255,255,.025) 2px 3px)" }} />
       </NotchBox>
     </section>

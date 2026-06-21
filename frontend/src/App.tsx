@@ -8,8 +8,11 @@ export default function App() {
     <div className="pixel-root">
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
 
-      <Nav />
-      <Hero />
+      {/* First fold is all black: nav + hero fill the viewport, so the white section starts below the fold. */}
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <Nav />
+        <Hero />
+      </div>
       <Pillars />
       <NetworkStrip />
       <Features />

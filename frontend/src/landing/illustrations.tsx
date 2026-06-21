@@ -114,28 +114,33 @@ export function Segments({ segs }: { segs: Seg[] }) {
   return <>{renderSegs(segs, Infinity, false)}</>;
 }
 
-// §6b — auto-typing code (loops): ~26ms/char, pause 2800ms, restart.
+// §6b — auto-typing code: ~26ms/char, types the contract once and holds (blinking cursor, no reset). The
+// viewport is a fixed height with overflow clipped; as the cursor types past the bottom we scroll to follow
+// it, so the box never resizes and earlier lines slide up out of view instead of growing the panel.
 export function Typewriter({ segs, style }: { segs: Seg[]; style?: CSSProperties }) {
   const full = segs.reduce((n, s) => n + s.t.length, 0);
   const [n, setN] = React.useState(0);
+  const ref = React.useRef<HTMLPreElement>(null);
 
+  // Type once each time the panel scrolls into view — so it re-animates whenever the user comes back to it.
   React.useEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       setN(full);
       return;
     }
 
-    let iv: ReturnType<typeof setInterval>;
-    let to: ReturnType<typeof setTimeout>;
-    const start = () => {
+    let iv: ReturnType<typeof setInterval> | undefined;
+    const startTyping = () => {
+      clearInterval(iv);
+      setN(0);
       iv = setInterval(() => {
         setN((cur) => {
           if (cur >= full) {
             clearInterval(iv);
-            to = setTimeout(() => {
-              setN(0);
-              start();
-            }, 2800);
             return full;
           }
           return cur + 1;
@@ -143,12 +148,33 @@ export function Typewriter({ segs, style }: { segs: Seg[]; style?: CSSProperties
       }, 26);
     };
 
-    start();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            startTyping();
+          } else {
+            clearInterval(iv);
+          }
+        }
+      },
+      { threshold: 0.35 },
+    );
+    obs.observe(el);
+
     return () => {
       clearInterval(iv);
-      clearTimeout(to);
+      obs.disconnect();
     };
   }, [full]);
 
-  return <pre style={{ margin: 0, fontFamily: font.mono, color: "#C9D1CB", ...style }}>{renderSegs(segs, n, true)}</pre>;
+  // Keep the newest line (and the cursor) in view as the code grows past the fixed-height viewport.
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [n]);
+
+  return <pre ref={ref} style={{ margin: 0, fontFamily: font.mono, color: "#C9D1CB", ...style }}>{renderSegs(segs, n, true)}</pre>;
 }
