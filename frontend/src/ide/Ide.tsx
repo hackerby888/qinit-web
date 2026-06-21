@@ -14,7 +14,7 @@ import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
-import { createShareLink } from "./shareApi";
+import { ShareDialog } from "./ShareDialog";
 import { getToken, fetchMe, type Me } from "./auth";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
@@ -599,6 +599,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
   const [showTxs, setShowTxs] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [testRun, setTestRun] = useState<{ results: TestResult[]; running: boolean; title: string } | null>(null); // .ts test run
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
@@ -892,28 +893,29 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
+  // Owner of a signed-in cloud project opens the share dialog (view/edit links, expiry, revoke, go live).
+  // Anonymous / local projects fall back to the legacy self-contained link.
   const share = async () => {
-    // Already in a shared session — copy the current link.
-    if (collab) {
-      await copyLink(location.href, "collab link copied");
+    if (getToken() && id) {
+      setShareOpen(true);
       return;
     }
-    // Signed-in cloud project: mint a live edit link, flush the latest edits, then go live as the owner.
-    if (getToken() && id) {
-      try {
-        if (projectRef.current) {
-          await getStore().save(projectRef.current);
-        }
-        const link = await createShareLink(id, "edit");
-        await copyLink(location.origin + link.url, "collab link copied — others can edit live");
-        setCollab({ projectId: id, mode: "edit", displayName: me?.name ?? "You", color: colorFor(id) });
-        return;
-      } catch (e) {
-        appendLog("share failed: " + (e as Error).message);
-      }
-    }
-    // Anonymous / local project — fall back to the legacy self-contained link.
     await copyLink(shareUrl(ws), "share link copied to clipboard");
+  };
+
+  // Flush the latest edits so the server seeds the collab room from current content, then join the room live.
+  const goLive = async () => {
+    if (!id) {
+      return;
+    }
+    try {
+      if (projectRef.current) {
+        await getStore().save(projectRef.current);
+      }
+    } catch {
+      // best-effort flush; the server falls back to the last saved snapshot
+    }
+    setCollab({ projectId: id, mode: "edit", displayName: me?.name ?? "You", color: colorFor(id) });
   };
 
   const callerSeed = (): string => accounts.find((a) => a.id === caller)?.seed ?? "";
@@ -1928,6 +1930,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: hair() }}>
             <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
             <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
+            {collab && <span title="In collab the engine runs in your browser only — deploys, ticks and accounts aren't shared" style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>· local to you</span>}
             {sel && <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
           </div>
 
@@ -2104,6 +2107,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} onBack={debug.onBack} />}
 
       {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title, onBack: () => { setDebug(null); setShowTxs(true); } }); }} />}
+
+      {shareOpen && id && <ShareDialog projectId={id} isLive={!!collab} peerCount={collabApi.peers.length} onGoLive={() => { void goLive(); }} onClose={() => setShareOpen(false)} />}
 
       {testRun && <TestPanel results={testRun.results} running={testRun.running} title={testRun.title} onClose={() => setTestRun(null)} onRerun={() => void runTestFile()} />}
 
