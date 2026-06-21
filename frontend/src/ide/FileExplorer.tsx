@@ -263,11 +263,24 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   const tree = buildFileTree(files.map((f) => f.name));
-  const indent = (depth: number): number => 14 + depth * 14;
+
+  // Tree indentation + VSCode-style indent guides. Each row sits at PAD0 + depth*STEP; a faint vertical line
+  // is drawn at each ancestor level so the nesting is traceable (the active file's own branch turns accent).
+  const STEP = 16;
+  const PAD0 = 12;
+  const GUIDE = color.hair;
+  const rowPad = (depth: number): number => PAD0 + depth * STEP;
+  const guideLines = (depth: number, active: boolean): ReactElement[] =>
+    Array.from({ length: depth }, (_, i) => (
+      <span
+        key={`g${i}`}
+        style={{ position: "absolute", left: PAD0 + i * STEP + 7, top: 0, bottom: 0, width: 1, background: active && i === depth - 1 ? color.accent : GUIDE, pointerEvents: "none" }}
+      />
+    ));
 
   // A naming input wrapped in a fixed-height row so it aligns with file rows and never stretches vertically.
   const inputRow = (key: string, depth: number, node: ReactElement): ReactElement => (
-    <div key={key} style={{ display: "flex", padding: "1px 14px 1px 0", paddingLeft: indent(depth) + 9 }}>
+    <div key={key} style={{ display: "flex", padding: "1px 14px 1px 0", paddingLeft: rowPad(depth) + 16 }}>
       {node}
     </div>
   );
@@ -359,9 +372,11 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(node.path); }}
               onDragLeave={() => setDragOver((d) => (d === node.path ? null : d))}
               onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(node.path); }}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk, background: dragOver === node.path ? DROP : hover === node.path ? HOVER : "transparent" }}
+              style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: rowPad(depth), cursor: "pointer", color: color.textMutedDk, background: dragOver === node.path ? DROP : hover === node.path ? HOVER : "transparent" }}
             >
+              {guideLines(depth, false)}
               <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
+              <span style={{ flex: "none", color: hover === node.path ? color.accent : color.textGhostDk, fontSize: 11 }}>{open ? "🗁" : "🗀"}</span>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
               {hover === node.path && (
                 <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
@@ -412,9 +427,11 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
           onContextMenu={(e) => openMenu(e, fileMenu(node.path))}
           onMouseEnter={() => setHover(node.path)}
           onMouseLeave={() => setHover((h) => (h === node.path ? null : h))}
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", paddingLeft: indent(depth) + 9, cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : hover === node.path ? HOVER : "transparent", color: on ? color.accent : color.textMutedDk }}
+          style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", paddingLeft: rowPad(depth), cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : hover === node.path ? HOVER : "transparent", color: on ? color.accent : color.textMutedDk }}
         >
-          <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />
+          {guideLines(depth, on)}
+          <span style={{ width: 10, flex: "none" }} />
+          <span style={{ flex: "none", fontSize: 11, color: on ? color.accent : color.textGhostDk }}>🗎</span>
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
           {(on || hover === node.path) && (
             <button onClick={(e) => { e.stopPropagation(); setRenaming(node.path); setRenameDraft(node.path); }} title="Rename" style={iconBtn}>✎</button>
