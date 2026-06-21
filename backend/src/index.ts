@@ -6,6 +6,7 @@ import { latestRelease, bumpVisits } from "./release";
 import { compile, buildQueueState } from "./compile";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
 import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut, shareCreate, shareList, shareRevoke, shareResolve } from "./projects";
+import { importRepo, exportGist } from "./github";
 import { attachCollab } from "./collab";
 import { requireAdmin, adminMetrics, adminHistory, adminIncidents } from "./admin";
 import { startMetricsSampler } from "./metrics";
@@ -38,6 +39,7 @@ const apiLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_API, 
 const compileLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_COMPILE, 12) });
 const authLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_AUTH, 30) });
 const shareLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_SHARE, 30) });
+const githubLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_GITHUB, 10) });
 
 app.use("/api", apiLimiter);
 app.use("/api/auth", authLimiter);
@@ -98,6 +100,11 @@ app.post("/api/projects/:id/share", shareLimiter, requireAuth, wrap(shareCreate)
 app.get("/api/projects/:id/shares", requireAuth, wrap(shareList));
 app.delete("/api/projects/:id/share/:linkId", requireAuth, wrap(shareRevoke));
 app.get("/api/s/:linkId", wrap(shareResolve));
+
+// GitHub: import a public repo's files, export the workspace as a Gist. Authed + tightly rate-limited since
+// each call fans out to the GitHub API.
+app.post("/api/github/import", githubLimiter, requireAuth, wrap(importRepo));
+app.post("/api/github/gist", githubLimiter, requireAuth, wrap(exportGist));
 
 // Admin dashboard — system health + overload metrics, behind the shared ADMIN_TOKEN gate.
 app.get("/api/admin/metrics", requireAdmin, wrap(adminMetrics));

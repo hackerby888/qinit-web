@@ -17,7 +17,9 @@ import { fileLabel } from "./filetree";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
-import { getToken, fetchMe, type Me } from "./auth";
+import { getToken, fetchMe, login, type Me } from "./auth";
+import { GitHubDialog } from "./GitHubDialog";
+import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, fetchBuildQueue, type CompileResult, type BuildQueue } from "./api";
@@ -657,6 +659,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
   const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
   const [searchOpen, setSearchOpen] = useState(false); // Ctrl+Shift+F workspace search
+  const [github, setGithub] = useState<"import" | "export" | null>(null); // GitHub import/export dialog (tab, or closed)
   const [searchQuery, setSearchQuery] = useState(""); // search state lifted here so it persists across opens
   const [searchCase, setSearchCase] = useState(false);
   const [searchRegex, setSearchRegex] = useState(false);
@@ -935,6 +938,37 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       return;
     }
     setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
+  };
+
+  // Merge files imported from GitHub into the workspace: existing names are overwritten, new ones appended,
+  // and the first import becomes the active tab. Works in both the local and collab modes.
+  const importFiles = (incoming: RepoFile[]) => {
+    if (incoming.length === 0) {
+      return;
+    }
+
+    const first = incoming[0].name;
+    setOpenTabs((prev) => (prev.includes(first) ? prev : [...prev, first]));
+
+    if (collab) {
+      for (const f of incoming) {
+        if (ws.files.some((x) => x.name === f.name)) {
+          collabApi.ops.remove(f.name);
+        }
+        collabApi.ops.create(f.name, f.source);
+      }
+      setWs((w) => ({ ...w, active: first }));
+    } else {
+      setWs((w) => {
+        const byName = new Map(w.files.map((f) => [f.name, f]));
+        for (const f of incoming) {
+          byName.set(f.name, { name: f.name, source: f.source });
+        }
+        return { files: [...byName.values()], active: first };
+      });
+    }
+
+    appendLog(`Imported ${incoming.length} file${incoming.length === 1 ? "" : "s"} from GitHub`);
   };
 
   const renameFile = (oldName: string, newName: string) => {
@@ -1923,6 +1957,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             { id: "save", label: "Save project", hint: "Ctrl S", run: () => { persistRef.current(); setSaved(true); } },
             { id: "format", label: "Format document", hint: "Shift Alt F", run: () => void editorRef.current?.getAction("editor.action.formatDocument")?.run() },
             { id: "search", label: "Search in files", hint: "Ctrl Shift F", run: () => setSearchOpen(true) },
+            { id: "gh-import", label: "Import from GitHub…", run: () => setGithub("import") },
+            { id: "gh-export", label: "Export as Gist…", run: () => setGithub("export") },
             { id: "newfile", label: "New file…", run: promptNewFile },
             { id: "close", label: "Close active tab", hint: "Ctrl W", run: () => closeActiveTabRef.current() },
             { id: "share", label: "Share workspace link", run: () => void share() },
@@ -1992,6 +2028,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             <span style={{ color: color.textFaintDk }}>⌕</span>
             <span style={{ flex: 1, color: color.textGhostDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Search files…</span>
             <span style={{ color: color.textFaintDk, fontSize: 9.5 }}>⌃⇧F</span>
+          </button>
+          <button
+            onClick={() => setGithub("import")}
+            title="Import from GitHub / export as Gist"
+            style={{ display: "flex", alignItems: "center", gap: 6, height: 24, flex: "none", border: `1px solid ${color.hair2}`, background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 11.5, cursor: "pointer", padding: "0 9px" }}
+          >
+            <span style={{ color: color.textFaintDk }}>⎇</span>
+            GitHub
           </button>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
@@ -2260,6 +2304,17 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           onRegex={setSearchRegex}
           onJump={jumpToMatch}
           onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {github && (
+        <GitHubDialog
+          files={ws.files}
+          signedIn={!!getToken()}
+          initialTab={github}
+          onImport={importFiles}
+          onSignIn={() => login("github")}
+          onClose={() => setGithub(null)}
         />
       )}
     </div>
