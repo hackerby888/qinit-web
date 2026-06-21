@@ -5,6 +5,8 @@ import type { WorkspaceFile } from "../workspace";
 import { EXAMPLES } from "../examples";
 import type { Scenario } from "../scenarios";
 import { PROJECT_SCHEMA_VERSION, metaOf, type Project, type ProjectMeta } from "./types";
+import { getToken } from "../auth";
+import { CloudProjectStore } from "./cloudStore";
 
 const INDEX_KEY = "ide.projects.index";
 const CURRENT_KEY = "ide.project.current";
@@ -190,13 +192,19 @@ class LocalProjectStore implements ProjectStore {
   }
 }
 
-let instance: ProjectStore | null = null;
+let localInstance: ProjectStore | null = null;
+let cloudInstance: ProjectStore | null = null;
 
-// The IDE's single entry point for project storage. Returns the local backend today; later this is where a
-// CloudProjectStore (same interface) is chosen once a user is signed in.
+// The IDE's single entry point for project storage: the cloud backend when signed in (a Bearer token is
+// present), the local backend otherwise. Lazily imports CloudProjectStore to avoid a load-time cycle.
 export function getStore(): ProjectStore {
-  if (!instance) {
-    instance = new LocalProjectStore();
+  if (getToken()) {
+    return (cloudInstance ??= new CloudProjectStore());
   }
-  return instance;
+  return (localInstance ??= new LocalProjectStore());
+}
+
+// The local store regardless of auth — used to copy local projects into a cloud account on first login.
+export function getLocalStore(): ProjectStore {
+  return (localInstance ??= new LocalProjectStore());
 }
