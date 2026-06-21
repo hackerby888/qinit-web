@@ -9,10 +9,36 @@ import { projectsList, projectGet, projectPut, projectDelete, currentGet, curren
 import { attachCollab } from "./collab";
 import { requireAdmin, adminMetrics, adminHistory, adminIncidents } from "./admin";
 import { startMetricsSampler } from "./metrics";
+import { assertBootConfig, corsOptions } from "./security";
+import { rateLimit } from "./ratelimit";
+
+// Refuse to start in production with an insecure config (weak SESSION_SECRET, etc.).
+assertBootConfig();
 
 const app = express();
-app.use(cors());
+
+// Behind a load balancer, set TRUST_PROXY so req.ip reflects the real client (X-Forwarded-For) for CORS +
+// rate-limit keying. Off by default (direct connections).
+if (process.env.TRUST_PROXY) {
+  app.set("trust proxy", Number(process.env.TRUST_PROXY) || true);
+}
+
+app.use(cors(corsOptions()));
 app.use(express.json({ limit: "1mb" }));
+
+const num = (v: string | undefined, dflt: number): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : dflt;
+};
+
+// Rate limits (per-IP, per minute). Generous global ceiling + strict caps on the expensive / abusable routes.
+const apiLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_API, 600) });
+const compileLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_COMPILE, 12) });
+const authLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_AUTH, 30) });
+const shareLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_SHARE, 30) });
+
+app.use("/api", apiLimiter);
+app.use("/api/auth", authLimiter);
 
 // Wrap an async handler so a rejection becomes a 500 (not a process crash).
 type Handler = (req: express.Request, res: express.Response) => unknown;
@@ -28,7 +54,7 @@ const wrap = (fn: Handler) => (req: express.Request, res: express.Response): voi
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
 // Browser IDE: compile a qpi.h contract to wasm (the frontend runs it in-page via @qinit/engine).
-app.post("/api/compile", async (req, res) => {
+app.post("/api/compile", compileLimiter, async (req, res) => {
   const { source, name, slot, skipVerify, callees } = req.body ?? {};
   if (typeof source !== "string" || !source.trim()) {
     res.status(400).json({ ok: false, diagnostics: [], error: "missing `source`" });
@@ -61,7 +87,7 @@ app.put("/api/projects/:id", requireAuth, wrap(projectPut));
 app.delete("/api/projects/:id", requireAuth, wrap(projectDelete));
 
 // Share links — owner mints/lists/revokes; the resolve route is public (the link is the credential).
-app.post("/api/projects/:id/share", requireAuth, wrap(shareCreate));
+app.post("/api/projects/:id/share", shareLimiter, requireAuth, wrap(shareCreate));
 app.get("/api/projects/:id/shares", requireAuth, wrap(shareList));
 app.delete("/api/projects/:id/share/:linkId", requireAuth, wrap(shareRevoke));
 app.get("/api/s/:linkId", wrap(shareResolve));
