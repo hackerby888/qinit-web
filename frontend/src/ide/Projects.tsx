@@ -2,12 +2,13 @@
 // cards — open, rename, duplicate, delete, export — plus create-new and import. Opening one routes to the
 // editor at /ide/p/:id. All storage goes through the async ProjectStore, so this UI is unchanged when a
 // cloud backend is added later.
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { Card, NeoBtn } from "./ui";
-import { getStore } from "./projects/store";
+import { getStore, getLocalStore } from "./projects/store";
+import { captureAuthRedirect, fetchMe, login, logout, type Me } from "./auth";
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace } from "./workspace";
@@ -48,6 +49,9 @@ const inlineInput: CSSProperties = {
 export default function Projects() {
   const navigate = useNavigate();
   const [metas, setMetas] = useState<ProjectMeta[] | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
+  const [authErr, setAuthErr] = useState<string>("");
+  const [loginOpen, setLoginOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -56,8 +60,40 @@ export default function Projects() {
     setMetas(await getStore().list());
   }, []);
 
+  // On first login, offer to copy local projects into the cloud account (once per account).
+  const offerImport = useCallback(async (user: Me) => {
+    const flag = `qinit.import.${user.id}`;
+    if (localStorage.getItem(flag)) {
+      return;
+    }
+    const [cloud, local] = await Promise.all([getStore().list(), getLocalStore().list()]);
+    if (cloud.length === 0 && local.length > 0 && window.confirm(`Import ${local.length} local project(s) into your account?`)) {
+      for (const m of local) {
+        const p = await getLocalStore().load(m.id);
+        if (p) {
+          const cp = await getStore().create(p.name, p.files);
+          cp.active = p.active;
+          cp.openTabs = p.openTabs;
+          cp.scenarios = p.scenarios;
+          await getStore().save(cp);
+        }
+      }
+    }
+    localStorage.setItem(flag, "done");
+  }, []);
+
   useEffect(() => {
     void (async () => {
+      const redir = captureAuthRedirect();
+      if (redir.error) {
+        setAuthErr(redir.error);
+      }
+      const user = await fetchMe();
+      setMe(user);
+      if (user) {
+        await offerImport(user);
+      }
+
       // A `#p=` share URL lands here — import it as a new project and open it.
       const shared = decodeSharedWorkspace();
       if (shared) {
@@ -73,7 +109,13 @@ export default function Projects() {
       }
       await reload();
     })();
-  }, [reload, navigate]);
+  }, [reload, navigate, offerImport]);
+
+  const signOut = () => {
+    logout();
+    setMe(null);
+    void reload();
+  };
 
   const open = async (id: string) => {
     await getStore().setCurrentId(id);
@@ -132,6 +174,7 @@ export default function Projects() {
   return (
     <div style={{ minHeight: "100vh", background: color.void, color: color.textLight, fontFamily: font.body }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
+      {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 22px", height: 54, borderBottom: `3px solid ${color.ink}`, background: color.panelDeep }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
@@ -141,6 +184,15 @@ export default function Projects() {
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <input ref={fileRef} type="file" accept=".json,application/json" onChange={onImport} style={{ display: "none" }} />
           <NeoBtn onClick={() => fileRef.current?.click()} title="Import a .qinit.json project">⤒ import</NeoBtn>
+          {me ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {me.avatar && <img src={me.avatar} alt="" referrerPolicy="no-referrer" style={{ width: 22, height: 22, borderRadius: "50%", flex: "none" }} />}
+              <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textLight, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={me.email ?? me.name}>{me.name}</span>
+              <NeoBtn onClick={signOut} title="Sign out">sign out</NeoBtn>
+            </div>
+          ) : (
+            <NeoBtn onClick={() => setLoginOpen(true)} active title="Sign in to sync your projects">sign in</NeoBtn>
+          )}
           <Link to="/docs" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
         </div>
       </div>
@@ -149,8 +201,14 @@ export default function Projects() {
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 22 }}>
           <span style={{ width: 12, height: 12, background: color.accent }} />
           <h1 style={{ fontFamily: font.display, fontSize: 30, color: color.textLightHi, margin: 0 }}>Projects</h1>
-          <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk }}>{metas ? `${metas.length} local` : "…"}</span>
+          <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk }}>{metas ? `${metas.length} ${me ? "· synced to your account" : "local · sign in to sync"}` : "…"}</span>
         </div>
+
+        {authErr && (
+          <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #FF8B7E`, background: "#FF8B7E14", fontFamily: font.mono, fontSize: 12, color: "#FF8B7E" }}>
+            sign-in failed: {authErr}
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
           <button onClick={create} title="New project" style={{ all: "unset", cursor: "pointer", display: "block" }}>
@@ -207,5 +265,100 @@ export default function Projects() {
         )}
       </div>
     </div>
+  );
+}
+
+// Sign-in modal — one entry point that fans out to the OAuth providers. Backdrop / Escape close it.
+function LoginModal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: "fixed", inset: 0, background: "#000000B0", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: 20 }}
+    >
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 340, maxWidth: "100%" }}>
+        <Card frame={color.accentDeep} shadow={6}>
+          <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+              <span style={{ width: 11, height: 11, flex: "none", background: color.accent }} />
+              <span style={{ fontFamily: font.display, fontSize: 18, color: color.textLightHi }}>Sign in</span>
+              <div style={{ flex: 1 }} />
+              <button onClick={onClose} title="Close" style={{ all: "unset", cursor: "pointer", fontFamily: font.mono, fontSize: 14, color: color.textGhostDk, padding: "2px 4px" }}>✕</button>
+            </div>
+
+            <div style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk, lineHeight: 1.5 }}>
+              Sync your projects to your account and access them anywhere.
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <ProviderBtn onClick={() => login("google")} icon={<GoogleIcon />} label="Continue with Google" />
+              <ProviderBtn onClick={() => login("github")} icon={<GitHubIcon />} label="Continue with GitHub" />
+            </div>
+
+            <div style={{ fontFamily: font.mono, fontSize: 10, color: color.textFaintDk }}>
+              We only read your name, email, and avatar.
+            </div>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// Full-width provider button — accent border on hover, brand glyph on the left.
+function ProviderBtn({ onClick, icon, label }: { onClick: () => void; icon: ReactNode; label: string }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        width: "100%",
+        padding: "11px 14px",
+        border: `1px solid ${hover ? color.accent : color.hair2}`,
+        background: hover ? color.panel : color.void,
+        color: color.textLightHi,
+        fontFamily: font.mono,
+        fontSize: 13,
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "border-color .1s, background .1s",
+      }}
+    >
+      <span style={{ flex: "none", display: "flex", width: 18, height: 18 }}>{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" />
+      <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" />
+      <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" />
+      <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" />
+    </svg>
+  );
+}
+
+function GitHubIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 16 16" fill={color.textLightHi} aria-hidden="true">
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+    </svg>
   );
 }
