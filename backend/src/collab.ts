@@ -46,6 +46,17 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
+// Live collab footprint for the admin dashboard: open rooms and the total connected sockets across them.
+export function collabMetrics(): { rooms: number; connections: number } {
+  let connections = 0;
+
+  for (const room of rooms.values()) {
+    connections += room.conns.size;
+  }
+
+  return { rooms: rooms.size, connections };
+}
+
 // Pub/sub clients (null when REDIS_URL unset → single-instance, in-memory relay).
 const pub = makeRedis();
 const sub = makeRedis();

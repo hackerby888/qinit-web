@@ -7,6 +7,8 @@ import { compile, buildQueueState } from "./compile";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
 import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut, shareCreate, shareList, shareRevoke, shareResolve } from "./projects";
 import { attachCollab } from "./collab";
+import { requireAdmin, adminMetrics, adminHistory, adminIncidents } from "./admin";
+import { startMetricsSampler } from "./metrics";
 
 const app = express();
 app.use(cors());
@@ -64,6 +66,11 @@ app.get("/api/projects/:id/shares", requireAuth, wrap(shareList));
 app.delete("/api/projects/:id/share/:linkId", requireAuth, wrap(shareRevoke));
 app.get("/api/s/:linkId", wrap(shareResolve));
 
+// Admin dashboard — system health + overload metrics, behind the shared ADMIN_TOKEN gate.
+app.get("/api/admin/metrics", requireAdmin, wrap(adminMetrics));
+app.get("/api/admin/history", requireAdmin, wrap(adminHistory));
+app.get("/api/admin/incidents", requireAdmin, wrap(adminIncidents));
+
 app.get("/api/release/latest", async (_req, res) => {
   try { res.json(await latestRelease()); }
   catch (e) { res.status(502).json({ error: (e as Error).message }); }
@@ -78,5 +85,6 @@ const port = Number(process.env.PORT ?? 8787);
 // Explicit http.Server so the collab WebSocket can attach to the upgrade event alongside Express.
 const server = http.createServer(app);
 attachCollab(server);
+startMetricsSampler();
 // Warm the DB connection (optional), then listen regardless.
 getDb().finally(() => server.listen(port, () => console.log(`[qinit-web] api listening on :${port}`)));
