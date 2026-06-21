@@ -1,0 +1,56 @@
+# Full self-host stack: MongoDB + Redis + the API + the static web (nginx) reverse-proxying to the API.
+# The build context is `..` (the parent dir) because the images need the sibling `Qinit/` monorepo — run from
+# inside Qinit-web:  docker compose up --build
+#
+# TLS: terminate HTTPS at a reverse proxy in front of `web` (it also upgrades /collab to wss). See docs/DEPLOY.md.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: Qinit-web/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: "8787"
+      MONGODB_URI: mongodb://mongo:27017
+      REDIS_URL: redis://redis:6379
+      TRUST_PROXY: "1"
+    volumes:
+      # The qinit toolchain (wasi-sdk + core headers) the compiler needs — provision on the host with `qinit up`,
+      # then point QINIT_CACHE at it (e.g. QINIT_CACHE=$HOME/.cache/qinit) or copy it to ./qinit-cache.
+      - ${QINIT_CACHE:-./qinit-cache}:/root/.cache/qinit:ro
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: ..
+      dockerfile: Qinit-web/frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  mongo-data:
