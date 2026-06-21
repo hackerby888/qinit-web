@@ -5,8 +5,8 @@
 import type { Request, Response, NextFunction } from "express";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { upsertUser, getUser, type User } from "./store";
+import { SESSION_SECRET as SECRET } from "./security";
 
-const SECRET = process.env.SESSION_SECRET ?? "dev-insecure-secret-change-me";
 const FRONTEND = process.env.FRONTEND_URL ?? "http://localhost:5180";
 const CALLBACK_BASE = process.env.OAUTH_CALLBACK_BASE ?? "http://localhost:8787";
 const TOKEN_TTL = 60 * 60 * 24 * 30; // 30 days
