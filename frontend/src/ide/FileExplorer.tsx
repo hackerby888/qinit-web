@@ -1,14 +1,22 @@
 // Workspace file explorer: switch / create / rename / delete files and folders. Create + rename use inline
 // inputs (no blocking prompts); delete asks via an in-app confirm. Names are normalised to a `.h` file;
 // folders are virtual (a path prefix), with a hidden `.keep` placeholder holding empty ones open.
-import { useState, type CSSProperties, type ReactElement } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
-import { buildFileTree, normalizePath, normalizeDir, fileLabel, KEEP_FILE, type TreeNode } from "./filetree";
+import { buildFileTree, normalizePath, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
 
-export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onJump }: {
+interface MenuItem {
+  label?: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  sep?: boolean;
+}
+
+export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onJump }: {
   files: WorkspaceFile[];
   active: string;
   source: string;
@@ -18,17 +26,23 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   onDelete: (name: string) => void;
   onCreateFolder: (dir: string) => void;
   onDeleteFolder: (dir: string) => void;
+  onRenameFolder: (oldDir: string, newDir: string) => void;
+  onDuplicate: (name: string) => void;
   onJump: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [addPrefix, setAddPrefix] = useState(""); // folder the new file lands in ("" = root)
   const [draft, setDraft] = useState("");
   const [mkdir, setMkdir] = useState(false);
+  const [mkdirPrefix, setMkdirPrefix] = useState(""); // parent folder the new folder lands in ("" = root)
   const [dirDraft, setDirDraft] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
+  const [renamingDir, setRenamingDir] = useState<string | null>(null);
+  const [renameDirDraft, setRenameDirDraft] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState<{ message: string; onYes: () => void } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
@@ -78,16 +92,18 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     setDraft("");
   };
 
-  const startMkdir = () => {
+  const startMkdir = (prefix: string) => {
     setAdding(false);
+    setMkdirPrefix(prefix);
     setMkdir(true);
     setDirDraft("");
   };
 
   const commitDir = () => {
-    const d = normalizeDir(dirDraft);
-    if (d && !files.some((f) => f.name === `${d}/${KEEP_FILE}` || f.name.startsWith(`${d}/`))) {
-      onCreateFolder(d);
+    const seg = normalizeDir(dirDraft);
+    const full = mkdirPrefix ? `${mkdirPrefix}/${seg}` : seg;
+    if (seg && !files.some((f) => f.name === `${full}/${KEEP_FILE}` || f.name.startsWith(`${full}/`))) {
+      onCreateFolder(full);
     }
     setMkdir(false);
     setDirDraft("");
@@ -99,6 +115,32 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       onRename(old, n);
     }
     setRenaming(null);
+  };
+
+  const startRenameDir = (dir: string) => {
+    setRenamingDir(dir);
+    setRenameDirDraft(fileLabel(dir)); // edit just the last segment, like VSCode
+  };
+
+  const commitRenameDir = (oldDir: string) => {
+    const seg = normalizeDir(renameDirDraft);
+    const parent = dirOf(oldDir);
+    const full = parent ? `${parent}/${seg}` : seg;
+    if (seg && full !== oldDir && !files.some((f) => f.name.startsWith(`${full}/`))) {
+      onRenameFolder(oldDir, full);
+    }
+    setRenamingDir(null);
+  };
+
+  const expand = (path: string) => {
+    setCollapsed((prev) => {
+      if (!prev.has(path)) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
   };
 
   // Real files under a folder (the `.keep` placeholder doesn't count) — for the delete-folder confirm message.
@@ -157,28 +199,80 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     />
   );
 
+  // Right-click menus (VSCode-style). Items reuse the same actions as the toolbar/inline affordances.
+  const openMenu = (e: ReactMouseEvent, items: MenuItem[]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, items });
+  };
+
+  const fileMenu = (path: string): MenuItem[] => [
+    { label: "Open", onClick: () => onSelect(path) },
+    { label: "Rename", onClick: () => { setRenaming(path); setRenameDraft(path); } },
+    { label: "Duplicate", onClick: () => onDuplicate(path) },
+    { label: "Copy Path", onClick: () => void navigator.clipboard.writeText(path) },
+    { sep: true },
+    { label: "New File…", onClick: () => startAdd(dirOf(path)) },
+    { label: "New Folder…", onClick: () => startMkdir(dirOf(path)) },
+    { sep: true },
+    { label: "Delete", danger: true, disabled: files.length <= 1, onClick: () => del(path) },
+  ];
+
+  const dirMenu = (dir: string): MenuItem[] => [
+    { label: "New File…", onClick: () => { expand(dir); startAdd(dir); } },
+    { label: "New Folder…", onClick: () => { expand(dir); startMkdir(dir); } },
+    { sep: true },
+    { label: "Rename", onClick: () => startRenameDir(dir) },
+    { label: "Delete", danger: true, disabled: !files.some((f) => !f.name.startsWith(`${dir}/`)), onClick: () => delFolder(dir) },
+    { sep: true },
+    { label: collapsed.has(dir) ? "Expand" : "Collapse", onClick: () => toggle(dir) },
+  ];
+
+  const rootMenu = (): MenuItem[] => [
+    { label: "New File…", onClick: () => startAdd("") },
+    { label: "New Folder…", onClick: () => startMkdir("") },
+  ];
+
   // Folders render before files (buildFileTree sorts that way); each level indents one more step. Rename and
   // the per-folder "new file" input slot into their position in the tree so they read in place.
   const renderNodes = (nodes: TreeNode[], depth: number): ReactElement[] =>
     nodes.flatMap((node): ReactElement[] => {
       if (node.kind === "dir") {
         const open = !collapsed.has(node.path);
+        const header = renamingDir === node.path
+          ? inputRow(`rd:${node.path}`, depth, (
+              <input
+                autoFocus
+                value={renameDirDraft}
+                onChange={(e) => setRenameDirDraft(e.target.value)}
+                onBlur={() => commitRenameDir(node.path)}
+                onKeyDown={(e) => { if (e.key === "Enter") { commitRenameDir(node.path); } if (e.key === "Escape") { setRenamingDir(null); } }}
+                style={inlineInput}
+              />
+            ))
+          : (
+            <div
+              key={`d:${node.path}`}
+              onClick={() => toggle(node.path)}
+              onContextMenu={(e) => openMenu(e, dirMenu(node.path))}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk }}
+            >
+              <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
+              <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
+              <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
+              {files.some((f) => !f.name.startsWith(`${node.path}/`)) && (
+                <button onClick={(e) => { e.stopPropagation(); delFolder(node.path); }} title={`Delete folder ${node.path}`} style={iconBtn}>×</button>
+              )}
+            </div>
+          );
         return [
-          <div
-            key={`d:${node.path}`}
-            onClick={() => toggle(node.path)}
-            style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk }}
-          >
-            <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
-            <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
-            {files.some((f) => !f.name.startsWith(`${node.path}/`)) && (
-              <button onClick={(e) => { e.stopPropagation(); delFolder(node.path); }} title={`Delete folder ${node.path}`} style={iconBtn}>×</button>
-            )}
-          </div>,
+          header,
           ...(open ? renderNodes(node.children, depth + 1) : []),
           ...(open && adding && addPrefix === node.path
             ? [inputRow(`a:${node.path}`, depth + 1, addInput)]
+            : []),
+          ...(open && mkdir && mkdirPrefix === node.path
+            ? [inputRow(`m:${node.path}`, depth + 1, dirInput)]
             : []),
         ];
       }
@@ -204,6 +298,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
           key={`f:${node.path}`}
           onClick={() => onSelect(node.path)}
           onDoubleClick={() => { setRenaming(node.path); setRenameDraft(node.path); }}
+          onContextMenu={(e) => openMenu(e, fileMenu(node.path))}
           style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", paddingLeft: indent(depth) + 9, cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : "transparent", color: on ? color.accent : color.textMutedDk }}
         >
           <span style={{ width: 8, height: 8, background: on ? color.accent : color.textGhostDk, flex: "none" }} />
@@ -218,11 +313,11 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
 
   return (
     <div style={{ borderRight: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12.5, display: "flex", flexDirection: "column", minHeight: 0 }}>
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}>
+      <div onContextMenu={(e) => openMenu(e, rootMenu())} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
-        <button onClick={startMkdir} title="New folder" style={{ ...iconBtn, marginLeft: "auto", fontSize: 14, color: color.accent }}>⊞</button>
+        <button onClick={() => startMkdir("")} title="New folder" style={{ ...iconBtn, marginLeft: "auto", fontSize: 14, color: color.accent }}>⊞</button>
         <button onClick={() => startAdd("")} title="New file" style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
       </div>
 
@@ -246,6 +341,65 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
           onCancel={() => setConfirm(null)}
         />
       )}
+
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
+      )}
+    </div>
+  );
+}
+
+// VSCode-style right-click menu. Renders at the cursor (clamped to the viewport), closes on item click, an
+// outside click, scroll, or Escape.
+function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number }>({ left: x, top: y });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      const left = Math.min(x, window.innerWidth - r.width - 6);
+      const top = Math.min(y, window.innerHeight - r.height - 6);
+      setPos({ left: Math.max(6, left), top: Math.max(6, top) });
+    }
+
+    const close = () => onClose();
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [x, y, onClose]);
+
+  return (
+    <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 400 }}>
+      <div
+        ref={ref}
+        onClick={(e) => e.stopPropagation()}
+        style={{ position: "fixed", left: pos.left, top: pos.top, minWidth: 180, background: color.panelDeep, border: `1px solid ${color.hair2}`, boxShadow: "5px 5px 0 #000", padding: "4px 0", fontFamily: font.mono, fontSize: 12.5 }}
+      >
+        {items.map((it, i) =>
+          it.sep ? (
+            <div key={`s${i}`} style={{ height: 1, background: color.hair, margin: "4px 0" }} />
+          ) : (
+            <button
+              key={it.label}
+              disabled={it.disabled}
+              onClick={() => { if (!it.disabled) { it.onClick?.(); onClose(); } }}
+              style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: it.disabled ? color.textGhostDk : it.danger ? "#ff6b6b" : color.textLight, fontFamily: font.mono, fontSize: 12.5, padding: "5px 14px", cursor: it.disabled ? "default" : "pointer", opacity: it.disabled ? 0.5 : 1 }}
+              onMouseEnter={(e) => { if (!it.disabled) { e.currentTarget.style.background = "#ffffff12"; } }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              {it.label}
+            </button>
+          ),
+        )}
+      </div>
     </div>
   );
 }
