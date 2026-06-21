@@ -8,6 +8,7 @@ import { loader } from "@monaco-editor/react";
 import { color } from "../landing/tokens";
 import { applyQpiGrammar } from "./qpi/grammar";
 import { registerEditorThemes } from "./editorThemes";
+import { formatCode } from "./format";
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker(_: unknown, label: string) {
@@ -118,6 +119,13 @@ export function setupMonaco(): typeof monaco {
 
   // The selectable preset themes (qinit-light, monokai, dracula, solarized-dark).
   registerEditorThemes(monaco);
+
+  // Format Document for qpi.h contracts (cpp). TypeScript test files use Monaco's built-in TS formatter.
+  monaco.languages.registerDocumentFormattingEditProvider("cpp", {
+    provideDocumentFormattingEdits(model) {
+      return [{ range: model.getFullModelRange(), text: formatCode(model.getValue(), "cpp") }];
+    },
+  });
 
   return monaco;
 }
