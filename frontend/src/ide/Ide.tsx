@@ -656,6 +656,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
   const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
   const [searchOpen, setSearchOpen] = useState(false); // Ctrl+Shift+F workspace search
+  const [searchQuery, setSearchQuery] = useState(""); // search state lifted here so it persists across opens
+  const [searchCase, setSearchCase] = useState(false);
+  const [searchRegex, setSearchRegex] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [buildQueue, setBuildQueue] = useState<BuildQueue | null>(null); // backend pool state while a compile is pending
   const [result, setResult] = useState<CompileResult | null>(null);
@@ -1980,6 +1983,15 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
           <PanelToggle hidden={leftHidden} side="left" onClick={toggleLeft} />
           <PanelToggle hidden={rightHidden} side="right" onClick={toggleRight} />
+          <button
+            onClick={() => setSearchOpen(true)}
+            title="Search files (Ctrl+Shift+F)"
+            style={{ display: "flex", alignItems: "center", gap: 6, width: 200, height: 24, flex: "none", border: `1px solid ${color.hair2}`, background: color.void, fontFamily: font.mono, fontSize: 11.5, cursor: "text", padding: "0 8px", textAlign: "left" }}
+          >
+            <span style={{ color: color.textFaintDk }}>⌕</span>
+            <span style={{ flex: 1, color: color.textGhostDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Search files…</span>
+            <span style={{ color: color.textFaintDk, fontSize: 9.5 }}>⌃⇧F</span>
+          </button>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           {collab && <CollabBar status={collabApi.status} peers={collabApi.peers} mode={collab.mode} selfName={collab.displayName} selfColor={collab.color} />}
@@ -2236,7 +2248,19 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         />
       )}
 
-      {searchOpen && <SearchPanel files={ws.files} onJump={jumpToMatch} onClose={() => setSearchOpen(false)} />}
+      {searchOpen && (
+        <SearchPanel
+          files={ws.files}
+          query={searchQuery}
+          caseSensitive={searchCase}
+          regex={searchRegex}
+          onQuery={setSearchQuery}
+          onCase={setSearchCase}
+          onRegex={setSearchRegex}
+          onJump={jumpToMatch}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }
