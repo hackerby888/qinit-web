@@ -1,10 +1,12 @@
+import http from "node:http";
 import express from "express";
 import cors from "cors";
 import { getDb } from "./db";
 import { latestRelease, bumpVisits } from "./release";
 import { compile, buildQueueState } from "./compile";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
-import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut } from "./projects";
+import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut, shareCreate, shareList, shareRevoke, shareResolve } from "./projects";
+import { attachCollab } from "./collab";
 
 const app = express();
 app.use(cors());
@@ -56,6 +58,12 @@ app.get("/api/projects/:id", requireAuth, wrap(projectGet));
 app.put("/api/projects/:id", requireAuth, wrap(projectPut));
 app.delete("/api/projects/:id", requireAuth, wrap(projectDelete));
 
+// Share links — owner mints/lists/revokes; the resolve route is public (the link is the credential).
+app.post("/api/projects/:id/share", requireAuth, wrap(shareCreate));
+app.get("/api/projects/:id/shares", requireAuth, wrap(shareList));
+app.delete("/api/projects/:id/share/:linkId", requireAuth, wrap(shareRevoke));
+app.get("/api/s/:linkId", wrap(shareResolve));
+
 app.get("/api/release/latest", async (_req, res) => {
   try { res.json(await latestRelease()); }
   catch (e) { res.status(502).json({ error: (e as Error).message }); }
@@ -67,5 +75,8 @@ app.get("/api/stats", async (_req, res) => {
 });
 
 const port = Number(process.env.PORT ?? 8787);
+// Explicit http.Server so the collab WebSocket can attach to the upgrade event alongside Express.
+const server = http.createServer(app);
+attachCollab(server);
 // Warm the DB connection (optional), then listen regardless.
-getDb().finally(() => app.listen(port, () => console.log(`[qinit-web] api listening on :${port}`)));
+getDb().finally(() => server.listen(port, () => console.log(`[qinit-web] api listening on :${port}`)));

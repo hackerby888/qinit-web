@@ -6,27 +6,38 @@ import { setupMonaco } from "./monaco";
 
 setupMonaco();
 
+// The single source of truth for file → Monaco language. Reused by the collab path when it creates models
+// manually, so QPI ("cpp") / TypeScript language services attach identically to bound models.
+export function langForPath(path?: string): string {
+  return /\.tsx?$/.test(path ?? "") ? "typescript" : "cpp";
+}
+
 export interface CodeEditorProps {
   value: string;
   path?: string;
   theme?: string;
   onChange: (value: string) => void;
   onMount?: OnMount;
+  readOnly?: boolean;
+  // Collab mode: a Yjs MonacoBinding owns the model content, so we must NOT pass a controlled `value`/`path`
+  // (they would fight the binding and dispose the bound model on tab switch). Ide.tsx drives the model.
+  collab?: boolean;
 }
 
-export function CodeEditor({ value, path, theme, onChange, onMount }: CodeEditorProps) {
+export function CodeEditor({ value, path, theme, onChange, onMount, readOnly, collab }: CodeEditorProps) {
   // Contracts are C++ (qpi.h); .ts test files get the TypeScript language so Monaco's TS worker checks them.
-  const language = /\.tsx?$/.test(path ?? "") ? "typescript" : "cpp";
+  const language = langForPath(path);
   return (
     <Editor
       height="100%"
-      language={language}
+      language={collab ? undefined : language}
       theme={theme ?? "qinit-dark"}
-      path={path}
-      value={value}
+      path={collab ? undefined : path}
+      value={collab ? undefined : value}
       onChange={(v) => onChange(v ?? "")}
       onMount={onMount}
       options={{
+        readOnly: !!readOnly,
         fontFamily: "'JetBrains Mono', monospace",
         fontSize: 13,
         lineHeight: 21,

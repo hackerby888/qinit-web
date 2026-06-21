@@ -165,6 +165,16 @@ export async function authCallback(req: Request, res: Response): Promise<void> {
   }
 }
 
+// Verify a raw JWT and return its userId (payload.sub), or null. Used by the WebSocket collab layer, which
+// authenticates from a query param rather than an Authorization header.
+export function userIdFromToken(token: string | undefined | null): string | null {
+  if (!token) {
+    return null;
+  }
+  const payload = verifyJwt(token);
+  return payload && typeof payload.sub === "string" ? payload.sub : null;
+}
+
 // Express middleware — require a valid Bearer JWT; sets req.userId.
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;

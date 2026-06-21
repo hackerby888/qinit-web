@@ -27,10 +27,16 @@ export default defineConfig({
   },
   server: {
     fs: { allow: [here("."), new URL("../../Qinit", import.meta.url).pathname] },
-    proxy: { "/api": "http://127.0.0.1:8787" }, // dev: forward API to the backend (127.0.0.1, not localhost -> avoids IPv6 ::1 miss)
+    proxy: {
+      "/api": "http://127.0.0.1:8787", // dev: forward API to the backend (127.0.0.1, not localhost -> avoids IPv6 ::1 miss)
+      "/collab": { target: "http://127.0.0.1:8787", ws: true, changeOrigin: true }, // collab WebSocket upgrade
+    },
   },
   preview: {
-    proxy: { "/api": "http://127.0.0.1:8787" }, // same forward for `vite preview` (prod-bundle check)
+    proxy: {
+      "/api": "http://127.0.0.1:8787", // same forward for `vite preview` (prod-bundle check)
+      "/collab": { target: "http://127.0.0.1:8787", ws: true, changeOrigin: true },
+    },
   },
   optimizeDeps: { exclude: ["@qinit/engine", "@qinit/proto", "@qinit/build", "@qinit/core"] },
 });

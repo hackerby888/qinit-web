@@ -1,6 +1,7 @@
-// Account + project data layer. Backed by Mongo when reachable (collections `users`, `projects`), else an
-// in-memory fallback so the cloud features still work in dev without a database (mirrors db.ts's
+// Account + project data layer. Backed by Mongo when reachable (collections `users`, `projects`, `shares`),
+// else an in-memory fallback so the cloud features still work in dev without a database (mirrors db.ts's
 // "Mongo is optional" stance). Projects are scoped by userId; the in-memory maps are per-process only.
+import { randomBytes } from "node:crypto";
 import { getDb } from "./db";
 
 export interface User {
@@ -125,4 +126,73 @@ export async function deleteProject(userId: string, id: string): Promise<void> {
     return;
   }
   memProjects.delete(pkey(userId, id));
+}
+
+// ---- shares: a short link id → a project, opened view-only or as a live collaborative session ----
+export interface Share {
+  linkId: string;
+  ownerUserId: string;
+  projectId: string;
+  mode: "view" | "edit";
+  createdAt: number;
+  expiresAt?: number; // optional TTL; an expired share is treated as missing
+}
+
+const memShares = new Map<string, Share>(); // key = linkId
+
+const newLinkId = (): string => randomBytes(9).toString("base64url"); // 12 url-safe chars
+const isLive = (s: Share, now: number): boolean => !s.expiresAt || s.expiresAt > now;
+
+// Create (or reuse) a share link for the owner's project. Re-clicking Share with the same mode returns the
+// existing live link instead of minting a new one.
+export async function createShare(ownerUserId: string, projectId: string, mode: Share["mode"], ttlMs?: number): Promise<Share> {
+  const now = Date.now();
+  const existing = (await listShares(ownerUserId, projectId)).find((s) => s.mode === mode);
+  if (existing) {
+    return existing;
+  }
+  const share: Share = { linkId: newLinkId(), ownerUserId, projectId, mode, createdAt: now };
+  if (ttlMs && ttlMs > 0) {
+    share.expiresAt = now + ttlMs;
+  }
+  const db = await getDb();
+  if (db) {
+    await db.collection<Share>("shares").insertOne(share);
+  } else {
+    memShares.set(share.linkId, share);
+  }
+  return share;
+}
+
+export async function getShare(linkId: string): Promise<Share | null> {
+  const now = Date.now();
+  const db = await getDb();
+  if (db) {
+    const s = await db.collection<Share>("shares").findOne({ linkId }, { projection: { _id: 0 } });
+    return s && isLive(s, now) ? s : null;
+  }
+  const s = memShares.get(linkId);
+  return s && isLive(s, now) ? s : null;
+}
+
+export async function listShares(ownerUserId: string, projectId: string): Promise<Share[]> {
+  const now = Date.now();
+  const db = await getDb();
+  if (db) {
+    const rows = await db.collection<Share>("shares").find({ ownerUserId, projectId }, { projection: { _id: 0 } }).toArray();
+    return rows.filter((s) => isLive(s, now));
+  }
+  return [...memShares.values()].filter((s) => s.ownerUserId === ownerUserId && s.projectId === projectId && isLive(s, now));
+}
+
+export async function deleteShare(ownerUserId: string, linkId: string): Promise<void> {
+  const db = await getDb();
+  if (db) {
+    await db.collection<Share>("shares").deleteOne({ ownerUserId, linkId });
+    return;
+  }
+  const s = memShares.get(linkId);
+  if (s && s.ownerUserId === ownerUserId) {
+    memShares.delete(linkId);
+  }
 }
