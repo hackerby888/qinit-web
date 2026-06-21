@@ -13,7 +13,7 @@ import { CodeEditor } from "./editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
-import { fileLabel, KEEP_FILE } from "./filetree";
+import { fileLabel, dirOf, KEEP_FILE } from "./filetree";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -1041,6 +1041,66 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       const files = w.files.filter((f) => f.name !== name);
       const active = w.active === name ? (files[0]?.name ?? "") : w.active;
       return { files, active };
+    });
+  };
+
+  // Copy a file to a fresh "<stem>-copy.<ext>" name (next free suffix) in the same folder, and open it.
+  const duplicateFile = (path: string) => {
+    const f = ws.files.find((x) => x.name === path);
+    if (!f) {
+      return;
+    }
+
+    const dir = dirOf(path);
+    const label = fileLabel(path);
+    const dot = label.lastIndexOf(".");
+    const stem = dot > 0 ? label.slice(0, dot) : label;
+    const ext = dot > 0 ? label.slice(dot) : "";
+
+    let name = "";
+    for (let i = 1; ; i++) {
+      const candidate = `${dir ? `${dir}/` : ""}${stem}-copy${i > 1 ? i : ""}${ext}`;
+      if (!ws.files.some((x) => x.name === candidate)) {
+        name = candidate;
+        break;
+      }
+    }
+
+    setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    if (collab) {
+      collabApi.ops.create(name, f.source);
+      setWs((w) => ({ ...w, active: name }));
+    } else {
+      setWs((w) => ({ files: [...w.files, { name, source: f.source }], active: name }));
+    }
+  };
+
+  // Rename a folder by moving every file under its prefix (folders are virtual). Keeps the active file, open
+  // tabs, and dirty-tracking pointed at the moved paths.
+  const renameFolder = (oldDir: string, newDir: string) => {
+    const op = `${oldDir}/`;
+    const np = `${newDir}/`;
+    const move = (n: string): string => (n.startsWith(op) ? np + n.slice(op.length) : n);
+    if (!ws.files.some((f) => f.name.startsWith(op))) {
+      return;
+    }
+
+    if (collab) {
+      for (const f of ws.files.filter((x) => x.name.startsWith(op))) {
+        collabApi.ops.rename(f.name, move(f.name));
+      }
+      setWs((w) => ({ ...w, active: move(w.active) }));
+    } else {
+      setWs((w) => ({ files: w.files.map((f) => ({ ...f, name: move(f.name) })), active: move(w.active) }));
+    }
+
+    setOpenTabs((prev) => prev.map(move));
+    setBuilt((b) => {
+      const out: Record<string, string> = {};
+      for (const k of Object.keys(b)) {
+        out[move(k)] = b[k];
+      }
+      return out;
     });
   };
 
@@ -2099,6 +2159,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             onDelete={deleteFile}
             onCreateFolder={createFolder}
             onDeleteFolder={deleteFolder}
+            onRenameFolder={renameFolder}
+            onDuplicate={duplicateFile}
             onJump={jumpToSymbol}
           />
         </div>
