@@ -27,6 +27,7 @@ import { runTests, type TestResult, type TestContract } from "./tests/runner";
 import { TestPanel } from "./tests/TestPanel";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
+import { SearchPanel } from "./SearchPanel";
 import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
@@ -654,6 +655,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
   const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
+  const [searchOpen, setSearchOpen] = useState(false); // Ctrl+Shift+F workspace search
   const [phase, setPhase] = useState<Phase>("idle");
   const [buildQueue, setBuildQueue] = useState<BuildQueue | null>(null); // backend pool state while a compile is pending
   const [result, setResult] = useState<CompileResult | null>(null);
@@ -1313,6 +1315,28 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     editor.focus();
   };
 
+  // Workspace-search result click: jump to file:line:col (switching tabs via the pending-jump path if needed).
+  const jumpToMatch = (name: string, line: number, col: number) => {
+    const file = ws.files.find((f) => f.name === name);
+    if (!file) {
+      return;
+    }
+    const lines = file.source.split("\n");
+    let off = 0;
+    for (let i = 0; i < line - 1 && i < lines.length; i++) {
+      off += lines[i].length + 1;
+    }
+    off += col - 1;
+
+    setSearchOpen(false);
+    if (ws.active === name) {
+      applyJump(off);
+    } else {
+      pendingJumpRef.current = { file: name, offset: off };
+      selectFile(name);
+    }
+  };
+
   // Outline click: jump to a symbol's declaration in the active file (StateData field, function, procedure).
   const jumpToSymbol = (name: string) => {
     const off = definitionOffset(source, name);
@@ -1458,6 +1482,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         e.preventDefault();
         e.stopPropagation();
         setPalette(e.shiftKey ? "command" : "file");
+      } else if (k === "f" && e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        setSearchOpen(true);
       } else if (k === "w" && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -1889,6 +1917,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             { id: "reset", label: "Engine: reset chain", run: () => void resetChain() },
             { id: "replay", label: "Engine: replay session", run: () => void replayChain() },
             { id: "save", label: "Save project", hint: "Ctrl S", run: () => { persistRef.current(); setSaved(true); } },
+            { id: "format", label: "Format document", hint: "Shift Alt F", run: () => void editorRef.current?.getAction("editor.action.formatDocument")?.run() },
+            { id: "search", label: "Search in files", hint: "Ctrl Shift F", run: () => setSearchOpen(true) },
             { id: "newfile", label: "New file…", run: promptNewFile },
             { id: "close", label: "Close active tab", hint: "Ctrl W", run: () => closeActiveTabRef.current() },
             { id: "share", label: "Share workspace link", run: () => void share() },
@@ -2205,6 +2235,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           onClose={() => setPalette(null)}
         />
       )}
+
+      {searchOpen && <SearchPanel files={ws.files} onJump={jumpToMatch} onClose={() => setSearchOpen(false)} />}
     </div>
   );
 }
