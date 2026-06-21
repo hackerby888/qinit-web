@@ -45,7 +45,8 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [contextDir, setContextDir] = useState(""); // where the toolbar New File/Folder lands (selected folder; "" = root)
   const [hover, setHover] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState<string | null>(null); // folder currently under a dragged file
+  const [dragOver, setDragOver] = useState<string | null>(null); // folder currently under a drag ("" = root)
+  const dragItem = useRef<{ path: string; kind: "file" | "dir" } | null>(null);
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
@@ -86,6 +87,34 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     const dest = targetDir ? `${targetDir}/${fileLabel(path)}` : fileLabel(path);
     if (dest !== path && !taken(dest)) {
       onRename(path, dest);
+    }
+  };
+
+  // Move a dragged folder (whole subtree) into a target folder ("" = root). Guards self / descendant / a
+  // name collision so the tree can't fold into itself or clobber an existing folder.
+  const moveDir = (dir: string, targetDir: string) => {
+    const dest = targetDir ? `${targetDir}/${fileLabel(dir)}` : fileLabel(dir);
+    if (dest === dir || targetDir === dir || targetDir.startsWith(`${dir}/`)) {
+      return;
+    }
+    if (files.some((f) => f.name.startsWith(`${dest}/`))) {
+      return;
+    }
+    onRenameFolder(dir, dest);
+  };
+
+  // Resolve a drop onto a folder ("" = root) using the item picked up on drag-start.
+  const handleDrop = (targetDir: string) => {
+    const item = dragItem.current;
+    dragItem.current = null;
+    setDragOver(null);
+    if (!item) {
+      return;
+    }
+    if (item.kind === "file") {
+      moveTo(item.path, targetDir);
+    } else {
+      moveDir(item.path, targetDir);
     }
   };
 
@@ -266,13 +295,15 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
           : (
             <div
               key={`d:${node.path}`}
+              draggable
+              onDragStart={(e) => { dragItem.current = { path: node.path, kind: "dir" }; e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
               onClick={() => { setContextDir(node.path); toggle(node.path); }}
               onContextMenu={(e) => openMenu(e, dirMenu(node.path))}
               onMouseEnter={() => setHover(node.path)}
               onMouseLeave={() => setHover((h) => (h === node.path ? null : h))}
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(node.path); }}
               onDragLeave={() => setDragOver((d) => (d === node.path ? null : d))}
-              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const p = e.dataTransfer.getData("text/plain"); if (p) { moveTo(p, node.path); } setDragOver(null); }}
+              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(node.path); }}
               style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: indent(depth), cursor: "pointer", color: color.textMutedDk, background: dragOver === node.path ? DROP : hover === node.path ? HOVER : "transparent" }}
             >
               <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
@@ -320,7 +351,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
         <div
           key={`f:${node.path}`}
           draggable
-          onDragStart={(e) => { e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
+          onDragStart={(e) => { dragItem.current = { path: node.path, kind: "file" }; e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
           onClick={() => { setContextDir(dirOf(node.path)); onSelect(node.path); }}
           onDoubleClick={() => { setRenaming(node.path); setRenameDraft(node.path); }}
           onContextMenu={(e) => openMenu(e, fileMenu(node.path))}
@@ -346,7 +377,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
         onContextMenu={(e) => openMenu(e, rootMenu())}
         onClick={(e) => { if (e.target === e.currentTarget) { setContextDir(""); } }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-        onDrop={(e) => { e.preventDefault(); const p = e.dataTransfer.getData("text/plain"); if (p) { moveTo(p, ""); } setDragOver(null); }}
+        onDrop={(e) => { e.preventDefault(); handleDrop(""); }}
         style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}
       >
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
@@ -356,7 +387,13 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
         <button onClick={() => { expand(contextDir); startAdd(contextDir); }} title={`New file in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px 6px", color: color.textMutedDk }}>
+      <div
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(""); }}
+        onDragLeave={() => setDragOver((d) => (d === "" ? null : d))}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(""); }}
+        title="Drop here to move to the project root"
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px 6px", color: color.textMutedDk, background: dragOver === "" ? DROP : "transparent" }}
+      >
         <span style={{ width: 8, height: 8, background: color.textGhostDk, flex: "none" }} />my-contract
       </div>
 
