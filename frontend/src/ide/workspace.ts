@@ -14,7 +14,9 @@ export interface Workspace {
 
 const KEY = "qinit-ide-workspace.v1";
 
-export const baseName = (file: string): string => file.replace(/\.[^.]+$/, "");
+// A file's contract name is its stem — the filename without its folder prefix or extension
+// ("lib/Counter.h" -> "Counter"). Folder-agnostic so a contract resolves by type name wherever it lives.
+export const baseName = (file: string): string => file.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
 
 export const NEW_CONTRACT = `using namespace QPI;
 
