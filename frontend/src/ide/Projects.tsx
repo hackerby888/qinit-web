@@ -7,6 +7,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { Card, NeoBtn } from "./ui";
+import { SplashScreen } from "./Splash";
 import { getStore, getLocalStore } from "./projects/store";
 import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./auth";
 import { exportProject, importProjectFile } from "./projects/io";
@@ -57,6 +58,7 @@ export default function Projects() {
   const [importPrompt, setImportPrompt] = useState<ProjectMeta[] | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [splash, setSplash] = useState<{ label: string; go: () => void } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const wasAuthed = useRef(false);
   const importUser = useRef<Me | null>(null);
@@ -171,16 +173,17 @@ export default function Projects() {
     void reload();
   };
 
+  // Both entries route through a short branded splash (a deliberate window to preload the workspace later).
   const open = async (id: string) => {
     await getStore().setCurrentId(id);
-    navigate(`/ide/p/${id}`);
+    setSplash({ label: "Opening workspace", go: () => navigate(`/ide/p/${id}`) });
   };
 
   const create = async () => {
     const n = (metas?.length ?? 0) + 1;
     const p = await getStore().create(`Project ${n}`);
     await getStore().setCurrentId(p.id);
-    navigate(`/ide/p/${p.id}`);
+    setSplash({ label: "Creating workspace", go: () => navigate(`/ide/p/${p.id}`) });
   };
 
   const duplicate = async (id: string) => {
@@ -233,6 +236,8 @@ export default function Projects() {
   return (
     <div style={{ minHeight: "100vh", background: color.void, color: color.textLight, fontFamily: font.body }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
+      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}` }} />
+      {splash && <SplashScreen label={splash.label} onDone={splash.go} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       {importPrompt && <ImportModal count={importPrompt.length} onImport={() => void runImport()} onSkip={skipImport} />}
       {expired && (

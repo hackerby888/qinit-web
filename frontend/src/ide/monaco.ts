@@ -7,6 +7,7 @@ import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker"
 import { loader } from "@monaco-editor/react";
 import { color } from "../landing/tokens";
 import { applyQpiGrammar } from "./qpi/grammar";
+import { registerEditorThemes } from "./editorThemes";
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker(_: unknown, label: string) {
@@ -114,6 +115,9 @@ export function setupMonaco(): typeof monaco {
       "scrollbarSlider.hoverBackground": "#222226cc",
     },
   });
+
+  // The selectable preset themes (qinit-light, monokai, dracula, solarized-dark).
+  registerEditorThemes(monaco);
 
   return monaco;
 }

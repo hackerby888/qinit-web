@@ -10,6 +10,7 @@ import { color, font, themeFlags, applyTheme, type ThemeName } from "../landing/
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
+import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
@@ -212,6 +213,74 @@ function ToolButton({ children, onClick, variant = "ghost", disabled = false }: 
         {children}
       </span>
     </button>
+  );
+}
+
+// Editor syntax-theme dropdown. A compact toolbar button (active label + 3-dot swatch) opening a popover of
+// presets; picking one persists + live-applies via the editor's theme prop.
+function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: EditorThemeId) => void }) {
+  const [open, setOpen] = useState(false);
+  const current = EDITOR_THEMES.find((t) => t.id === value) ?? EDITOR_THEMES[0];
+
+  const Dots = ({ colors }: { colors: [string, string, string] }) => (
+    <span style={{ display: "inline-flex", gap: 2, flex: "none" }}>
+      {colors.map((c, i) => (
+        <span key={i} style={{ width: 7, height: 7, background: c }} />
+      ))}
+    </span>
+  );
+
+  const row = (t: (typeof EDITOR_THEMES)[number]) => (
+    <button
+      key={t.id}
+      onClick={() => {
+        onPick(t.id);
+        setOpen(false);
+      }}
+      style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", border: "none", background: t.id === value ? "#ffffff10" : "transparent", color: t.id === value ? color.textLightHi : color.textLight, fontFamily: font.mono, fontSize: 11.5, padding: "6px 9px", cursor: "pointer", textAlign: "left" }}
+    >
+      <Dots colors={t.swatch} />
+      <span style={{ flex: 1 }}>{t.label}</span>
+      {t.id === value && <span style={{ color: color.accent }}>✓</span>}
+    </button>
+  );
+
+  const heading = (label: string) => (
+    <div style={{ fontFamily: font.mono, fontSize: 9.5, letterSpacing: ".12em", textTransform: "uppercase", color: color.textGhostDk, padding: "8px 9px 3px" }}>
+      {label}
+    </div>
+  );
+
+  const section = (label: string, group: "light" | "dark") => (
+    <>
+      {heading(label)}
+      {EDITOR_THEMES.filter((t) => t.group === group).map(row)}
+    </>
+  );
+
+  return (
+    <div style={{ position: "relative", flex: "none" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title="Editor syntax theme"
+        style={{ display: "flex", alignItems: "center", gap: 7, border: `1px solid ${color.hair2}`, background: color.panel, color: color.textMutedDk, fontFamily: font.mono, fontSize: 11, padding: "5px 9px", cursor: "pointer" }}
+      >
+        <Dots colors={current.swatch} />
+        <span>{current.label}</span>
+        <span style={{ color: color.textGhostDk }}>▾</span>
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 41, minWidth: 184, background: color.panelDeep, border: `1px solid ${color.hair2}`, boxShadow: "4px 4px 0 #000", padding: 4 }}>
+            {EDITOR_THEMES.filter((t) => t.group === "auto").map(row)}
+            {section("Light", "light")}
+            {section("Dark", "dark")}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -575,6 +644,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     return t;
   });
 
+  // Editor syntax theme — independent of the chrome palette. "match" follows the chrome (neo→qinit-dark,
+  // flat→qinit-flat); any explicit preset overrides.
+  const [editorTheme, setEditorTheme] = useState<EditorThemeId>(() => (localStorage.getItem("ide.editorTheme") as EditorThemeId) || "match");
+
   const [ws, setWs] = useState<Workspace>({ files: [], active: "" });
   const [projectName, setProjectName] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -801,6 +874,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     applyTheme(next);
     localStorage.setItem("ide.theme", next);
     setTheme(next);
+  };
+
+  // Pick an editor syntax theme — persisted; the resolved Monaco name flows into the editor via its theme prop.
+  const pickEditorTheme = (id: EditorThemeId) => {
+    localStorage.setItem("ide.editorTheme", id);
+    setEditorTheme(id);
   };
 
   const toggleLeft = () => {
@@ -1622,6 +1701,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         applyClangMarkers(res);
       }
       if (!res.ok || !res.wasm || !res.idl) {
+        // Surface the Problems panel automatically when the built contract has compile errors.
+        if (name === contractName && res.diagnostics.some((d) => d.severity === "error")) {
+          setProblemsOpen(true);
+        }
+
         const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s) — see the editor` : "compile failed");
         appendLog(`✗ ${name}: ${why}`);
 
@@ -1809,6 +1893,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             { id: "close", label: "Close active tab", hint: "Ctrl W", run: () => closeActiveTabRef.current() },
             { id: "share", label: "Share workspace link", run: () => void share() },
             { id: "projects", label: "Go to projects home", run: () => navigate("/ide") },
+            ...EDITOR_THEMES.map((t) => ({ id: `etheme-${t.id}`, label: `Editor theme: ${t.label}`, run: () => pickEditorTheme(t.id) })),
           ]
         : [];
 
@@ -1823,7 +1908,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
-      <style dangerouslySetInnerHTML={{ __html: `.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
+      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
@@ -1847,9 +1932,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           )}
           <ToolButton onClick={share}>Share</ToolButton>
           <ToolButton onClick={() => setShowTxs(true)}>≡ txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
+          <ThemePicker value={editorTheme} onPick={pickEditorTheme} />
           <button
             onClick={toggleTheme}
-            title={theme === "flat" ? "Switch to neo-brutalist theme" : "Switch to flat minimal theme"}
+            title={theme === "flat" ? "Switch the UI chrome to neo-brutalist" : "Switch the UI chrome to flat minimal"}
             style={{ border: `1px solid ${color.hair2}`, background: color.panel, color: color.textMutedDk, fontFamily: font.mono, fontSize: 11, padding: "5px 9px", cursor: "pointer", flex: "none" }}
           >
             {theme === "flat" ? "◐ flat" : "◑ neo"}
@@ -1892,7 +1978,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 0 }}>
-            <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={theme === "flat" ? "qinit-flat" : "qinit-dark"} onChange={editSource} onMount={onEditorMount} />
+            <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme, theme)} onChange={editSource} onMount={onEditorMount} />
           </div>
 
           {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
