@@ -13,7 +13,7 @@ import { CodeEditor } from "./editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
-import { fileLabel } from "./filetree";
+import { fileLabel, KEEP_FILE } from "./filetree";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -969,6 +969,47 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
 
     appendLog(`Imported ${incoming.length} file${incoming.length === 1 ? "" : "s"} from GitHub`);
+  };
+
+  // Create an empty folder by writing a hidden `.keep` placeholder (folders are virtual — a folder with no
+  // files wouldn't render). Doesn't change the active file or open a tab.
+  const createFolder = (dir: string) => {
+    const placeholder = `${dir}/${KEEP_FILE}`;
+    if (ws.files.some((f) => f.name === placeholder)) {
+      return;
+    }
+
+    if (collab) {
+      collabApi.ops.create(placeholder, "");
+      return;
+    }
+
+    setWs((w) => ({ ...w, files: [...w.files, { name: placeholder, source: "" }] }));
+  };
+
+  // Delete a folder and everything under it. Refuses to empty the workspace; moves focus off a deleted file.
+  const deleteFolder = (dir: string) => {
+    const prefix = `${dir}/`;
+    const victims = ws.files.filter((f) => f.name.startsWith(prefix));
+    const remaining = ws.files.filter((f) => !f.name.startsWith(prefix));
+    if (victims.length === 0 || remaining.length === 0) {
+      return;
+    }
+
+    if (collab) {
+      for (const f of victims) {
+        collabApi.ops.remove(f.name);
+      }
+      setWs((w) => ({ ...w, active: w.active.startsWith(prefix) ? remaining[0].name : w.active }));
+    } else {
+      setWs((w) => {
+        const files = w.files.filter((f) => !f.name.startsWith(prefix));
+        const active = w.active.startsWith(prefix) ? files[0].name : w.active;
+        return { files, active };
+      });
+    }
+
+    setOpenTabs((prev) => prev.filter((n) => !n.startsWith(prefix)));
   };
 
   const renameFile = (oldName: string, newName: string) => {
@@ -1944,7 +1985,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // Quick-open lists the workspace files; the command palette lists IDE actions. Built only while open.
   const paletteItems: PaletteItem[] =
     palette === "file"
-      ? ws.files.map((f) => ({ id: f.name, label: f.name, hint: f.name === ws.active ? "open" : undefined, run: () => selectFile(f.name) }))
+      ? ws.files.filter((f) => fileLabel(f.name) !== KEEP_FILE).map((f) => ({ id: f.name, label: f.name, hint: f.name === ws.active ? "open" : undefined, run: () => selectFile(f.name) }))
       : palette === "command"
         ? [
             { id: "compile", label: "Compile & Run", run: () => void compile() },
@@ -2056,6 +2097,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             onCreate={createFile}
             onRename={renameFile}
             onDelete={deleteFile}
+            onCreateFolder={createFolder}
+            onDeleteFolder={deleteFolder}
             onJump={jumpToSymbol}
           />
         </div>
