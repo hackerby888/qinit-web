@@ -1,6 +1,6 @@
 // Folder tree: path labelling, normalisation (incl. traversal guards), and nested tree assembly.
 import { test, expect, describe } from "bun:test";
-import { fileLabel, dirOf, normalizePath, buildFileTree, type TreeDir, type TreeFile } from "./filetree";
+import { fileLabel, dirOf, normalizePath, normalizeDir, buildFileTree, type TreeDir, type TreeFile } from "./filetree";
 
 describe("fileLabel / dirOf", () => {
   test("root-level file has no dir and labels itself", () => {
@@ -41,7 +41,34 @@ describe("normalizePath", () => {
   });
 });
 
+describe("normalizeDir", () => {
+  test("cleans segments without forcing an extension", () => {
+    expect(normalizeDir("lib")).toBe("lib");
+    expect(normalizeDir("lib/net")).toBe("lib/net");
+    expect(normalizeDir("li b/n@et")).toBe("lib/net");
+  });
+
+  test("strips traversal and empty segments", () => {
+    expect(normalizeDir("../lib//")).toBe("lib");
+    expect(normalizeDir("..")).toBe("");
+    expect(normalizeDir("")).toBe("");
+  });
+});
+
 describe("buildFileTree", () => {
+  test("a lone .keep placeholder renders an empty folder, not a file", () => {
+    const tree = buildFileTree(["lib/.keep"]);
+    expect(tree).toHaveLength(1);
+    expect(tree[0].kind).toBe("dir");
+    expect((tree[0] as TreeDir).children).toHaveLength(0);
+  });
+
+  test(".keep is hidden once the folder holds a real file", () => {
+    const tree = buildFileTree(["lib/.keep", "lib/a.h"]);
+    const lib = tree[0] as TreeDir;
+    expect(lib.children.map((n) => n.label)).toEqual(["a.h"]);
+  });
+
   test("groups paths into folders, dirs before files, alpha within", () => {
     const tree = buildFileTree(["Counter.h", "lib/net/Socket.h", "lib/Util.h", "Adder.h"]);
 

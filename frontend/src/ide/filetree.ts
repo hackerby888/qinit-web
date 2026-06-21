@@ -19,6 +19,10 @@ export interface TreeDir {
 
 export type TreeNode = TreeFile | TreeDir;
 
+// A hidden, empty placeholder file that keeps an otherwise-empty folder on disk (folders are virtual, derived
+// from paths — a folder with no files would simply vanish). Never shown in the tree.
+export const KEEP_FILE = ".keep";
+
 // The display label of a path — the segment after the final slash.
 export const fileLabel = (path: string): string => path.slice(path.lastIndexOf("/") + 1);
 
@@ -27,6 +31,16 @@ export const dirOf = (path: string): string => {
   const i = path.lastIndexOf("/");
   return i < 0 ? "" : path.slice(0, i);
 };
+
+// Sanitise a typed folder path — same per-segment cleaning and traversal guards as a file path, but without
+// forcing an extension (folders have none). Returns "" when nothing usable remains.
+export function normalizeDir(raw: string): string {
+  return raw
+    .split("/")
+    .map((s) => s.trim().replace(/[^\w.\-]/g, ""))
+    .filter((s) => s.length > 0 && s !== "." && s !== "..")
+    .join("/");
+}
 
 // Sanitise a typed path into a safe workspace key: clean each segment (only word chars, dot, hyphen), drop
 // empty / "." / ".." segments so a path can't traverse out, and default the filename to a `.h` extension.
@@ -69,6 +83,9 @@ export function buildFileTree(paths: string[]): TreeNode[] {
     }
 
     const label = parts[parts.length - 1];
+    if (label === KEEP_FILE) {
+      continue; // structural placeholder that keeps an otherwise-empty folder visible; its dir already exists
+    }
     if (!dir.children.some((c) => c.kind === "file" && c.path === path)) {
       dir.children.push({ kind: "file", label, path });
     }
