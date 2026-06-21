@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactElement, typ
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
-import { buildFileTree, normalizePath, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
+import { buildFileTree, normalizePath, normalizeDir, fileLabel, dirOf, occupiedNames, freeName, KEEP_FILE, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
 
 interface MenuItem {
@@ -46,7 +46,17 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   const [contextDir, setContextDir] = useState(""); // where the toolbar New File/Folder lands (selected folder; "" = root)
   const [hover, setHover] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null); // folder currently under a drag ("" = root)
+  const [notice, setNotice] = useState(""); // transient "already exists" / "moved as …" message
   const dragItem = useRef<{ path: string; kind: "file" | "dir" } | null>(null);
+
+  // Auto-clear the notice a few seconds after it appears.
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+    const t = setTimeout(() => setNotice(""), 3500);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
@@ -82,25 +92,35 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
 
   const taken = (n: string, except?: string) => files.some((f) => f.name === n && f.name !== except);
 
-  // Move a dragged file into a folder ("" = root) by renaming it to the new path. No-op on collision or self.
+  // Move a dragged file into a folder ("" = root). Auto-suffixes on a name clash so the drop keeps both files.
   const moveTo = (path: string, targetDir: string) => {
-    const dest = targetDir ? `${targetDir}/${fileLabel(path)}` : fileLabel(path);
-    if (dest !== path && !taken(dest)) {
-      onRename(path, dest);
+    const wanted = targetDir ? `${targetDir}/${fileLabel(path)}` : fileLabel(path);
+    if (wanted === path) {
+      return;
+    }
+    const dest = freeName(occupiedNames(files.map((f) => f.name)), wanted, false);
+    onRename(path, dest);
+    if (dest !== wanted) {
+      setNotice(`moved as ${fileLabel(dest)} (name taken)`);
     }
   };
 
-  // Move a dragged folder (whole subtree) into a target folder ("" = root). Guards self / descendant / a
-  // name collision so the tree can't fold into itself or clobber an existing folder.
+  // Move a dragged folder (whole subtree) into a target folder ("" = root). Guards self / descendant; on a
+  // clash with an unrelated folder it auto-suffixes so nothing is clobbered.
   const moveDir = (dir: string, targetDir: string) => {
-    const dest = targetDir ? `${targetDir}/${fileLabel(dir)}` : fileLabel(dir);
-    if (dest === dir || targetDir === dir || targetDir.startsWith(`${dir}/`)) {
+    if (targetDir === dir || targetDir.startsWith(`${dir}/`)) {
       return;
     }
-    if (files.some((f) => f.name.startsWith(`${dest}/`))) {
+    const wanted = targetDir ? `${targetDir}/${fileLabel(dir)}` : fileLabel(dir);
+    if (wanted === dir) {
       return;
     }
+    const others = files.filter((f) => f.name !== dir && !f.name.startsWith(`${dir}/`)).map((f) => f.name);
+    const dest = freeName(occupiedNames(others), wanted, true);
     onRenameFolder(dir, dest);
+    if (dest !== wanted) {
+      setNotice(`moved as ${fileLabel(dest)} (name taken)`);
+    }
   };
 
   // Resolve a drop onto a folder ("" = root) using the item picked up on drag-start.
@@ -119,59 +139,94 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   const startAdd = (prefix: string) => {
+    setNotice("");
     setMkdir(false);
     setAddPrefix(prefix);
     setAdding(true);
     setDraft("");
   };
 
-  const commitNew = () => {
+  // Typed create/rename: on a name clash, show a notice and keep the input open (return false) so the user can
+  // fix it; an empty name just cancels. Drag-moves auto-suffix instead (moveTo / moveDir).
+  const commitNew = (): boolean => {
     const n = normalizePath(addPrefix ? `${addPrefix}/${draft}` : draft);
-    if (n && !taken(n)) {
-      onCreate(n);
+    if (!n) {
+      setAdding(false);
+      setDraft("");
+      return true;
     }
+    if (taken(n)) {
+      setNotice(`"${fileLabel(n)}" already exists`);
+      return false;
+    }
+    onCreate(n);
     setAdding(false);
     setDraft("");
+    return true;
   };
 
   const startMkdir = (prefix: string) => {
+    setNotice("");
     setAdding(false);
     setMkdirPrefix(prefix);
     setMkdir(true);
     setDirDraft("");
   };
 
-  const commitDir = () => {
+  const commitDir = (): boolean => {
     const seg = normalizeDir(dirDraft);
     const full = mkdirPrefix ? `${mkdirPrefix}/${seg}` : seg;
-    if (seg && !files.some((f) => f.name === `${full}/${KEEP_FILE}` || f.name.startsWith(`${full}/`))) {
-      onCreateFolder(full);
+    if (!seg) {
+      setMkdir(false);
+      setDirDraft("");
+      return true;
     }
+    if (files.some((f) => f.name === `${full}/${KEEP_FILE}` || f.name.startsWith(`${full}/`))) {
+      setNotice(`folder "${fileLabel(full)}" already exists`);
+      return false;
+    }
+    onCreateFolder(full);
     setMkdir(false);
     setDirDraft("");
+    return true;
   };
 
-  const commitRename = (old: string) => {
+  const commitRename = (old: string): boolean => {
     const n = normalizePath(renameDraft);
-    if (n && !taken(n, old) && n !== old) {
-      onRename(old, n);
+    if (!n || n === old) {
+      setRenaming(null);
+      return true;
     }
+    if (taken(n, old)) {
+      setNotice(`"${fileLabel(n)}" already exists`);
+      return false;
+    }
+    onRename(old, n);
     setRenaming(null);
+    return true;
   };
 
   const startRenameDir = (dir: string) => {
+    setNotice("");
     setRenamingDir(dir);
     setRenameDirDraft(fileLabel(dir)); // edit just the last segment, like VSCode
   };
 
-  const commitRenameDir = (oldDir: string) => {
+  const commitRenameDir = (oldDir: string): boolean => {
     const seg = normalizeDir(renameDirDraft);
     const parent = dirOf(oldDir);
     const full = parent ? `${parent}/${seg}` : seg;
-    if (seg && full !== oldDir && !files.some((f) => f.name.startsWith(`${full}/`))) {
-      onRenameFolder(oldDir, full);
+    if (!seg || full === oldDir) {
+      setRenamingDir(null);
+      return true;
     }
+    if (files.some((f) => f.name.startsWith(`${full}/`))) {
+      setNotice(`folder "${fileLabel(full)}" already exists`);
+      return false;
+    }
+    onRenameFolder(oldDir, full);
     setRenamingDir(null);
+    return true;
   };
 
   const expand = (path: string) => {
@@ -223,7 +278,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       value={draft}
       placeholder="NewContract.h"
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={commitNew}
+      onBlur={() => { if (!commitNew()) { setAdding(false); setDraft(""); } }}
       onKeyDown={(e) => { if (e.key === "Enter") { commitNew(); } if (e.key === "Escape") { setAdding(false); } }}
       style={inlineInput}
     />
@@ -235,7 +290,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       value={dirDraft}
       placeholder="folder-name"
       onChange={(e) => setDirDraft(e.target.value)}
-      onBlur={commitDir}
+      onBlur={() => { if (!commitDir()) { setMkdir(false); setDirDraft(""); } }}
       onKeyDown={(e) => { if (e.key === "Enter") { commitDir(); } if (e.key === "Escape") { setMkdir(false); } }}
       style={inlineInput}
     />
@@ -287,7 +342,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
                 autoFocus
                 value={renameDirDraft}
                 onChange={(e) => setRenameDirDraft(e.target.value)}
-                onBlur={() => commitRenameDir(node.path)}
+                onBlur={() => { if (!commitRenameDir(node.path)) { setRenamingDir(null); } }}
                 onKeyDown={(e) => { if (e.key === "Enter") { commitRenameDir(node.path); } if (e.key === "Escape") { setRenamingDir(null); } }}
                 style={inlineInput}
               />
@@ -338,7 +393,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
               autoFocus
               value={renameDraft}
               onChange={(e) => setRenameDraft(e.target.value)}
-              onBlur={() => commitRename(node.path)}
+              onBlur={() => { if (!commitRename(node.path)) { setRenaming(null); } }}
               onKeyDown={(e) => { if (e.key === "Enter") { commitRename(node.path); } if (e.key === "Escape") { setRenaming(null); } }}
               style={inlineInput}
             />
@@ -386,6 +441,10 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
         <button onClick={() => { expand(contextDir); startMkdir(contextDir); }} title={`New folder in ${contextDir || "root"}`} style={{ ...iconBtn, marginLeft: "auto", fontSize: 14, color: color.accent }}>⊞</button>
         <button onClick={() => { expand(contextDir); startAdd(contextDir); }} title={`New file in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
       </div>
+
+      {notice && (
+        <div style={{ padding: "0 14px 8px", color: "#ff6b6b", fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.4 }}>{notice}</div>
+      )}
 
       <div
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(""); }}
