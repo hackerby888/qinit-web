@@ -47,7 +47,9 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   const [hover, setHover] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null); // folder currently under a drag ("" = root)
   const [notice, setNotice] = useState(""); // transient "already exists" / "moved as …" message
+  const [revealSeq, setRevealSeq] = useState(0); // bump to scroll the active file into view
   const dragItem = useRef<{ path: string; kind: "file" | "dir" } | null>(null);
+  const activeRowRef = useRef<HTMLDivElement>(null);
 
   // Auto-clear the notice a few seconds after it appears.
   useEffect(() => {
@@ -57,6 +59,13 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     const t = setTimeout(() => setNotice(""), 3500);
     return () => clearTimeout(t);
   }, [notice]);
+
+  // Scroll the active file into view after a "reveal" (its ancestors were expanded in the same tick).
+  useEffect(() => {
+    if (revealSeq > 0) {
+      activeRowRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [revealSeq]);
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
@@ -262,6 +271,37 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     });
   };
 
+  // Every folder path the workspace contains (each dir prefix of every file).
+  const folderPaths = (): string[] => {
+    const dirs = new Set<string>();
+    for (const f of files) {
+      const parts = f.name.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        dirs.add(parts.slice(0, i).join("/"));
+      }
+    }
+    return [...dirs];
+  };
+
+  // Collapse every folder; if everything is already collapsed, expand all instead (one toggle button).
+  const collapseAll = () => {
+    const all = folderPaths();
+    setCollapsed((prev) => (all.every((d) => prev.has(d)) ? new Set() : new Set(all)));
+  };
+
+  // Expand the active file's ancestors and scroll it into view.
+  const revealActive = () => {
+    const parts = active.split("/");
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      for (let i = 1; i < parts.length; i++) {
+        next.delete(parts.slice(0, i).join("/"));
+      }
+      return next;
+    });
+    setRevealSeq((s) => s + 1);
+  };
+
   const tree = buildFileTree(files.map((f) => f.name));
 
   // Tree indentation + VSCode-style indent guides. Each row sits at PAD0 + depth*STEP; a faint vertical line
@@ -420,6 +460,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       return [
         <div
           key={`f:${node.path}`}
+          ref={on ? activeRowRef : undefined}
           draggable
           onDragStart={(e) => { dragItem.current = { path: node.path, kind: "file" }; e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
           onClick={() => { setContextDir(dirOf(node.path)); onSelect(node.path); }}
@@ -455,7 +496,9 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
-        <button onClick={() => { expand(contextDir); startMkdir(contextDir); }} title={`New folder in ${contextDir || "root"}`} style={{ ...iconBtn, marginLeft: "auto", fontSize: 14, color: color.accent }}>⊞</button>
+        <button onClick={revealActive} title="Reveal active file" style={{ ...iconBtn, marginLeft: "auto", fontSize: 13 }}>⌖</button>
+        <button onClick={collapseAll} title="Collapse all folders" style={{ ...iconBtn, fontSize: 13 }}>⊟</button>
+        <button onClick={() => { expand(contextDir); startMkdir(contextDir); }} title={`New folder in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 14, color: color.accent }}>⊞</button>
         <button onClick={() => { expand(contextDir); startAdd(contextDir); }} title={`New file in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
       </div>
 
