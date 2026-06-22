@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactElement, typ
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
-import { buildFileTree, normalizePath, normalizeDir, fileLabel, dirOf, occupiedNames, freeName, KEEP_FILE, type TreeNode } from "./filetree";
+import { buildFileTree, normalizePath, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
 
 interface MenuItem {
@@ -16,7 +16,7 @@ interface MenuItem {
   sep?: boolean;
 }
 
-export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onJump }: {
+export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onMovePaths, onCopyPaths, onDeletePaths, onJump }: {
   files: WorkspaceFile[];
   active: string;
   source: string;
@@ -28,6 +28,9 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   onDeleteFolder: (dir: string) => void;
   onRenameFolder: (oldDir: string, newDir: string) => void;
   onDuplicate: (name: string) => void;
+  onMovePaths: (paths: string[], targetDir: string) => void;
+  onCopyPaths: (paths: string[], targetDir: string) => void;
+  onDeletePaths: (paths: string[]) => void;
   onJump: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -48,7 +51,10 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   const [dragOver, setDragOver] = useState<string | null>(null); // folder currently under a drag ("" = root)
   const [notice, setNotice] = useState(""); // transient "already exists" / "moved as …" message
   const [revealSeq, setRevealSeq] = useState(0); // bump to scroll the active file into view
-  const dragItem = useRef<{ path: string; kind: "file" | "dir" } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set()); // multi-select (ctrl/shift click)
+  const [anchor, setAnchor] = useState<string | null>(null); // shift-range anchor
+  const [clip, setClip] = useState<{ paths: string[]; mode: "copy" | "cut" } | null>(null);
+  const dragItem = useRef<string[]>([]); // paths being dragged (the selection, or just the grabbed row)
   const activeRowRef = useRef<HTMLDivElement>(null);
 
   // Auto-clear the notice a few seconds after it appears.
@@ -70,6 +76,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
   const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
   const HOVER = "#ffffff10";
+  const SEL = "#ffffff1f"; // multi-select highlight
   const DROP = `${color.accent}33`;
 
   // Inline rename / new-name field. Sits inside a flex row (so flex:1 fills horizontally, not vertically) with
@@ -101,50 +108,103 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
 
   const taken = (n: string, except?: string) => files.some((f) => f.name === n && f.name !== except);
 
-  // Move a dragged file into a folder ("" = root). Auto-suffixes on a name clash so the drop keeps both files.
-  const moveTo = (path: string, targetDir: string) => {
-    const wanted = targetDir ? `${targetDir}/${fileLabel(path)}` : fileLabel(path);
-    if (wanted === path) {
-      return;
-    }
-    const dest = freeName(occupiedNames(files.map((f) => f.name)), wanted, false);
-    onRename(path, dest);
-    if (dest !== wanted) {
-      setNotice(`moved as ${fileLabel(dest)} (name taken)`);
-    }
+  // The flat, render-order list of visible rows (respecting collapse) — used for shift-range selection.
+  const visibleOrder = (): string[] => {
+    const out: string[] = [];
+    const walk = (nodes: TreeNode[]): void => {
+      for (const n of nodes) {
+        out.push(n.path);
+        if (n.kind === "dir" && !collapsed.has(n.path)) {
+          walk(n.children);
+        }
+      }
+    };
+    walk(buildFileTree(files.map((f) => f.name)));
+    return out;
   };
 
-  // Move a dragged folder (whole subtree) into a target folder ("" = root). Guards self / descendant; on a
-  // clash with an unrelated folder it auto-suffixes so nothing is clobbered.
-  const moveDir = (dir: string, targetDir: string) => {
-    if (targetDir === dir || targetDir.startsWith(`${dir}/`)) {
+  // Row click with selection semantics: shift = range from the anchor, ctrl/cmd = toggle, plain = single
+  // select (and open a file / toggle a folder).
+  const rowClick = (node: TreeNode, e: ReactMouseEvent): void => {
+    const path = node.path;
+    if (e.shiftKey && anchor) {
+      const order = visibleOrder();
+      const a = order.indexOf(anchor);
+      const b = order.indexOf(path);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelected(new Set(order.slice(lo, hi + 1)));
+      }
       return;
     }
-    const wanted = targetDir ? `${targetDir}/${fileLabel(dir)}` : fileLabel(dir);
-    if (wanted === dir) {
+    if (e.metaKey || e.ctrlKey) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.has(path) ? next.delete(path) : next.add(path);
+        return next;
+      });
+      setAnchor(path);
       return;
     }
-    const others = files.filter((f) => f.name !== dir && !f.name.startsWith(`${dir}/`)).map((f) => f.name);
-    const dest = freeName(occupiedNames(others), wanted, true);
-    onRenameFolder(dir, dest);
-    if (dest !== wanted) {
-      setNotice(`moved as ${fileLabel(dest)} (name taken)`);
-    }
-  };
 
-  // Resolve a drop onto a folder ("" = root) using the item picked up on drag-start.
-  const handleDrop = (targetDir: string) => {
-    const item = dragItem.current;
-    dragItem.current = null;
-    setDragOver(null);
-    if (!item) {
-      return;
-    }
-    if (item.kind === "file") {
-      moveTo(item.path, targetDir);
+    setSelected(new Set([path]));
+    setAnchor(path);
+    setContextDir(node.kind === "dir" ? path : dirOf(path));
+    if (node.kind === "dir") {
+      toggle(path);
     } else {
-      moveDir(item.path, targetDir);
+      onSelect(path);
     }
+  };
+
+  // Begin a drag: carry the whole selection if the grabbed row is part of it, else just that row.
+  const startRowDrag = (path: string, dt: DataTransfer): void => {
+    if (!selected.has(path)) {
+      setSelected(new Set([path]));
+      setAnchor(path);
+    }
+    dragItem.current = selected.has(path) && selected.size > 1 ? [...selected] : [path];
+    dt.setData("text/plain", path);
+    dt.effectAllowed = "move";
+  };
+
+  const handleDrop = (targetDir: string): void => {
+    const paths = dragItem.current;
+    dragItem.current = [];
+    setDragOver(null);
+    if (paths.length > 0) {
+      onMovePaths(paths, targetDir);
+    }
+  };
+
+  // The paths a context action applies to: the multi-selection if the row is part of it, else just the row.
+  const actionPaths = (path: string): string[] => (selected.has(path) && selected.size > 1 ? [...selected] : [path]);
+
+  const doCopy = (path: string): void => {
+    setClip({ paths: actionPaths(path), mode: "copy" });
+  };
+
+  const doCut = (path: string): void => {
+    setClip({ paths: actionPaths(path), mode: "cut" });
+  };
+
+  const doPaste = (targetDir: string): void => {
+    if (!clip) {
+      return;
+    }
+    if (clip.mode === "copy") {
+      onCopyPaths(clip.paths, targetDir);
+    } else {
+      onMovePaths(clip.paths, targetDir);
+      setClip(null);
+    }
+    setSelected(new Set());
+  };
+
+  const doDelete = (path: string): void => {
+    const paths = actionPaths(path);
+    const label = paths.length > 1 ? `${paths.length} items` : paths[0];
+    setConfirm({ message: `Delete ${label}?`, onYes: () => { onDeletePaths(paths); setSelected(new Set()); } });
   };
 
   const startAdd = (prefix: string) => {
@@ -356,31 +416,63 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     setMenu({ x: e.clientX, y: e.clientY, items });
   };
 
-  const fileMenu = (path: string): MenuItem[] => [
-    { label: "Open", onClick: () => onSelect(path) },
-    { label: "Rename", onClick: () => { setRenaming(path); setRenameDraft(path); } },
-    { label: "Duplicate", onClick: () => onDuplicate(path) },
-    { label: "Copy Path", onClick: () => void navigator.clipboard.writeText(path) },
-    { sep: true },
-    { label: "New File…", onClick: () => startAdd(dirOf(path)) },
-    { label: "New Folder…", onClick: () => startMkdir(dirOf(path)) },
-    { sep: true },
-    { label: "Delete", danger: true, disabled: files.length <= 1, onClick: () => del(path) },
-  ];
+  const fileMenu = (path: string): MenuItem[] => {
+    const multi = selected.has(path) && selected.size > 1;
+    if (multi) {
+      return [
+        { label: "Cut", onClick: () => doCut(path) },
+        { label: "Copy", onClick: () => doCopy(path) },
+        { sep: true },
+        { label: `Delete ${selected.size} items`, danger: true, onClick: () => doDelete(path) },
+      ];
+    }
+    return [
+      { label: "Open", onClick: () => onSelect(path) },
+      { label: "Rename", onClick: () => { setRenaming(path); setRenameDraft(path); } },
+      { label: "Duplicate", onClick: () => onDuplicate(path) },
+      { sep: true },
+      { label: "Cut", onClick: () => doCut(path) },
+      { label: "Copy", onClick: () => doCopy(path) },
+      { label: "Copy Path", onClick: () => void navigator.clipboard.writeText(path) },
+      { sep: true },
+      { label: "New File…", onClick: () => startAdd(dirOf(path)) },
+      { label: "New Folder…", onClick: () => startMkdir(dirOf(path)) },
+      { sep: true },
+      { label: "Delete", danger: true, disabled: files.length <= 1, onClick: () => doDelete(path) },
+    ];
+  };
 
-  const dirMenu = (dir: string): MenuItem[] => [
-    { label: "New File…", onClick: () => { expand(dir); startAdd(dir); } },
-    { label: "New Folder…", onClick: () => { expand(dir); startMkdir(dir); } },
-    { sep: true },
-    { label: "Rename", onClick: () => startRenameDir(dir) },
-    { label: "Delete", danger: true, disabled: !files.some((f) => !f.name.startsWith(`${dir}/`)), onClick: () => delFolder(dir) },
-    { sep: true },
-    { label: collapsed.has(dir) ? "Expand" : "Collapse", onClick: () => toggle(dir) },
-  ];
+  const dirMenu = (dir: string): MenuItem[] => {
+    const multi = selected.has(dir) && selected.size > 1;
+    if (multi) {
+      return [
+        { label: "Cut", onClick: () => doCut(dir) },
+        { label: "Copy", onClick: () => doCopy(dir) },
+        { label: "Paste", disabled: !clip, onClick: () => doPaste(dir) },
+        { sep: true },
+        { label: `Delete ${selected.size} items`, danger: true, onClick: () => doDelete(dir) },
+      ];
+    }
+    return [
+      { label: "New File…", onClick: () => { expand(dir); startAdd(dir); } },
+      { label: "New Folder…", onClick: () => { expand(dir); startMkdir(dir); } },
+      { sep: true },
+      { label: "Cut", onClick: () => doCut(dir) },
+      { label: "Copy", onClick: () => doCopy(dir) },
+      { label: "Paste", disabled: !clip, onClick: () => doPaste(dir) },
+      { sep: true },
+      { label: "Rename", onClick: () => startRenameDir(dir) },
+      { label: "Delete", danger: true, disabled: !files.some((f) => !f.name.startsWith(`${dir}/`)), onClick: () => doDelete(dir) },
+      { sep: true },
+      { label: collapsed.has(dir) ? "Expand" : "Collapse", onClick: () => toggle(dir) },
+    ];
+  };
 
   const rootMenu = (): MenuItem[] => [
     { label: "New File…", onClick: () => startAdd("") },
     { label: "New Folder…", onClick: () => startMkdir("") },
+    { sep: true },
+    { label: "Paste", disabled: !clip, onClick: () => doPaste("") },
   ];
 
   // Folders render before files (buildFileTree sorts that way); each level indents one more step. Rename and
@@ -404,15 +496,15 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
             <div
               key={`d:${node.path}`}
               draggable
-              onDragStart={(e) => { dragItem.current = { path: node.path, kind: "dir" }; e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
-              onClick={() => { setContextDir(node.path); toggle(node.path); }}
+              onDragStart={(e) => startRowDrag(node.path, e.dataTransfer)}
+              onClick={(e) => rowClick(node, e)}
               onContextMenu={(e) => openMenu(e, dirMenu(node.path))}
               onMouseEnter={() => setHover(node.path)}
               onMouseLeave={() => setHover((h) => (h === node.path ? null : h))}
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOver(node.path); }}
               onDragLeave={() => setDragOver((d) => (d === node.path ? null : d))}
               onDrop={(e) => { e.preventDefault(); e.stopPropagation(); handleDrop(node.path); }}
-              style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: rowPad(depth), cursor: "pointer", color: color.textMutedDk, background: dragOver === node.path ? DROP : hover === node.path ? HOVER : "transparent" }}
+              style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: rowPad(depth), cursor: "pointer", opacity: clip?.mode === "cut" && clip.paths.includes(node.path) ? 0.5 : 1, color: color.textMutedDk, background: dragOver === node.path ? DROP : selected.has(node.path) ? SEL : hover === node.path ? HOVER : "transparent" }}
             >
               {guideLines(depth, false)}
               <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
@@ -462,13 +554,13 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
           key={`f:${node.path}`}
           ref={on ? activeRowRef : undefined}
           draggable
-          onDragStart={(e) => { dragItem.current = { path: node.path, kind: "file" }; e.dataTransfer.setData("text/plain", node.path); e.dataTransfer.effectAllowed = "move"; }}
-          onClick={() => { setContextDir(dirOf(node.path)); onSelect(node.path); }}
+          onDragStart={(e) => startRowDrag(node.path, e.dataTransfer)}
+          onClick={(e) => rowClick(node, e)}
           onDoubleClick={() => { setRenaming(node.path); setRenameDraft(node.path); }}
           onContextMenu={(e) => openMenu(e, fileMenu(node.path))}
           onMouseEnter={() => setHover(node.path)}
           onMouseLeave={() => setHover((h) => (h === node.path ? null : h))}
-          style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", paddingLeft: rowPad(depth), cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : hover === node.path ? HOVER : "transparent", color: on ? color.accent : color.textMutedDk }}
+          style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", paddingLeft: rowPad(depth), cursor: "pointer", opacity: clip?.mode === "cut" && clip.paths.includes(node.path) ? 0.5 : 1, borderLeft: `3px solid ${on ? color.accent : "transparent"}`, background: on ? `${color.accent}1a` : selected.has(node.path) ? SEL : hover === node.path ? HOVER : "transparent", color: on ? color.accent : color.textMutedDk }}
         >
           {guideLines(depth, on)}
           <span style={{ width: 10, flex: "none" }} />
@@ -488,7 +580,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     <div style={{ borderRight: HAIR, background: color.panelDeep, fontFamily: font.mono, fontSize: 12.5, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div
         onContextMenu={(e) => openMenu(e, rootMenu())}
-        onClick={(e) => { if (e.target === e.currentTarget) { setContextDir(""); } }}
+        onClick={(e) => { if (e.target === e.currentTarget) { setContextDir(""); setSelected(new Set()); } }}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
         onDrop={(e) => { e.preventDefault(); handleDrop(""); }}
         style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "14px 0", display: "flex", flexDirection: "column" }}
