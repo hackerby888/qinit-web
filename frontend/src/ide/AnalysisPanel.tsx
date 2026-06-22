@@ -18,7 +18,7 @@ export function AnalysisPanel({ findings, onJump }: {
   if (findings.length === 0) {
     return (
       <div style={{ padding: "6px 14px", fontFamily: font.mono, fontSize: 11.5, color: color.accent }}>
-        ✓ No contract issues found across the workspace.
+        ✓ No issues in your other contract files. (The file you're editing is covered by Problems.)
       </div>
     );
   }
