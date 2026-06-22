@@ -2,7 +2,7 @@
 // QPI diagnostics + IDL hover (./qpi), compile on the backend (./api), and deploy + test the wasm in
 // this page via @qinit/engine (./engine). The engine/crypto modules are dynamically imported so a load
 // failure degrades to "compile only" rather than breaking the editor.
-import { useCallback, useEffect, useRef, useState, type ReactNode, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
@@ -14,6 +14,8 @@ import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorT
 import { FileExplorer } from "./FileExplorer";
 import { shareUrl, baseName, NEW_CONTRACT, type Workspace, type WorkspaceFile } from "./workspace";
 import { fileLabel, dirOf, freeName, occupiedNames, KEEP_FILE } from "./filetree";
+import { AnalysisPanel } from "./AnalysisPanel";
+import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -692,6 +694,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [runningScen, setRunningScen] = useState<string | null>(null);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
+  const [bottomTab, setBottomTab] = useState<"problems" | "analysis">("problems");
   const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
   const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
   const [consoleH, setConsoleH] = useState(() => Number(localStorage.getItem("ide.consoleH")) || 300);
@@ -1664,6 +1667,16 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const errorCount = problems.filter((p) => p.severity === 8).length;
   const warnCount = problems.filter((p) => p.severity === 4).length;
 
+  // Workspace-wide static analysis (every contract file), recomputed when the files change.
+  const analysis = useMemo(() => analyzeWorkspace(ws.files), [ws.files]);
+  const analysisCounts = severityCounts(analysis);
+
+  // Open the bottom panel on a given tab (used by the toolbar / command palette).
+  const openBottom = (tab: "problems" | "analysis") => {
+    setBottomTab(tab);
+    setProblemsOpen(true);
+  };
+
   useEffect(() => {
     localStorage.setItem("ide.explorerW", String(explorerW));
   }, [explorerW]);
@@ -2196,6 +2209,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             { id: "save", label: "Save project", hint: "Ctrl S", run: () => { persistRef.current(); setSaved(true); } },
             { id: "format", label: "Format document", hint: "Shift Alt F", run: () => void editorRef.current?.getAction("editor.action.formatDocument")?.run() },
             { id: "search", label: "Search in files", hint: "Ctrl Shift F", run: () => setSearchOpen(true) },
+            { id: "analysis", label: "Static analysis: scan workspace", run: () => openBottom("analysis") },
             { id: "gh-import", label: "Import from GitHub…", run: () => setGithub("import") },
             { id: "gh-export", label: "Export as Gist…", run: () => setGithub("export") },
             { id: "newfile", label: "New file…", run: promptNewFile },
@@ -2314,24 +2328,35 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme, theme)} onChange={editSource} onMount={onEditorMount} />
           </div>
 
-          {/* problems panel — aggregated diagnostics (qpi + clang) under the editor; click a row to jump */}
+          {/* bottom panel — Problems (active file markers) + Analysis (workspace-wide static analysis) */}
           <div style={{ flex: "none", borderTop: hair(), background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
-            <div onClick={() => setProblemsOpen((o) => !o)} style={{ display: "flex", alignItems: "center", gap: 8, height: 30, padding: "0 14px", flex: "none", cursor: "pointer", userSelect: "none", fontFamily: font.display, fontSize: 12.5, color: color.textLightHi }}>
-              <span style={{ color: color.textGhostDk, fontFamily: font.mono, fontSize: 10 }}>{problemsOpen ? "▾" : "▸"}</span>
-              <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#FF8B7E" : color.yellow }} />
-              <span>PROBLEMS</span>
-              <span style={{ marginLeft: "auto", display: "flex", gap: 12, fontFamily: font.mono, fontSize: 11 }}>
-                <span style={{ color: errorCount ? "#FF8B7E" : color.textGhostDk }}>⊘ {errorCount}</span>
-                <span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span>
-              </span>
+            <div style={{ display: "flex", alignItems: "stretch", height: 30, flex: "none", userSelect: "none", fontFamily: font.display, fontSize: 12.5 }}>
+              <div onClick={() => { if (problemsOpen && bottomTab === "problems") { setProblemsOpen(false); } else { openBottom("problems"); } }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 12px", cursor: "pointer", color: bottomTab === "problems" ? color.textLightHi : color.textMutedDk, borderBottom: `2px solid ${problemsOpen && bottomTab === "problems" ? color.accent : "transparent"}` }}>
+                <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#FF8B7E" : warnCount ? color.yellow : color.textGhostDk }} />
+                <span>PROBLEMS</span>
+                <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>{problems.length || ""}</span>
+              </div>
+              <div onClick={() => { if (problemsOpen && bottomTab === "analysis") { setProblemsOpen(false); } else { openBottom("analysis"); } }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 12px", cursor: "pointer", color: bottomTab === "analysis" ? color.textLightHi : color.textMutedDk, borderBottom: `2px solid ${problemsOpen && bottomTab === "analysis" ? color.accent : "transparent"}` }}>
+                <span style={{ width: 8, height: 8, flex: "none", background: analysisCounts.error ? "#FF8B7E" : analysisCounts.warn ? color.yellow : color.textGhostDk }} />
+                <span>ANALYSIS</span>
+                <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>{analysis.length || ""}</span>
+              </div>
+              <div onClick={() => setProblemsOpen((o) => !o)} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, padding: "0 14px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>
+                {bottomTab === "analysis"
+                  ? <><span style={{ color: analysisCounts.error ? "#FF8B7E" : color.textGhostDk }}>⊘ {analysisCounts.error}</span><span style={{ color: analysisCounts.warn ? color.yellow : color.textGhostDk }}>⚠ {analysisCounts.warn}</span></>
+                  : <><span style={{ color: errorCount ? "#FF8B7E" : color.textGhostDk }}>⊘ {errorCount}</span><span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span></>}
+                <span style={{ fontSize: 10 }}>{problemsOpen ? "▾" : "▸"}</span>
+              </div>
             </div>
             {problemsOpen && (
-              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 6px 8px" }}>
-                {problems.length === 0 ? (
-                  <div style={{ padding: "4px 8px", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>no problems detected</div>
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "0 0 8px" }}>
+                {bottomTab === "analysis" ? (
+                  <AnalysisPanel findings={analysis} onJump={jumpToMatch} />
+                ) : problems.length === 0 ? (
+                  <div style={{ padding: "4px 14px", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>no problems detected</div>
                 ) : (
                   [...problems].sort((a, b) => b.severity - a.severity || a.line - b.line).map((p, i) => (
-                    <div key={i} onClick={() => goToProblem(p)} className="pix-problem-row" style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 8px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, lineHeight: 1.5 }}>
+                    <div key={i} onClick={() => goToProblem(p)} className="pix-problem-row" style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 14px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, lineHeight: 1.5 }}>
                       <span style={{ flex: "none", color: p.severity === 8 ? "#FF8B7E" : p.severity === 4 ? color.yellow : color.textMutedDk }}>{p.severity === 8 ? "⊘" : p.severity === 4 ? "⚠" : "ⓘ"}</span>
                       <span style={{ color: color.textMutedDk, wordBreak: "break-word" }}>{p.message}</span>
                       <span style={{ marginLeft: "auto", flex: "none", color: color.textGhostDk }}>{p.source}{p.code ? ` (${p.code})` : ""} · {p.line}:{p.col}</span>
