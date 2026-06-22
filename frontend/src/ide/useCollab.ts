@@ -9,6 +9,7 @@ import * as Y from "yjs";
 import { MonacoBinding } from "y-monaco";
 import { createCollabSession, type CollabSession, type CollabStatus } from "./collab";
 import { langForPath } from "./editor";
+import { notify } from "./notify";
 
 type MonacoNS = Parameters<OnMount>[1];
 type EditorRef = Parameters<OnMount>[0];
@@ -70,6 +71,7 @@ export function useCollab(args: Args): CollabApi {
   const { ctx, token, editorRef, monacoRef, editorReady, active, onInit, onFiles } = args;
 
   const [status, setStatus] = useState<CollabStatus>("connecting");
+  const wasDisconnected = useRef(false); // tracks a drop so the next connect reads as a "reconnected"
   const [ready, setReady] = useState(false);
   const [peers, setPeers] = useState<Peer[]>([]);
   const [building, setBuilding] = useState<BuildState>({ active: false, by: null, byOther: false });
@@ -102,7 +104,22 @@ export function useCollab(args: Args): CollabApi {
     setStatus("connecting");
     setReady(false);
 
-    const onStatus = (e: { status: CollabStatus }) => setStatus(e.status);
+    // Toast the transitions so a dropped connection is loud (the initial connect stays quiet). A run of
+    // connecting→connected after a drop reads as one "reconnected".
+    const onStatus = (e: { status: CollabStatus }) => {
+      if (e.status === "disconnected") {
+        if (!wasDisconnected.current) {
+          notify.warn("Collaboration disconnected — trying to reconnect…");
+        }
+        wasDisconnected.current = true;
+      } else if (e.status === "connected") {
+        if (wasDisconnected.current) {
+          notify.info("Collaboration reconnected.");
+        }
+        wasDisconnected.current = false;
+      }
+      setStatus(e.status);
+    };
     session.provider.on("status", onStatus);
 
     // Recompute presence (peer avatars) and the shared build state from awareness on every change.
