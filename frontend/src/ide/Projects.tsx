@@ -14,6 +14,7 @@ import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace } from "./workspace";
 import { Toasts } from "./Toasts";
+import { OfflineBanner } from "./OfflineBanner";
 import { notify, errorMessage } from "./notify";
 import "../landing/pixel.css";
 
@@ -264,6 +265,7 @@ export default function Projects() {
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}` }} />
       <Toasts />
+      <OfflineBanner />
       {splash && <SplashScreen label={splash.label} onDone={splash.go} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       {importPrompt && <ImportModal count={importPrompt.length} onImport={() => void runImport()} onSkip={skipImport} />}

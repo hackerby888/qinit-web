@@ -17,6 +17,7 @@ import { fileLabel, dirOf, freeName, occupiedNames, KEEP_FILE } from "./filetree
 import { AnalysisPanel } from "./AnalysisPanel";
 import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
 import { Toasts } from "./Toasts";
+import { OfflineBanner } from "./OfflineBanner";
 import { notify, errorMessage } from "./notify";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
@@ -2252,6 +2253,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
       <Toasts />
+      <OfflineBanner />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
