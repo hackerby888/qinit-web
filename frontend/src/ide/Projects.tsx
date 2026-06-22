@@ -13,6 +13,8 @@ import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } f
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace } from "./workspace";
+import { Toasts } from "./Toasts";
+import { notify, errorMessage } from "./notify";
 import "../landing/pixel.css";
 
 function rel(ms: number): string {
@@ -175,26 +177,42 @@ export default function Projects() {
 
   // Both entries route through a short branded splash (a deliberate window to preload the workspace later).
   const open = async (id: string) => {
-    await getStore().setCurrentId(id);
-    setSplash({ label: "Opening workspace", go: () => navigate(`/ide/p/${id}`) });
+    try {
+      await getStore().setCurrentId(id);
+      setSplash({ label: "Opening workspace", go: () => navigate(`/ide/p/${id}`) });
+    } catch (e) {
+      notify.error(errorMessage(e, "Couldn't open the project"));
+    }
   };
 
   const create = async () => {
-    const n = (metas?.length ?? 0) + 1;
-    const p = await getStore().create(`Project ${n}`);
-    await getStore().setCurrentId(p.id);
-    setSplash({ label: "Creating workspace", go: () => navigate(`/ide/p/${p.id}`) });
+    try {
+      const n = (metas?.length ?? 0) + 1;
+      const p = await getStore().create(`Project ${n}`);
+      await getStore().setCurrentId(p.id);
+      setSplash({ label: "Creating workspace", go: () => navigate(`/ide/p/${p.id}`) });
+    } catch (e) {
+      notify.error(errorMessage(e, "Couldn't create the project"));
+    }
   };
 
   const duplicate = async (id: string) => {
-    await getStore().duplicate(id);
-    await reload();
+    try {
+      await getStore().duplicate(id);
+      await reload();
+    } catch (e) {
+      notify.error(errorMessage(e, "Couldn't duplicate the project"));
+    }
   };
 
   const del = async (id: string, name: string) => {
     if (window.confirm(`Delete "${name}"? This can't be undone.`)) {
-      await getStore().remove(id);
-      await reload();
+      try {
+        await getStore().remove(id);
+        await reload();
+      } catch (e) {
+        notify.error(errorMessage(e, "Couldn't delete the project"));
+      }
     }
   };
 
@@ -206,16 +224,24 @@ export default function Projects() {
   const commitRename = async (id: string) => {
     const name = draft.trim();
     if (name) {
-      await getStore().rename(id, name);
-      await reload();
+      try {
+        await getStore().rename(id, name);
+        await reload();
+      } catch (e) {
+        notify.error(errorMessage(e, "Couldn't rename the project"));
+      }
     }
     setRenaming(null);
   };
 
   const exportOne = async (id: string) => {
-    const p = await getStore().load(id);
-    if (p) {
-      exportProject(p);
+    try {
+      const p = await getStore().load(id);
+      if (p) {
+        exportProject(p);
+      }
+    } catch (e) {
+      notify.error(errorMessage(e, "Couldn't export the project"));
     }
   };
 
@@ -237,6 +263,7 @@ export default function Projects() {
     <div style={{ minHeight: "100vh", background: color.void, color: color.textLight, fontFamily: font.body }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}` }} />
+      <Toasts />
       {splash && <SplashScreen label={splash.label} onDone={splash.go} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       {importPrompt && <ImportModal count={importPrompt.length} onImport={() => void runImport()} onSkip={skipImport} />}

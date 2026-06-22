@@ -16,6 +16,8 @@ import { shareUrl, baseName, NEW_CONTRACT, type Workspace, type WorkspaceFile } 
 import { fileLabel, dirOf, freeName, occupiedNames, KEEP_FILE } from "./filetree";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
+import { Toasts } from "./Toasts";
+import { notify, errorMessage } from "./notify";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -782,11 +784,21 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         navigate("/ide");
         return;
       }
-      const p = await getStore().load(id);
+      let p: Project | null;
+      try {
+        p = await getStore().load(id);
+      } catch (e) {
+        if (!cancelled) {
+          notify.error(errorMessage(e, "Couldn't load the project"));
+          navigate("/ide");
+        }
+        return;
+      }
       if (cancelled) {
         return;
       }
       if (!p) {
+        notify.error("That project couldn't be found — it may have been deleted.");
         navigate("/ide");
         return;
       }
@@ -818,7 +830,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     p.openTabs = openTabs;
     p.scenarios = scenarios;
     p.name = projectName;
-    void getStore().save(p);
+    void getStore().save(p).catch((e) => notify.error(errorMessage(e, "Auto-save failed — your latest changes aren't saved")));
   }, [ws, openTabs, scenarios, projectName, collab]);
 
   // Persist the whole project document (debounced) whenever its contents change.
@@ -2027,6 +2039,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s) — see the editor` : "compile failed");
         appendLog(`✗ ${name}: ${why}`);
 
+        // A transport / toolchain failure (backend down, server error) carries an `error` but no located
+        // diagnostics — surface it loudly. Real compile errors (with diagnostics) already open the editor.
+        if (res.error && res.diagnostics.length === 0) {
+          notify.error(errorMessage(res.error, `Build of ${name} failed`));
+        }
+
         // Detail: the per-line clang diagnostics, then the tail of the raw toolchain stderr.
         res.diagnostics.slice(0, 8).forEach((d) => appendLog(`  ${d.severity} ${name}.h:${d.line}:${d.column} — ${d.message}`));
         if (res.verify && res.verify.ok === false && res.verify.errors?.length) {
@@ -2232,6 +2250,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
+      <Toasts />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
