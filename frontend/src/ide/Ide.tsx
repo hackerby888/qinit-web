@@ -1679,8 +1679,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const errorCount = problems.filter((p) => p.severity === 8).length;
   const warnCount = problems.filter((p) => p.severity === 4).length;
 
-  // Workspace-wide static analysis (every contract file), recomputed when the files change.
-  const analysis = useMemo(() => analyzeWorkspace(ws.files), [ws.files]);
+  // Static analysis of the OTHER contract files — the active file is already covered live by the Problems
+  // panel + in-editor squiggles, so excluding it keeps the two panels disjoint (no duplicated rows).
+  const analysis = useMemo(() => analyzeWorkspace(ws.files.filter((f) => f.name !== ws.active)), [ws.files, ws.active]);
   const analysisCounts = severityCounts(analysis);
 
   // Open the bottom panel on a given tab (used by the toolbar / command palette).

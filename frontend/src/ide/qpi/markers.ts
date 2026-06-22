@@ -4,6 +4,7 @@
 import type * as Monaco from "monaco-editor";
 import { scanQpi, scanLocals, scanLocalsForm, type QpiFinding } from "./lint/qpi-rules";
 import { scanNativeTypes } from "./lint/native-types";
+import { scanScRules } from "./lint/sc-rules";
 import { idlChecks } from "./lint/idl-checks";
 import { scanContext, type ContextFinding } from "./contextlint";
 
@@ -17,7 +18,7 @@ export function runQpiDiagnostics(monaco: typeof Monaco, model: Monaco.editor.IT
   }
 
   const src = model.getValue();
-  const findings: (QpiFinding | ContextFinding)[] = [...scanQpi(src), ...scanNativeTypes(src), ...scanLocals(src), ...scanLocalsForm(src), ...idlChecks(src), ...scanContext(src)];
+  const findings: (QpiFinding | ContextFinding)[] = [...scanQpi(src), ...scanNativeTypes(src), ...scanScRules(src), ...scanLocals(src), ...scanLocalsForm(src), ...idlChecks(src), ...scanContext(src)];
 
   const markers: Monaco.editor.IMarkerData[] = findings.map((f) => {
     const start = model.getPositionAt(f.offset);
