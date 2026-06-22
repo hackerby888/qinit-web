@@ -12,8 +12,8 @@ import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
-import { shareUrl, baseName, NEW_CONTRACT, type Workspace } from "./workspace";
-import { fileLabel, dirOf, KEEP_FILE } from "./filetree";
+import { shareUrl, baseName, NEW_CONTRACT, type Workspace, type WorkspaceFile } from "./workspace";
+import { fileLabel, dirOf, freeName, occupiedNames, KEEP_FILE } from "./filetree";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -1104,6 +1104,144 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     });
   };
 
+  // ---- batch ops (multi-select, drag-many, cut/copy/paste) ----
+  const pathFiles = (p: string): WorkspaceFile[] => ws.files.filter((f) => f.name === p || f.name.startsWith(`${p}/`));
+
+  const isFolder = (p: string): boolean => ws.files.some((f) => f.name.startsWith(`${p}/`)) && !ws.files.some((f) => f.name === p);
+
+  // Drop any selected path that lives inside another selected folder — the folder already covers it.
+  const topLevel = (paths: string[]): string[] => [...new Set(paths)].filter((p, _i, arr) => !arr.some((q) => q !== p && p.startsWith(`${q}/`)));
+
+  const addOccupied = (taken: Set<string>, path: string): void => {
+    taken.add(path);
+    const parts = path.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      taken.add(parts.slice(0, i).join("/"));
+    }
+  };
+
+  const applyRenames = (renames: [string, string][]) => {
+    if (renames.length === 0) {
+      return;
+    }
+
+    const map = new Map(renames);
+    const mv = (n: string): string => map.get(n) ?? n;
+    if (collab) {
+      for (const [o, n] of renames) {
+        collabApi.ops.rename(o, n);
+      }
+      setWs((w) => ({ ...w, active: mv(w.active) }));
+    } else {
+      setWs((w) => ({ files: w.files.map((f) => ({ ...f, name: mv(f.name) })), active: mv(w.active) }));
+    }
+
+    setOpenTabs((prev) => prev.map(mv));
+    setBuilt((b) => {
+      const out: Record<string, string> = {};
+      for (const k of Object.keys(b)) {
+        out[mv(k)] = b[k];
+      }
+      return out;
+    });
+  };
+
+  const applyCreates = (creates: WorkspaceFile[]) => {
+    if (creates.length === 0) {
+      return;
+    }
+
+    const first = creates.find((f) => fileLabel(f.name) !== KEEP_FILE)?.name ?? creates[0].name;
+    setOpenTabs((prev) => (prev.includes(first) ? prev : [...prev, first]));
+    if (collab) {
+      for (const f of creates) {
+        collabApi.ops.create(f.name, f.source);
+      }
+      setWs((w) => ({ ...w, active: first }));
+    } else {
+      setWs((w) => ({ files: [...w.files, ...creates], active: first }));
+    }
+  };
+
+  // Move files/folders into targetDir ("" = root). Auto-suffixes on a clash; skips a folder dropped into
+  // itself or a descendant.
+  const movePaths = (paths: string[], targetDir: string) => {
+    const items = topLevel(paths);
+    const movingNames = new Set(items.flatMap((p) => pathFiles(p).map((f) => f.name)));
+    const taken = occupiedNames(ws.files.filter((f) => !movingNames.has(f.name)).map((f) => f.name));
+    const renames: [string, string][] = [];
+
+    for (const p of items) {
+      const folder = isFolder(p);
+      if (folder && (targetDir === p || targetDir.startsWith(`${p}/`))) {
+        continue;
+      }
+      const wanted = targetDir ? `${targetDir}/${fileLabel(p)}` : fileLabel(p);
+      if (wanted === p) {
+        continue;
+      }
+      const dest = freeName(taken, wanted, folder);
+      addOccupied(taken, dest);
+      if (folder) {
+        for (const f of pathFiles(p)) {
+          renames.push([f.name, dest + f.name.slice(p.length)]);
+        }
+      } else {
+        renames.push([p, dest]);
+      }
+    }
+
+    applyRenames(renames);
+  };
+
+  // Copy files/folders into targetDir ("" = root), de-duplicating names.
+  const copyPaths = (paths: string[], targetDir: string) => {
+    const items = topLevel(paths);
+    const taken = occupiedNames(ws.files.map((f) => f.name));
+    const creates: WorkspaceFile[] = [];
+
+    for (const p of items) {
+      const folder = isFolder(p);
+      const wanted = targetDir ? `${targetDir}/${fileLabel(p)}` : fileLabel(p);
+      const dest = freeName(taken, wanted, folder);
+      addOccupied(taken, dest);
+      if (folder) {
+        for (const f of pathFiles(p)) {
+          creates.push({ name: dest + f.name.slice(p.length), source: f.source });
+        }
+      } else {
+        const src = ws.files.find((f) => f.name === p);
+        creates.push({ name: dest, source: src?.source ?? "" });
+      }
+    }
+
+    applyCreates(creates);
+  };
+
+  // Delete files/folders. Refuses to empty the workspace.
+  const deletePaths = (paths: string[]) => {
+    const victims = new Set(topLevel(paths).flatMap((p) => pathFiles(p).map((f) => f.name)));
+    const remaining = ws.files.filter((f) => !victims.has(f.name));
+    if (victims.size === 0 || remaining.length === 0) {
+      return;
+    }
+
+    if (collab) {
+      for (const n of victims) {
+        collabApi.ops.remove(n);
+      }
+      setWs((w) => ({ ...w, active: victims.has(w.active) ? remaining[0].name : w.active }));
+    } else {
+      setWs((w) => {
+        const files = w.files.filter((f) => !victims.has(f.name));
+        const active = victims.has(w.active) ? files[0].name : w.active;
+        return { files, active };
+      });
+    }
+
+    setOpenTabs((prev) => prev.filter((n) => !victims.has(n)));
+  };
+
   const copyLink = async (url: string, note: string) => {
     try {
       await navigator.clipboard.writeText(url);
@@ -2161,6 +2299,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             onDeleteFolder={deleteFolder}
             onRenameFolder={renameFolder}
             onDuplicate={duplicateFile}
+            onMovePaths={movePaths}
+            onCopyPaths={copyPaths}
+            onDeletePaths={deletePaths}
             onJump={jumpToSymbol}
           />
         </div>
