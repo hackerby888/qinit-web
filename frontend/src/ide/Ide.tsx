@@ -31,17 +31,18 @@ import { compileContract, base64ToBytes, fetchBuildQueue, type CompileResult, ty
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
-import { runTests, type TestResult, type TestContract } from "./tests/runner";
+import { runTests, type TestContract } from "./tests/runner";
 import { TestPanel } from "./tests/TestPanel";
 import { useIdeLayout } from "./useIdeLayout";
 import { useIdeTheme } from "./useIdeTheme";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { useProblemsPanel, type ProblemItem } from "./useProblemsPanel";
 import { useOverlays } from "./useOverlays";
+import { useTestRunner } from "./useTestRunner";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
-import { ScenarioPanel, compare, uid, type Scenario, type ScenarioResult, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
+import { ScenarioPanel, compare, uid, type Scenario, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { StateDump } from "@qinit/inspector";
@@ -667,14 +668,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
-  const [testRun, setTestRun] = useState<{ results: TestResult[]; running: boolean; title: string } | null>(null); // .ts test run
+  const { testRun, setTestRun, scenarios, setScenarios, scenResults, setScenResults, runningScen, setRunningScen } = useTestRunner();
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
   const [epochLen, setEpochLen] = useState(3000); // ticks per epoch (from the engine)
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
-  const [scenResults, setScenResults] = useState<Record<string, ScenarioResult>>({});
-  const [runningScen, setRunningScen] = useState<string | null>(null);
   const { problems, setProblems, problemsOpen, setProblemsOpen, bottomTab, setBottomTab } = useProblemsPanel();
   const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
   const [openTabs, setOpenTabs] = useState<string[]>([]);
