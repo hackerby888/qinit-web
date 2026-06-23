@@ -36,6 +36,7 @@ import { TestPanel } from "./tests/TestPanel";
 import { useIdeLayout } from "./useIdeLayout";
 import { useIdeTheme } from "./useIdeTheme";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
+import { useProblemsPanel, type ProblemItem } from "./useProblemsPanel";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
@@ -147,15 +148,6 @@ type EditorRef = Parameters<OnMount>[0];
 
 
 // One row of the Problems panel — a marker (qpi lexical/context, or clang) on the active model.
-interface ProblemItem {
-  severity: number; // monaco MarkerSeverity: 8 error, 4 warning, 2 info, 1 hint
-  message: string;
-  line: number;
-  col: number;
-  source: string;
-  code: string;
-}
-
 function TrafficLights() {
   return (
     <div style={{ display: "flex", gap: 7 }}>
@@ -686,9 +678,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [scenResults, setScenResults] = useState<Record<string, ScenarioResult>>({});
   const [runningScen, setRunningScen] = useState<string | null>(null);
-  const [problems, setProblems] = useState<ProblemItem[]>([]);
-  const [problemsOpen, setProblemsOpen] = useState(false);
-  const [bottomTab, setBottomTab] = useState<"problems" | "analysis">("problems");
+  const { problems, setProblems, problemsOpen, setProblemsOpen, bottomTab, setBottomTab } = useProblemsPanel();
   const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
