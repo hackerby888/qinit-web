@@ -27,7 +27,7 @@ import { GitHubDialog } from "./GitHubDialog";
 import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
-import { compileContract, base64ToBytes, fetchBuildQueue, type CompileResult, type BuildQueue } from "./api";
+import { compileContract, base64ToBytes, fetchBuildQueue, fetchSystemCatalog, compileSystem, type CompileResult, type BuildQueue, type SystemContractEntry } from "./api";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
@@ -572,6 +572,37 @@ function DeployedList({ deployed, selected, onSelect }: {
   );
 }
 
+// Built-in system contracts (QX, QEARN, …) the user can host on the in-browser virtual node — toggle chips.
+// On = selected/deployed (compiled by the backend, run in-page). A real node embeds these; this is dev-only.
+function SystemPicker({ catalog, selected, deployed, onToggle }: {
+  catalog: SystemContractEntry[];
+  selected: string[];
+  deployed: Record<string, DeployedContract>;
+  onToggle: (name: string) => void;
+}) {
+  if (!catalog.length) {
+    return null;
+  }
+  const sel = new Set(selected);
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+      {catalog.map((c) => {
+        const on = sel.has(c.name) || c.name in deployed;
+        return (
+          <button
+            key={c.name}
+            onClick={() => onToggle(c.name)}
+            title={`${c.name} · slot ${c.index} — ${on ? "deployed (click to remove)" : "click to compile + deploy"}`}
+            style={{ padding: "2px 7px", border: `1px solid ${on ? color.accent : color.hair}`, background: on ? `${color.accent}14` : color.panel, color: on ? color.accent : color.textLight, cursor: "pointer", fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.5 }}
+          >
+            {c.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Open-file tabs over the editor (VSCode's editor tabs). The active file is always an open tab; a tab
 // shows a dirty dot when its source has edits not yet built, and a close ✕ on hover. The last tab can't
 // be closed — the editor always needs an active file.
@@ -664,6 +695,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [deployed, setDeployed] = useState<Record<string, DeployedContract>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [sysCatalog, setSysCatalog] = useState<SystemContractEntry[]>([]); // built-in system contracts (QX, …)
+  const [sysSel, setSysSel] = useState<string[]>([]); // names the user chose to host on the in-browser node
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
@@ -771,6 +804,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       projectRef.current = p;
       setWs({ files: p.files, active: p.active });
       setScenarios(p.scenarios ?? []);
+      setSysSel(p.systemContracts ?? []);
       setOpenTabs(p.openTabs ?? []);
       setProjectName(p.name);
       void getStore().setCurrentId(p.id);
@@ -795,9 +829,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     p.active = ws.active;
     p.openTabs = openTabs;
     p.scenarios = scenarios;
+    p.systemContracts = sysSel;
     p.name = projectName;
     void getStore().save(p).catch((e) => notify.error(errorMessage(e, "Auto-save failed — your latest changes aren't saved")));
-  }, [ws, openTabs, scenarios, projectName, collab]);
+  }, [ws, openTabs, scenarios, sysSel, projectName, collab]);
 
   // Persist the whole project document (debounced) whenever its contents change.
   useEffect(() => {
@@ -1852,6 +1887,40 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // Spin up the in-process engine: create it, start the auto-ticker, fund the dev accounts, publish the
   // first tick. Idempotent — returns the running engine if already up. Called on mount (so the testnet
   // panel is live from the start) and before the first deploy.
+  // Compile (on the backend) + deploy a built-in system contract (QX, …) into the in-browser virtual node at its
+  // canonical index, then register it like any deployed contract so the call forms + inspector work.
+  const deploySystem = useCallback(async (eng: IdeEngine, name: string): Promise<boolean> => {
+    appendLog(`compiling system contract ${name}…`);
+    const res = await compileSystem(name);
+    if (!res.ok || !res.wasm || !res.idl || res.index === undefined) {
+      const why = res.error ?? "compile failed";
+      appendLog(`✗ ${name}: ${why}`);
+      notify.error(errorMessage(why, `Deploy of system contract ${name} failed`));
+      return false;
+    }
+    const wasm = base64ToBytes(res.wasm);
+    await eng.deploy(res.index, wasm, res.idl);
+    const address = await eng.addressOf(res.index);
+    deployedRef.current = { ...deployedRef.current, [name]: { name, slot: res.index, address, idl: res.idl, source: "", wasm, calls: [] } };
+    setDeployed({ ...deployedRef.current });
+    appendLog(`deployed system ${name} → slot ${res.index}`);
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters
+  }, []);
+
+  // Toggle a system contract on the in-browser node (deploy + persist when adding; remove + undeploy when off).
+  const toggleSystem = async (name: string): Promise<void> => {
+    if (sysSel.includes(name) || name in deployedRef.current) {
+      // Drop it from the selection + the deployed view; it stays armed in the engine until the next reload (the
+      // in-browser node has no live undeploy), and re-adding redeploys over the same slot.
+      setSysSel((s) => s.filter((n) => n !== name));
+      setDeployed((d) => { const next = { ...d }; delete next[name]; return next; });
+      delete deployedRef.current[name];
+    } else if (await deploySystem(await ensureEngine(), name)) {
+      setSysSel((s) => [...new Set([...s, name])]);
+    }
+  };
+
   const ensureEngine = useCallback((): Promise<IdeEngine> => {
     if (engineRef.current) {
       return Promise.resolve(engineRef.current);
@@ -1892,6 +1961,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       setCaller(accs[0]?.id ?? "");
       void refreshBalances(accs);
       setEngineInfo(await eng.info());
+      // Re-seed the project's chosen system contracts onto the fresh node (compiled by the backend, cached).
+      for (const name of projectRef.current?.systemContracts ?? []) {
+        await deploySystem(eng, name).catch(() => false);
+      }
       return eng;
     })();
     return engineInitRef.current;
@@ -1902,6 +1975,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   useEffect(() => {
     void ensureEngine().catch(() => undefined);
   }, [ensureEngine]);
+
+  // System-contract catalog for the picker (backend-served; [] if the backend/snapshot isn't available).
+  useEffect(() => {
+    void fetchSystemCatalog().then(setSysCatalog).catch(() => undefined);
+  }, []);
 
   // Compile + deploy the active contract and the whole graph it calls. Each CALL/INVOKE_OTHER_CONTRACT(<Name>)
   // resolves to the project's <Name>.h, which is deployed FIRST at a lower slot (the qubic lower-index rule),
@@ -2352,6 +2430,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             {phase === "error" && (
               <div style={{ fontFamily: font.mono, fontSize: 11.5, color: "#FF8B7E", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {result?.error ?? `${result?.diagnostics.length ?? 0} compile problem(s) — see the editor.`}
+              </div>
+            )}
+
+            {sysCatalog.length > 0 && (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: 0.5, color: color.textGhostDk, marginBottom: 5 }}>SYSTEM CONTRACTS</div>
+                <SystemPicker catalog={sysCatalog} selected={sysSel} deployed={deployed} onToggle={(n) => void toggleSystem(n)} />
               </div>
             )}
 

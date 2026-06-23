@@ -94,6 +94,53 @@ export async function fetchBuildQueue(): Promise<BuildQueue | null> {
   }
 }
 
+// A built-in system contract the IDE can deploy onto its in-browser virtual node (QX, QEARN, …).
+export interface SystemContractEntry {
+  index: number;
+  name: string;
+  idl?: ContractIdl;
+}
+
+// The system-contract catalog (the picker list). [] on any error — the picker just shows nothing.
+export async function fetchSystemCatalog(): Promise<SystemContractEntry[]> {
+  try {
+    const r = await fetch("/api/system-contracts");
+    if (!r.ok) {
+      return [];
+    }
+    return ((await r.json()) as { contracts?: SystemContractEntry[] }).contracts ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Compile a named system contract on the backend (the browser can't compile). Same CompileResult shape as
+// compileContract, plus the contract's canonical slot index.
+export async function compileSystem(name: string): Promise<CompileResult & { index?: number }> {
+  let r: Response;
+  try {
+    r = await fetch("/api/compile-system", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch (e) {
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    return { ok: false, diagnostics: [], error: `network error reaching POST /api/compile-system — ${detail}` };
+  }
+  const text = await r.text().catch(() => "");
+  let body: (CompileResult & { index?: number }) | undefined;
+  try {
+    body = text ? (JSON.parse(text) as CompileResult & { index?: number }) : undefined;
+  } catch {
+    body = undefined;
+  }
+  if (!body) {
+    return { ok: false, diagnostics: [], error: `compile-system returned a non-JSON response (HTTP ${r.status} ${r.statusText})` };
+  }
+  return body;
+}
+
 export function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);

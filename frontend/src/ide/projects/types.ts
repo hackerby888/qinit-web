@@ -16,6 +16,7 @@ export interface Project {
   active: string; // active file name
   openTabs: string[]; // editor tabs (file names)
   scenarios: Scenario[]; // saved contract tests
+  systemContracts?: string[]; // built-in system contracts (QX, …) seeded onto the in-browser virtual node
 }
 
 // The lightweight row the gallery lists — never pulls a project's file contents (cheap to list, maps to a
