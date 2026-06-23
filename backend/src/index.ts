@@ -4,6 +4,7 @@ import cors from "cors";
 import { getDb } from "./db";
 import { latestRelease, bumpVisits } from "./release";
 import { compile, buildQueueState } from "./compile";
+import { systemCatalog, compileSystem } from "./system";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
 import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut, shareCreate, shareList, shareRevoke, shareResolve } from "./projects";
 import { importRepo, exportGist } from "./github";
@@ -79,6 +80,22 @@ app.post("/api/compile", compileLimiter, async (req, res) => {
 
 // Build-pool snapshot — the IDE polls this while a compile is pending to show "waiting for a build slot".
 app.get("/api/compile/queue", (_req, res) => res.json(buildQueueState()));
+
+// Built-in system contracts for the IDE's in-browser virtual node: the catalog (picker) + compile-by-name
+// (the browser can't compile, so it asks the backend; result is cached server-side and deployed in-page).
+app.get("/api/system-contracts", (_req, res) => res.json({ contracts: systemCatalog() }));
+app.post("/api/compile-system", compileLimiter, async (req, res) => {
+  const name = req.body?.name;
+  if (typeof name !== "string" || !name.trim()) {
+    res.status(400).json({ ok: false, diagnostics: [], error: "missing `name`" });
+    return;
+  }
+  try {
+    res.json(await compileSystem(name));
+  } catch (e) {
+    res.status(500).json({ ok: false, diagnostics: [], error: (e as Error).message });
+  }
+});
 
 // Auth (Google / GitHub OAuth) + the authed user. The dev mint must precede the :provider route.
 app.get("/api/auth/dev", wrap(devToken)); // dev-only token mint (QINIT_DEV_AUTH=1)
