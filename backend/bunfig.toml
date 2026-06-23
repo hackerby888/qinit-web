@@ -1,4 +1,4 @@
 [test]
 # Loaded before any test file: pins the data layer to its in-memory fallback so unit tests are deterministic
 # and never touch a real Mongo/Redis, whatever happens to be running on the dev box.
-preload = ["./test/setup.ts"]
+preload = ["./tests/setup.ts"]
