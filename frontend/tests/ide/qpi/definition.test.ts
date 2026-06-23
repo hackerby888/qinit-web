@@ -1,6 +1,6 @@
 // Goto-definition: resolve a name to its declaration offset in the contract source.
 import { test, expect, describe } from "bun:test";
-import { definitionOffset } from "./definition";
+import { definitionOffset } from "../../../src/ide/qpi/definition";
 
 const DOC = [
   "using namespace QPI;",

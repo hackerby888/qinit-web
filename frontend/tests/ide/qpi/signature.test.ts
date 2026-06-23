@@ -1,7 +1,7 @@
 // Signature help: call signatures (qpi + container methods, active arg by comma) and template-argument
 // hints. Asserts the rendered label, the active parameter's name, and the doc.
 import { test, expect, describe } from "bun:test";
-import { signatureAt, type SignatureInfo } from "./signature";
+import { signatureAt, type SignatureInfo } from "../../../src/ide/qpi/signature";
 import { at } from "./test-helpers";
 
 // A procedure body with a HashMap field, `recv` dropped in at the cursor.

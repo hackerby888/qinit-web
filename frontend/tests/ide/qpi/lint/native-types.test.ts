@@ -1,6 +1,6 @@
 // Native C++ types are forbidden in QPI — flag them and suggest the fixed-width QPI equivalent.
 import { test, expect, describe } from "bun:test";
-import { scanNativeTypes } from "./native-types";
+import { scanNativeTypes } from "../../../../src/ide/qpi/lint/native-types";
 
 const findings = (src: string) => scanNativeTypes(src);
 const first = (src: string) => findings(src)[0];

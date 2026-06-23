@@ -7,7 +7,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "preview": "vite preview",
-    "test": "bun test src/ide"
+    "test": "bun test tests"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

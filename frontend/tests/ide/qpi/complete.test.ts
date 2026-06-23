@@ -1,8 +1,8 @@
 // The completion gating rules — the qpi-faithful contract that the IDE must honour. Each case pins one
 // rule about WHERE a member set is (or isn't) offered.
 import { test, expect, describe } from "bun:test";
-import { memberCompletionAt } from "./members";
-import { allowedBuiltinsAt } from "./snippets";
+import { memberCompletionAt } from "../../../src/ide/qpi/members";
+import { allowedBuiltinsAt } from "../../../src/ide/qpi/snippets";
 import { at } from "./test-helpers";
 
 // A contract with state + a Move entry's input/output/locals structs; `recv` is dropped into `macro`'s body

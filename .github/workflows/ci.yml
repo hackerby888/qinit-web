@@ -72,4 +72,4 @@ jobs:
 
       - name: frontend unit tests
         working-directory: Qinit-web/frontend
-        run: bun test src/ide
+        run: bun test tests

@@ -5,8 +5,8 @@
 import { test, expect, describe } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { collectStructs, enclosingEntry, maskComments, QPI_API, CONTAINERS } from "./members";
-import { scanContext } from "./contextlint";
+import { collectStructs, enclosingEntry, maskComments, QPI_API, CONTAINERS } from "../../../src/ide/qpi/members";
+import { scanContext } from "../../../src/ide/qpi/contextlint";
 import { coreContractsDir, listContracts, readFile } from "./test-helpers";
 
 const DIR = coreContractsDir();

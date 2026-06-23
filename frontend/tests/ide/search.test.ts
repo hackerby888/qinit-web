@@ -1,6 +1,6 @@
 // Workspace search: substring + regex, case toggle, line/col results.
 import { test, expect, describe } from "bun:test";
-import { searchWorkspace } from "./search";
+import { searchWorkspace } from "../../src/ide/search";
 
 const files = [
   { name: "a.h", source: "hello world\nfoo bar\nHELLO again" },

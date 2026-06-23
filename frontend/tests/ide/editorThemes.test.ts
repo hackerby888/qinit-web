@@ -1,6 +1,6 @@
 // The editor-theme resolver + registry are pure data — guard the "Match UI" follow behavior and the preset map.
 import { test, expect, describe } from "bun:test";
-import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
+import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "../../src/ide/editorThemes";
 
 describe("resolveMonacoTheme", () => {
   test("`match` follows the chrome theme", () => {

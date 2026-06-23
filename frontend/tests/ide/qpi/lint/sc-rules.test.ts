@@ -1,7 +1,7 @@
 // Static-analysis rules: determinism (time/RNG), no heap, no exceptions/RTTI, no STL. Heavy on edge cases —
 // identifier near-misses (timestamp, renew, freedom, mystd), comment/string masking, and offset accuracy.
 import { test, expect, describe } from "bun:test";
-import { scanScRules } from "./sc-rules";
+import { scanScRules } from "../../../../src/ide/qpi/lint/sc-rules";
 
 const rules = (s: string): string[] => scanScRules(s).map((f) => f.rule);
 const has = (s: string, rule: string): boolean => rules(s).includes(rule);

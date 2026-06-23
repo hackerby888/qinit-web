@@ -3,7 +3,7 @@
 import { test, expect, describe } from "bun:test";
 import {
   collectStructs, enclosingEntry, enclosingEntryBase, isFunctionEntry, isUserEntry, containerKind, walkPath,
-} from "./members";
+} from "../../../src/ide/qpi/members";
 import { at } from "./test-helpers";
 
 const fields = (src: string, name: string) => (collectStructs(src).get(name) ?? []).map((f) => `${f.name}:${f.type}`);

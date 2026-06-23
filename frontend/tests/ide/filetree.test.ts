@@ -1,6 +1,6 @@
 // Folder tree: path labelling, normalisation (incl. traversal guards), and nested tree assembly.
 import { test, expect, describe } from "bun:test";
-import { fileLabel, dirOf, normalizePath, normalizeDir, occupiedNames, freeName, buildFileTree, type TreeDir, type TreeFile } from "./filetree";
+import { fileLabel, dirOf, normalizePath, normalizeDir, occupiedNames, freeName, buildFileTree, type TreeDir, type TreeFile } from "../../src/ide/filetree";
 
 describe("fileLabel / dirOf", () => {
   test("root-level file has no dir and labels itself", () => {

@@ -1,6 +1,6 @@
 // The conservative cpp/qpi formatter: brace-depth re-indent, trailing trim, blank-run collapse, comment-safe.
 import { test, expect, describe } from "bun:test";
-import { formatCode } from "./format";
+import { formatCode } from "../../src/ide/format";
 
 describe("formatCode (cpp)", () => {
   test("re-indents to brace depth (4 spaces)", () => {

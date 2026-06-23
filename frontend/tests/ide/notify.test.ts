@@ -1,6 +1,6 @@
 // Toast pub/sub + the dead-backend message translation.
 import { test, expect, describe, beforeEach } from "bun:test";
-import { notify, subscribeToasts, dismissToast, errorMessage, _resetToasts, type Toast } from "./notify";
+import { notify, subscribeToasts, dismissToast, errorMessage, _resetToasts, type Toast } from "../../src/ide/notify";
 
 beforeEach(() => {
   _resetToasts();

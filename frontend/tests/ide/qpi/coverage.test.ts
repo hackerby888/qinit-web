@@ -2,9 +2,9 @@
 // container is added to one table (e.g. CONTAINERS) but missed in another (containerKind / templates /
 // the type vocab), and documents exactly which containers are supported.
 import { test, expect, describe } from "bun:test";
-import { CONTAINERS, containerKind } from "./members";
-import { QPI_TYPES } from "./vocab";
-import { signatureAt } from "./signature";
+import { CONTAINERS, containerKind } from "../../../src/ide/qpi/members";
+import { QPI_TYPES } from "../../../src/ide/qpi/vocab";
+import { signatureAt } from "../../../src/ide/qpi/signature";
 
 describe("container coverage", () => {
   const keys = Object.keys(CONTAINERS);

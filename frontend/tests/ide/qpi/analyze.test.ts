@@ -1,7 +1,7 @@
 // Workspace analysis aggregator: offset->line/col accuracy, category tagging, severity passthrough, file
 // filtering, multi-file aggregation, and ordering.
 import { test, expect, describe } from "bun:test";
-import { analyzeFile, analyzeWorkspace, categoryOf, isContractFile, severityCounts } from "./analyze";
+import { analyzeFile, analyzeWorkspace, categoryOf, isContractFile, severityCounts } from "../../../src/ide/qpi/analyze";
 
 describe("isContractFile", () => {
   test("accepts C/C++ sources, rejects everything else", () => {

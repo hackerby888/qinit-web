@@ -17,6 +17,5 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/ide/qpi/test-helpers.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

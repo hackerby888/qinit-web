@@ -1,6 +1,6 @@
 // Context-aware diagnostics: a function may not mutate state or call a mutating qpi.* method.
 import { test, expect, describe } from "bun:test";
-import { scanContext } from "./contextlint";
+import { scanContext } from "../../../src/ide/qpi/contextlint";
 
 const inEntry = (macro: string, body: string): string =>
   `struct S : public ContractBase { struct StateData { uint64 c; }; ${macro} { ${body} } };`;
