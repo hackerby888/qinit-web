@@ -33,6 +33,7 @@ import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
 import { runTests, type TestResult, type TestContract } from "./tests/runner";
 import { TestPanel } from "./tests/TestPanel";
+import { useIdeLayout } from "./useIdeLayout";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
@@ -698,18 +699,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [problemsOpen, setProblemsOpen] = useState(false);
   const [bottomTab, setBottomTab] = useState<"problems" | "analysis">("problems");
-  const [explorerW, setExplorerW] = useState(() => Number(localStorage.getItem("ide.explorerW")) || 210);
-  const [engineW, setEngineW] = useState(() => Number(localStorage.getItem("ide.engineW")) || 340);
-  const [consoleH, setConsoleH] = useState(() => Number(localStorage.getItem("ide.consoleH")) || 300);
-  const [leftHidden, setLeftHidden] = useState(() => localStorage.getItem("ide.leftHidden") === "1");
-  const [rightHidden, setRightHidden] = useState(() => localStorage.getItem("ide.rightHidden") === "1");
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem("ide.sections") ?? "{}");
-    } catch {
-      return {};
-    }
-  });
+  const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
 
@@ -905,22 +895,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const pickEditorTheme = (id: EditorThemeId) => {
     localStorage.setItem("ide.editorTheme", id);
     setEditorTheme(id);
-  };
-
-  const toggleLeft = () => {
-    setLeftHidden((v) => {
-      const next = !v;
-      localStorage.setItem("ide.leftHidden", next ? "1" : "0");
-      return next;
-    });
-  };
-
-  const toggleRight = () => {
-    setRightHidden((v) => {
-      const next = !v;
-      localStorage.setItem("ide.rightHidden", next ? "1" : "0");
-      return next;
-    });
   };
 
   const selectFile = (name: string) => {
@@ -1689,24 +1663,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const openBottom = (tab: "problems" | "analysis") => {
     setBottomTab(tab);
     setProblemsOpen(true);
-  };
-
-  useEffect(() => {
-    localStorage.setItem("ide.explorerW", String(explorerW));
-  }, [explorerW]);
-  useEffect(() => {
-    localStorage.setItem("ide.engineW", String(engineW));
-  }, [engineW]);
-  useEffect(() => {
-    localStorage.setItem("ide.consoleH", String(consoleH));
-  }, [consoleH]);
-  useEffect(() => {
-    localStorage.setItem("ide.sections", JSON.stringify(collapsed));
-  }, [collapsed]);
-
-  // Fold / unfold an engine-panel section (default open — an absent key means open).
-  const toggleSection = (name: string) => {
-    setCollapsed((c) => ({ ...c, [name]: !c[name] }));
   };
 
   // While a compile is pending, poll the backend build pool so the status line can show "waiting for a build
