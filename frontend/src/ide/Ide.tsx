@@ -37,6 +37,7 @@ import { useIdeLayout } from "./useIdeLayout";
 import { useIdeTheme } from "./useIdeTheme";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { useProblemsPanel, type ProblemItem } from "./useProblemsPanel";
+import { useOverlays } from "./useOverlays";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
@@ -647,10 +648,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [projectName, setProjectName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
-  const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
-  const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
+  const { debug, setDebug, palette, setPalette, github, setGithub, showTxs, setShowTxs, shareOpen, setShareOpen } = useOverlays();
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchCase, setSearchCase, searchRegex, setSearchRegex } = useWorkspaceSearch();
-  const [github, setGithub] = useState<"import" | "export" | null>(null); // GitHub import/export dialog (tab, or closed)
   const [phase, setPhase] = useState<Phase>("idle");
   const [buildQueue, setBuildQueue] = useState<BuildQueue | null>(null); // backend pool state while a compile is pending
   const [result, setResult] = useState<CompileResult | null>(null);
@@ -668,8 +667,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
-  const [showTxs, setShowTxs] = useState(false);
-  const [shareOpen, setShareOpen] = useState(false);
   const [testRun, setTestRun] = useState<{ results: TestResult[]; running: boolean; title: string } | null>(null); // .ts test run
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
