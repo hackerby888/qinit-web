@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
-import { color, font, themeFlags, applyTheme, type ThemeName } from "../landing/tokens";
+import { color, font, themeFlags, applyTheme } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
@@ -34,6 +34,7 @@ import { TxExplorer, type TxRow } from "./TxExplorer";
 import { runTests, type TestResult, type TestContract } from "./tests/runner";
 import { TestPanel } from "./tests/TestPanel";
 import { useIdeLayout } from "./useIdeLayout";
+import { useIdeTheme } from "./useIdeTheme";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
@@ -646,17 +647,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [editorReady, setEditorReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
 
-  // IDE chrome theme. The initializer applies the persisted palette before the first paint (mutating the
-  // shared `color` singleton), so the whole subtree renders in the right theme on mount.
-  const [theme, setTheme] = useState<ThemeName>(() => {
-    const t = (localStorage.getItem("ide.theme") as ThemeName) || "neo";
-    applyTheme(t);
-    return t;
-  });
-
-  // Editor syntax theme — independent of the chrome palette. "match" follows the chrome (neo→qinit-dark,
-  // flat→qinit-flat); any explicit preset overrides.
-  const [editorTheme, setEditorTheme] = useState<EditorThemeId>(() => (localStorage.getItem("ide.editorTheme") as EditorThemeId) || "match");
+  // IDE chrome palette + editor syntax theme (persisted; the chrome initializer applies the palette pre-paint).
+  const { theme, editorTheme, toggleTheme, pickEditorTheme } = useIdeTheme();
 
   const [ws, setWs] = useState<Workspace>({ files: [], active: "" });
   const [projectName, setProjectName] = useState("");
@@ -881,21 +873,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       applyTheme("neo");
     };
   }, []);
-
-  // Flip neo ↔ flat: swap the palette in place (applyTheme) before re-rendering (setTheme), persist the
-  // choice, and let the `theme` prop drive Monaco's editor theme.
-  const toggleTheme = () => {
-    const next: ThemeName = theme === "neo" ? "flat" : "neo";
-    applyTheme(next);
-    localStorage.setItem("ide.theme", next);
-    setTheme(next);
-  };
-
-  // Pick an editor syntax theme — persisted; the resolved Monaco name flows into the editor via its theme prop.
-  const pickEditorTheme = (id: EditorThemeId) => {
-    localStorage.setItem("ide.editorTheme", id);
-    setEditorTheme(id);
-  };
 
   const selectFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
