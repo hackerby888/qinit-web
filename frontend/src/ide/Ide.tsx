@@ -35,6 +35,7 @@ import { runTests, type TestResult, type TestContract } from "./tests/runner";
 import { TestPanel } from "./tests/TestPanel";
 import { useIdeLayout } from "./useIdeLayout";
 import { useIdeTheme } from "./useIdeTheme";
+import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { genQinitDts } from "./tests/dts";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
@@ -656,11 +657,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [saved, setSaved] = useState(false); // brief "✓ saved" flash after Ctrl+S
   const [debug, setDebug] = useState<{ steps: DebugStep[]; title: string; onBack?: () => void } | null>(null); // open step debugger
   const [palette, setPalette] = useState<"file" | "command" | null>(null); // Ctrl+P quick-open / Ctrl+Shift+P command palette
-  const [searchOpen, setSearchOpen] = useState(false); // Ctrl+Shift+F workspace search
+  const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchCase, setSearchCase, searchRegex, setSearchRegex } = useWorkspaceSearch();
   const [github, setGithub] = useState<"import" | "export" | null>(null); // GitHub import/export dialog (tab, or closed)
-  const [searchQuery, setSearchQuery] = useState(""); // search state lifted here so it persists across opens
-  const [searchCase, setSearchCase] = useState(false);
-  const [searchRegex, setSearchRegex] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [buildQueue, setBuildQueue] = useState<BuildQueue | null>(null); // backend pool state while a compile is pending
   const [result, setResult] = useState<CompileResult | null>(null);
