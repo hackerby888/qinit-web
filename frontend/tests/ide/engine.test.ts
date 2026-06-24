@@ -128,6 +128,29 @@ test("IdeEngine: onTxProcessed fires with a decoded trace when a procedure lands
   expect(seen[0].detail!.steps.length).toBeGreaterThan(0);
 });
 
+test("IdeEngine: stateOf decodes the live StateData scalars before and after a mutation", async () => {
+  const e = new IdeEngine();
+  await e.deploy(SLOT, await counterWasm(), idl);
+
+  const before = await e.stateOf(SLOT, SRC, "Counter");
+  expect(before.fields).toEqual([{ name: "counter", value: "0" }]);
+  expect(before.cols).toEqual([]); // Counter has no container columns
+
+  const [caller] = await e.ensureAccounts();
+  await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
+  await e.step(TICKS_AHEAD + 1);
+
+  const after = await e.stateOf(SLOT, SRC, "Counter");
+  expect(after.fields).toEqual([{ name: "counter", value: "1" }]);
+});
+
+test("IdeEngine: assets reports an empty universe for a contract that issues none", async () => {
+  const e = new IdeEngine();
+  await e.deploy(SLOT, await counterWasm(), idl);
+
+  expect(e.assets()).toEqual([]);
+});
+
 test("IdeEngine: replay re-drives the recorded history from genesis to the same state", async () => {
   const e = new IdeEngine();
   const wasm = await counterWasm();
