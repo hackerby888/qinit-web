@@ -1,0 +1,20 @@
+// bun-test-only resolution config. The app resolves `@qinit/*` via vite aliases at build time; `bun test`
+// uses node/tsconfig resolution and can't see them. Passed explicitly via `bun test --tsconfig-override`
+// (see the package.json "test" script) so it applies to every file in the run — including the IDE source the
+// tests import, which also references @qinit/*. Named tsconfig.bun.json (not tsconfig.json) so the editor and
+// `tsc -b` never pick it up: they keep using the root config + the ambient decls in src/types, staying clean.
+// bun has node compat, so the real @qinit/core source loads directly (no browser shim needed in tests).
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@qinit/engine": ["../../../Qinit/packages/engine/src/index.ts"],
+      "@qinit/proto/qpi-layout": ["../../../Qinit/packages/proto/src/qpi-layout.ts"],
+      "@qinit/proto": ["../../../Qinit/packages/proto/src/index.ts"],
+      "@qinit/build/idl": ["../../../Qinit/packages/build/src/idl.ts"],
+      "@qinit/build": ["../../../Qinit/packages/build/src/index.ts"],
+      "@qinit/inspector": ["../../../Qinit/packages/cli/src/trace-format.ts"],
+      "@qinit/core": ["../../../Qinit/packages/core/src/index.ts"]
+    }
+  }
+}
