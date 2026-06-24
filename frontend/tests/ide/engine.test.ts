@@ -99,3 +99,47 @@ test("IdeEngine: contracts at different slots keep independent state", async () 
   expect(value(await e.callFunction(28, "1", idl.functions["1"], {}))).toBe(1n);
   expect(value(await e.callFunction(29, "1", idl.functions["1"], {}))).toBe(0n);
 });
+
+test("IdeEngine: addressOf returns the contract's 60-char identity", async () => {
+  const e = new IdeEngine();
+
+  const addr = await e.addressOf(SLOT);
+  expect(typeof addr).toBe("string");
+  expect(addr.length).toBe(60);
+});
+
+test("IdeEngine: onTxProcessed fires with a decoded trace when a procedure lands", async () => {
+  const e = new IdeEngine();
+  await e.deploy(SLOT, await counterWasm(), idl);
+  e.start();
+  e.stop(); // start() turns on debug-trace capture; stop() drops the auto-ticker so we drive ticks by hand
+
+  const seen: Array<{ key: string; name: string; detail?: { steps: unknown[] } }> = [];
+  e.onTxProcessed = (ev) => seen.push(ev as never);
+
+  const [caller] = await e.ensureAccounts();
+  await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
+  await e.step(TICKS_AHEAD + 1);
+
+  expect(seen.length).toBe(1);
+  expect(seen[0].key).toBe("inc-1");
+  expect(seen[0].name).toBe("Inc");
+  expect(Array.isArray(seen[0].detail?.steps)).toBe(true);
+  expect(seen[0].detail!.steps.length).toBeGreaterThan(0);
+});
+
+test("IdeEngine: replay re-drives the recorded history from genesis to the same state", async () => {
+  const e = new IdeEngine();
+  const wasm = await counterWasm();
+  await e.deploy(SLOT, wasm, idl);
+
+  const [caller] = await e.ensureAccounts();
+  await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
+  await e.step(TICKS_AHEAD + 1);
+  expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(1n);
+  expect(e.exportHistory().length).toBe(1);
+
+  await e.replay([{ slot: SLOT, wasm, name: "Counter" }]);
+  e.stop();
+  expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(1n);
+});
