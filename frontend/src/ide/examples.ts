@@ -42,11 +42,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         REGISTER_USER_PROCEDURE(Inc, 1);
         REGISTER_USER_FUNCTION(Get, 1);
     }
-
-    INITIALIZE()
-    {
-        state.mut().counter = 0;
-    }
 };
 `;
 
@@ -84,11 +79,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
     {
         REGISTER_USER_PROCEDURE(Add, 1);
         REGISTER_USER_FUNCTION(Total, 1);
-    }
-
-    INITIALIZE()
-    {
-        state.mut().total = 0;
     }
 };
 `;
@@ -129,7 +119,11 @@ struct CONTRACT_STATE_TYPE : public ContractBase
     struct Withdraw_locals { MoveLog log; };
 
     struct Stats_input {};
-    struct Stats_output { uint64 totalDeposited; uint64 depositCount; };
+    struct Stats_output
+    {
+        uint64 totalDeposited;
+        uint64 depositCount;
+    };
 
     PUBLIC_PROCEDURE_WITH_LOCALS(Deposit)
     {
@@ -161,12 +155,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         REGISTER_USER_PROCEDURE(Deposit, 1);
         REGISTER_USER_PROCEDURE(Withdraw, 2);
         REGISTER_USER_FUNCTION(Stats, 1);
-    }
-
-    INITIALIZE()
-    {
-        state.mut().totalDeposited = 0;
-        state.mut().depositCount = 0;
     }
 };
 `;
@@ -201,15 +189,32 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
     struct Deposit_input {};
     struct Deposit_output { uint64 balance; };
-    struct Deposit_locals { uint64 bal; MoveLog log; };
+    struct Deposit_locals
+    {
+        uint64 bal;
+        MoveLog log;
+    };
 
-    struct Send_input { id to; uint64 amount; };
+    struct Send_input
+    {
+        id to;
+        uint64 amount;
+    };
     struct Send_output { bit ok; };
-    struct Send_locals { uint64 from; uint64 to; MoveLog log; };
+    struct Send_locals
+    {
+        uint64 from;
+        uint64 to;
+        MoveLog log;
+    };
 
     struct Withdraw_input { uint64 amount; };
     struct Withdraw_output { bit ok; };
-    struct Withdraw_locals { uint64 bal; MoveLog log; };
+    struct Withdraw_locals
+    {
+        uint64 bal;
+        MoveLog log;
+    };
 
     struct Burn_input { uint64 amount; };
     struct Burn_output {};
@@ -295,12 +300,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         REGISTER_USER_PROCEDURE(Burn, 4);
         REGISTER_USER_FUNCTION(BalanceOf, 1);
     }
-
-    INITIALIZE()
-    {
-        state.mut().totalDeposited = 0;
-        state.mut().totalBurned = 0;
-    }
 };
 `;
 
@@ -324,11 +323,19 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
     struct ReadCounter_input {};
     struct ReadCounter_output { uint64 value; };
-    struct ReadCounter_locals { Counter::Get_input gi; Counter::Get_output go; };
+    struct ReadCounter_locals
+    {
+        Counter::Get_input gi;
+        Counter::Get_output go;
+    };
 
     struct BumpCounter_input {};
     struct BumpCounter_output {};
-    struct BumpCounter_locals { Counter::Inc_input ii; Counter::Inc_output io; };
+    struct BumpCounter_locals
+    {
+        Counter::Inc_input ii;
+        Counter::Inc_output io;
+    };
 
     // Cross-contract read: call Counter.Get and return its value.
     PUBLIC_FUNCTION_WITH_LOCALS(ReadCounter)
@@ -349,11 +356,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         REGISTER_USER_FUNCTION(ReadCounter, 1);
         REGISTER_USER_PROCEDURE(BumpCounter, 1);
     }
-
-    INITIALIZE()
-    {
-        state.mut().bumps = 0;
-    }
 };
 `;
 
@@ -373,13 +375,28 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         uint64 issuedCount;
     };
 
-    struct Issue_input { uint64 assetName; sint64 numberOfShares; };
+    struct Issue_input
+    {
+        uint64 assetName;
+        sint64 numberOfShares;
+    };
     struct Issue_output { sint64 issued; };
 
-    struct Transfer_input { uint64 assetName; id issuer; id to; sint64 numberOfShares; };
+    struct Transfer_input
+    {
+        uint64 assetName;
+        id issuer;
+        id to;
+        sint64 numberOfShares;
+    };
     struct Transfer_output { sint64 moved; };
 
-    struct SharesOf_input { uint64 assetName; id issuer; id who; };
+    struct SharesOf_input
+    {
+        uint64 assetName;
+        id issuer;
+        id who;
+    };
     struct SharesOf_output { sint64 shares; };
 
     // Mint shares of an asset to the caller (issuer = invocator), managed by this contract.
@@ -409,7 +426,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
     INITIALIZE()
     {
-        state.mut().issuedCount = 0;
         qpi.issueAsset(0x4F4D4544, SELF, 0, 1000000, 0); // "DEMO", 1,000,000 shares to this contract
     }
 };
@@ -431,7 +447,11 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         uint64 grantCount;
     };
 
-    struct Grant_input { id to; sint64 numberOfShares; };
+    struct Grant_input
+    {
+        id to;
+        sint64 numberOfShares;
+    };
     struct Grant_output { sint64 moved; };
 
     struct SharesOf_input { id holder; };
@@ -457,7 +477,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
     INITIALIZE()
     {
-        state.mut().grantCount = 0;
         qpi.issueAsset(0x595449555145, SELF, 0, 1000000, 0); // "EQUITY", 1,000,000 shares into the treasury
     }
 };

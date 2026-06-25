@@ -51,11 +51,6 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         REGISTER_USER_PROCEDURE(Set, 1);
         REGISTER_USER_FUNCTION(Get, 1);
     }
-
-    INITIALIZE()
-    {
-        state.mut().value = 0;
-    }
 };
 `;
 
