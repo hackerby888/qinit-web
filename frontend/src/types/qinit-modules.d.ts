@@ -11,7 +11,7 @@ declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
 }
 
 declare module "@qinit/engine" {
-  export class InProcessEngine {
+  export class VirtualNode {
     constructor(opts?: { slotBase?: number; slotCount?: number });
     // The chain-sim, exposed for epoch control (the tick path goes through advanceTick, which switches
     // epoch on a boundary via sim.advance).

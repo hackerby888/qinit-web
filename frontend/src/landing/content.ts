@@ -100,9 +100,9 @@ export const TYPE_SEG: Seg[] = [
 
 // IDE editor (static): REAL @qinit/engine usage — the TS SC engine, not a fake "@qinit/qubic" quorum.
 export const IDE_SEG: Seg[] = [
-  { t: "import", r: "sec" }, { t: " { InProcessEngine } ", r: "def" }, { t: "from", r: "sec" }, { t: ' "@qinit/engine"', r: "str" }, { t: "\n\n", r: "def" },
+  { t: "import", r: "sec" }, { t: " { VirtualNode } ", r: "def" }, { t: "from", r: "sec" }, { t: ' "@qinit/engine"', r: "str" }, { t: "\n\n", r: "def" },
   { t: "// the Qubic SC engine in TypeScript — single authority", r: "mut" }, { t: "\n", r: "def" },
-  { t: "const", r: "sec" }, { t: " engine = ", r: "def" }, { t: "new", r: "sec" }, { t: " ", r: "def" }, { t: "InProcessEngine", r: "acc" }, { t: "()\n\n", r: "def" },
+  { t: "const", r: "sec" }, { t: " engine = ", r: "def" }, { t: "new", r: "sec" }, { t: " ", r: "def" }, { t: "VirtualNode", r: "acc" }, { t: "()\n\n", r: "def" },
   { t: "await", r: "sec" }, { t: " engine.", r: "def" }, { t: "deploy", r: "acc" }, { t: "(Counter)", r: "def" }, { t: "     ", r: "def" }, { t: "// runs the real wasm", r: "mut" }, { t: "\n", r: "def" },
   { t: "await", r: "sec" }, { t: " engine.", r: "def" }, { t: "invoke", r: "acc" }, { t: '("Inc")', r: "def" }, { t: "      ", r: "def" }, { t: "// tx applied in-page", r: "mut" }, { t: "\n", r: "def" },
   { t: "const", r: "sec" }, { t: " v = ", r: "def" }, { t: "await", r: "sec" }, { t: " engine.", r: "def" }, { t: "call", r: "acc" }, { t: '("Get")', r: "def" }, { t: " ", r: "def" }, { t: "// → 1 · digest = node", r: "mut" },

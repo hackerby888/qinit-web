@@ -1,8 +1,8 @@
-// Run compiled contracts in the page via @qinit/engine's InProcessEngine — byte-identical to the node.
+// Run compiled contracts in the page via @qinit/engine's VirtualNode — byte-identical to the node.
 //   function (read)  -> querySmartContract (no signing)
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> broadcastTx -> advanceTick
 // One IdeEngine instance backs an IDE session; deploy() (re)loads a contract into its slot.
-import { InProcessEngine, initK12, type AssetSnapshot } from "@qinit/engine";
+import { VirtualNode, initK12, type AssetSnapshot } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
@@ -103,8 +103,12 @@ export interface DeployImage {
   name: string;
 }
 
+// The IDE runs its own mempool (submitProcedure schedules to a future tick + the auto-ticker applies it) and an
+// instant, fee-free UX, so it opts out of the engine's realistic node defaults (mempool / sig-verify / fees).
+const IDE_ENGINE_OPTS = { mempool: false, verifySigs: false, fees: "off" } as const;
+
 export class IdeEngine {
-  private engine = new InProcessEngine();
+  private engine = new VirtualNode(IDE_ENGINE_OPTS);
   private seed: string | null = null;
   private k12Ready = false;
   private ticker: ReturnType<typeof setInterval> | null = null;
@@ -217,7 +221,7 @@ export class IdeEngine {
   async reset(images: DeployImage[]): Promise<void> {
     this.stop();
     await this.ensureK12();
-    this.engine = new InProcessEngine();
+    this.engine = new VirtualNode(IDE_ENGINE_OPTS);
     void this.engine.setDebug(true);
     this.mempool = [];
     this.history = [];
