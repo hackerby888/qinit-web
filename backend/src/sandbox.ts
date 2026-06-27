@@ -17,7 +17,11 @@ const num = (v: string | undefined, dflt: number): number => {
 const TIMEOUT_MS = num(process.env.QINIT_BUILD_TIMEOUT_MS, 30_000);
 const CPU_SEC = num(process.env.QINIT_BUILD_CPU_SEC, 30);
 const MEM_MB = num(process.env.QINIT_BUILD_MEM_MB, 4096);
-const FILE_MB = num(process.env.QINIT_BUILD_FILE_MB, 64);
+// Output-file cap (`ulimit -f`). The final .wasm is tiny (~40 KB), but the intermediate `-g` debug object for a
+// full contract TU (all of qpi.h + the contract machinery) is well over 64 MB — too small a cap makes clang hit
+// SIGXFSZ ("File size limit exceeded" -> "frontend command failed due to signal"). 1 GB leaves headroom; the
+// file is transient.
+const FILE_MB = num(process.env.QINIT_BUILD_FILE_MB, 1024);
 
 const fail = (error: string): CompileResponse => ({ ok: false, diagnostics: [], error });
 
