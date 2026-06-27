@@ -19,7 +19,7 @@ import {
   type RangeKey,
 } from "./adminApi";
 
-const CRIT = "#FF8B7E";
+const CRIT = "#f85149";
 const POLL_MS = 2000;
 
 const STATUS_COLOR: Record<HealthStatus, string> = {

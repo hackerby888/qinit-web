@@ -6,7 +6,7 @@ import { color, font } from "../landing/tokens";
 import { subscribeToasts, dismissToast, type Toast, type ToastKind } from "./notify";
 
 const KIND_COLOR: Record<ToastKind, string> = {
-  error: "#FF8B7E",
+  error: "#f85149",
   warn: color.yellow,
   info: color.accent,
 };

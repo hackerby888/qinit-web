@@ -599,7 +599,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       </div>
 
       {notice && (
-        <div style={{ padding: "0 14px 8px", color: "#ff6b6b", fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.4 }}>{notice}</div>
+        <div style={{ padding: "0 14px 8px", color: "#f85149", fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.4 }}>{notice}</div>
       )}
 
       <div
@@ -678,7 +678,7 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Me
               key={it.label}
               disabled={it.disabled}
               onClick={() => { if (!it.disabled) { it.onClick?.(); onClose(); } }}
-              style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: it.disabled ? color.textGhostDk : it.danger ? "#ff6b6b" : color.textLight, fontFamily: font.mono, fontSize: 12.5, padding: "5px 14px", cursor: it.disabled ? "default" : "pointer", opacity: it.disabled ? 0.5 : 1 }}
+              style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: it.disabled ? color.textGhostDk : it.danger ? "#f85149" : color.textLight, fontFamily: font.mono, fontSize: 12.5, padding: "5px 14px", cursor: it.disabled ? "default" : "pointer", opacity: it.disabled ? 0.5 : 1 }}
               onMouseEnter={(e) => { if (!it.disabled) { e.currentTarget.style.background = "#ffffff12"; } }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
@@ -704,7 +704,7 @@ function ConfirmDialog({ message, onYes, onCancel }: { message: string; onYes: (
         <span style={{ fontFamily: font.mono, fontSize: 13, color: color.textLight, lineHeight: 1.5 }}>{message}</span>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button onClick={onCancel} style={{ border: `1px solid ${color.hair2}`, background: "transparent", color: color.textLight, fontFamily: font.mono, fontSize: 12, padding: "6px 14px", cursor: "pointer" }}>Cancel</button>
-          <button autoFocus onClick={onYes} style={{ border: "1px solid #ff6b6b", background: "#ff6b6b", color: color.void, fontFamily: font.mono, fontSize: 12, padding: "6px 14px", cursor: "pointer" }}>Delete</button>
+          <button autoFocus onClick={onYes} style={{ border: "1px solid #f85149", background: "#f85149", color: color.void, fontFamily: font.mono, fontSize: 12, padding: "6px 14px", cursor: "pointer" }}>Delete</button>
         </div>
       </div>
     </div>

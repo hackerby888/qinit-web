@@ -31,7 +31,7 @@ export const EDITOR_THEMES: EditorThemeMeta[] = [
   { id: "qinit-light", label: "qinit Light", group: "light", monacoName: "qinit-light", swatch: ["#6A4ACB", "#1E7FA8", "#8A6D00"] },
   { id: "intellij-light", label: "IntelliJ Light", group: "light", monacoName: "intellij-light", swatch: ["#0033B3", "#871094", "#067D17"] },
   { id: "qinit-dark", label: "qinit Dark", group: "dark", monacoName: "qinit-dark", swatch: ["#9B8CFF", "#56C8FF", "#FFD23F"] },
-  { id: "qinit-flat", label: "qinit Flat", group: "dark", monacoName: "qinit-flat", swatch: ["#8A8F98", "#7E97A8", "#AEA686"] },
+  { id: "qinit-flat", label: "qinit Flat (GitHub Dark)", group: "dark", monacoName: "qinit-flat", swatch: ["#ff7b72", "#a5d6ff", "#79c0ff"] },
   { id: "monokai", label: "Monokai", group: "dark", monacoName: "monokai", swatch: ["#F92672", "#A6E22E", "#E6DB74"] },
   { id: "dracula", label: "Dracula", group: "dark", monacoName: "dracula", swatch: ["#FF79C6", "#50FA7B", "#F1FA8C"] },
   { id: "solarized-dark", label: "Solarized Dark", group: "dark", monacoName: "solarized-dark", swatch: ["#859900", "#2AA198", "#2AA198"] },

@@ -75,7 +75,7 @@ function PanelToggle({ hidden, side, onClick }: { hidden: boolean; side: "left" 
 
 // The collab presence strip — stacked peer avatars + a connection/live status pill in the editor toolbar.
 function CollabBar({ status, peers, mode, selfName, selfColor }: { status: CollabStatus; peers: Peer[]; mode: "view" | "edit"; selfName: string; selfColor: string }) {
-  const dot = status === "connected" ? "#3ECF8E" : status === "connecting" ? color.yellow : "#FF8B7E";
+  const dot = status === "connected" ? "#3ECF8E" : status === "connecting" ? color.yellow : "#f85149";
   const label = status === "connected" ? (mode === "view" ? "viewing" : "live") : status === "connecting" ? "connecting…" : "reconnecting…";
   const all = [{ name: `${selfName} (you)`, color: selfColor }, ...peers];
   return (
@@ -2366,19 +2366,19 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           <div style={{ flex: "none", borderTop: hair(), background: color.panelDeep, display: "flex", flexDirection: "column", height: problemsOpen ? 190 : 30, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "stretch", height: 30, flex: "none", userSelect: "none", fontFamily: font.display, fontSize: 12.5 }}>
               <div onClick={() => { if (problemsOpen && bottomTab === "problems") { setProblemsOpen(false); } else { openBottom("problems"); } }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 12px", cursor: "pointer", color: bottomTab === "problems" ? color.textLightHi : color.textMutedDk, borderBottom: `2px solid ${problemsOpen && bottomTab === "problems" ? color.accent : "transparent"}` }}>
-                <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#FF8B7E" : warnCount ? color.yellow : color.textGhostDk }} />
+                <span style={{ width: 8, height: 8, flex: "none", background: errorCount ? "#f85149" : warnCount ? color.yellow : color.textGhostDk }} />
                 <span>PROBLEMS</span>
                 <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>{problems.length || ""}</span>
               </div>
               <div onClick={() => { if (problemsOpen && bottomTab === "analysis") { setProblemsOpen(false); } else { openBottom("analysis"); } }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "0 12px", cursor: "pointer", color: bottomTab === "analysis" ? color.textLightHi : color.textMutedDk, borderBottom: `2px solid ${problemsOpen && bottomTab === "analysis" ? color.accent : "transparent"}` }}>
-                <span style={{ width: 8, height: 8, flex: "none", background: analysisCounts.error ? "#FF8B7E" : analysisCounts.warn ? color.yellow : color.textGhostDk }} />
+                <span style={{ width: 8, height: 8, flex: "none", background: analysisCounts.error ? "#f85149" : analysisCounts.warn ? color.yellow : color.textGhostDk }} />
                 <span>ANALYSIS</span>
                 <span style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>{analysis.length || ""}</span>
               </div>
               <div onClick={() => setProblemsOpen((o) => !o)} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, padding: "0 14px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>
                 {bottomTab === "analysis"
-                  ? <><span style={{ color: analysisCounts.error ? "#FF8B7E" : color.textGhostDk }}>⊘ {analysisCounts.error}</span><span style={{ color: analysisCounts.warn ? color.yellow : color.textGhostDk }}>⚠ {analysisCounts.warn}</span></>
-                  : <><span style={{ color: errorCount ? "#FF8B7E" : color.textGhostDk }}>⊘ {errorCount}</span><span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span></>}
+                  ? <><span style={{ color: analysisCounts.error ? "#f85149" : color.textGhostDk }}>⊘ {analysisCounts.error}</span><span style={{ color: analysisCounts.warn ? color.yellow : color.textGhostDk }}>⚠ {analysisCounts.warn}</span></>
+                  : <><span style={{ color: errorCount ? "#f85149" : color.textGhostDk }}>⊘ {errorCount}</span><span style={{ color: warnCount ? color.yellow : color.textGhostDk }}>⚠ {warnCount}</span></>}
                 <span style={{ fontSize: 10 }}>{problemsOpen ? "▾" : "▸"}</span>
               </div>
             </div>
@@ -2391,7 +2391,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                 ) : (
                   [...problems].sort((a, b) => b.severity - a.severity || a.line - b.line).map((p, i) => (
                     <div key={i} onClick={() => goToProblem(p)} className="pix-problem-row" style={{ display: "flex", gap: 8, alignItems: "baseline", padding: "3px 14px", cursor: "pointer", fontFamily: font.mono, fontSize: 11, lineHeight: 1.5 }}>
-                      <span style={{ flex: "none", color: p.severity === 8 ? "#FF8B7E" : p.severity === 4 ? color.yellow : color.textMutedDk }}>{p.severity === 8 ? "⊘" : p.severity === 4 ? "⚠" : "ⓘ"}</span>
+                      <span style={{ flex: "none", color: p.severity === 8 ? "#f85149" : p.severity === 4 ? color.yellow : color.textMutedDk }}>{p.severity === 8 ? "⊘" : p.severity === 4 ? "⚠" : "ⓘ"}</span>
                       <span style={{ color: color.textMutedDk, wordBreak: "break-word" }}>{p.message}</span>
                       <span style={{ marginLeft: "auto", flex: "none", color: color.textGhostDk }}>{p.source}{p.code ? ` (${p.code})` : ""} · {p.line}:{p.col}</span>
                     </div>
@@ -2453,7 +2453,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             )}
 
             {phase === "error" && (
-              <div style={{ fontFamily: font.mono, fontSize: 11.5, color: "#FF8B7E", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              <div style={{ fontFamily: font.mono, fontSize: 11.5, color: "#f85149", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {result?.error ?? `${result?.diagnostics.length ?? 0} compile problem(s) — see the editor.`}
               </div>
             )}
@@ -2571,7 +2571,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                 <div style={{ color: color.textGhostDk }}>— compile &amp; run to see output —</div>
               ) : (
                 log.map((line, i) => (
-                  <div key={i} style={{ wordBreak: "break-word", color: line.includes("failed") || line.includes("error") ? "#FF8B7E" : line.startsWith("deployed") ? color.accent : color.textMutedDk }}>
+                  <div key={i} style={{ wordBreak: "break-word", color: line.includes("failed") || line.includes("error") ? "#f85149" : line.startsWith("deployed") ? color.accent : color.textMutedDk }}>
                     <span style={{ color: color.textGhostDk }}>›</span> {line}
                   </div>
                 ))
@@ -2582,13 +2582,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
-        <span style={{ color: phase === "ready" ? color.accent : phase === "error" ? "#FF8B7E" : color.textFaintDk }}>
+        <span style={{ color: phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
           ● {phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
         </span>
         <span>{contractName}</span>
         <span>C++ · qpi.h</span>
         {diag.state !== "idle" && (
-          <span style={{ color: diag.state === "error" ? "#FF8B7E" : diag.state === "ok" ? color.accent : color.textMutedDk }}>
+          <span style={{ color: diag.state === "error" ? "#f85149" : diag.state === "ok" ? color.accent : color.textMutedDk }}>
             {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ no errors" : `✕ ${diag.count} error${diag.count === 1 ? "" : "s"}`}
           </span>
         )}
