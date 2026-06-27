@@ -12,7 +12,7 @@ declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
 
 declare module "@qinit/engine" {
   export class VirtualNode {
-    constructor(opts?: { slotBase?: number; slotCount?: number });
+    constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint });
     // The chain-sim, exposed for epoch control (the tick path goes through advanceTick, which switches
     // epoch on a boundary via sim.advance).
     readonly sim: { epochN: number; epochLength: number };
