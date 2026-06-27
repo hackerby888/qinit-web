@@ -56,6 +56,7 @@ export async function runBuild(req: CompileRequest): Promise<CompileResponse> {
   }
 
   const name = sanitizeName(req.name);
+  const stateType = req.stateType ? sanitizeName(req.stateType) : undefined; // C++ struct type when != ticker (QTRY -> QUOTTERY)
   const slot = Number.isFinite(req.slot) ? Number(req.slot) : 28;
   const dir = mkdtempSync(join(tmpdir(), "qinit-ide-"));
   const contractFile = `${name}.h`;
@@ -75,7 +76,7 @@ export async function runBuild(req: CompileRequest): Promise<CompileResponse> {
       dynCallees[cname] = { header: cpath, index: Number(c.slot) };
     }
 
-    const r = await buildContract({ contractPath, name, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees });
+    const r = await buildContract({ contractPath, name, stateType, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees });
     const diagnostics = parseDiagnostics(r.stderr ?? "", contractFile);
 
     if (!r.ok || !r.so) {

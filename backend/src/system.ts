@@ -48,6 +48,6 @@ export async function compileSystem(name: string): Promise<CompileResponse & { i
   if (!c) {
     return { ok: false, diagnostics: [], error: `unknown system contract '${name}'` };
   }
-  const res = await compile({ source: c.source, name: c.name, slot: c.index, skipVerify: true });
+  const res = await compile({ source: c.source, name: c.name, stateType: c.stateType, slot: c.index, skipVerify: true });
   return { ...res, index: c.index };
 }

@@ -12,6 +12,9 @@ export interface CompileCallee {
 export interface CompileRequest {
   source: string;
   name?: string;
+  // The C++ contract struct type, when it differs from `name` (the on-chain ticker) — e.g. ticker QTRY ->
+  // struct QUOTTERY. Drives the wrapper #defines; falls back to `name` when unset.
+  stateType?: string;
   slot?: number;
   skipVerify?: boolean;
   callees?: CompileCallee[];
