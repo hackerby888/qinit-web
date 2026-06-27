@@ -2,7 +2,9 @@
 //   function (read)  -> querySmartContract (no signing)
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> broadcastTx -> advanceTick
 // One IdeEngine instance backs an IDE session; deploy() (re)loads a contract into its slot.
-import { VirtualNode, initK12, type AssetSnapshot } from "@qinit/engine";
+import { VirtualNode, initK12, type AssetSnapshot, type EngineLogEvent } from "@qinit/engine";
+
+export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
@@ -120,6 +122,7 @@ export class IdeEngine {
 
   onTick: ((info: { tick: number; epoch: number }) => void) | null = null;
   onTxProcessed: ((e: TxProcessed) => void) | null = null;
+  onLog: ((e: EngineLogEvent) => void) | null = null; // engine diagnostic-log stream -> the IDE's engine-log popup
 
   // Deploy constructs the contract (INITIALIZE) and digests its state, so K12 must be ready first.
   async deploy(slot: number, wasm: Uint8Array, idl: ContractIdl): Promise<void> {
@@ -134,6 +137,7 @@ export class IdeEngine {
       return;
     }
     void this.engine.setDebug(true); // capture per-tx debug traces for the inspector
+    this.engine.onLog = (e) => this.onLog?.(e); // forward the engine's lifecycle/error log stream
     this.schedule();
   }
 
@@ -223,6 +227,7 @@ export class IdeEngine {
     await this.ensureK12();
     this.engine = new VirtualNode(IDE_ENGINE_OPTS);
     void this.engine.setDebug(true);
+    this.engine.onLog = (e) => this.onLog?.(e);
     this.mempool = [];
     this.history = [];
 

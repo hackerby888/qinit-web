@@ -7,25 +7,26 @@ import { color, font, NOTCH, hardShadow, themeFlags } from "../landing/tokens";
 export const clipNotch: CSSProperties = { clipPath: NOTCH, WebkitClipPath: NOTCH };
 
 // A bitten-corner card (ink-ish frame wrapping a dark face) with a hard offset shadow.
-export function Card({ children, frame = color.hair2, face = color.panel, shadow = 4, shadowColor = "#000000", style, faceStyle }: {
+export function Card({ children, frame = color.hair2, face = color.panel, shadow = 4, shadowColor = "#000000", borderWidth, style, faceStyle }: {
   children: ReactNode;
   frame?: string;
   face?: string;
   shadow?: number;
   shadowColor?: string;
+  borderWidth?: number; // override the frame thickness; unset = theme default (flat 1px, neo 2px)
   style?: CSSProperties;
   faceStyle?: CSSProperties;
 }) {
-  // Flat theme: collapse the notched two-div frame to a single 1px-bordered surface — no clip, no
-  // hard shadow, no 2px padding wrapper (children own their padding).
+  // Flat theme: collapse the notched two-div frame to a single bordered surface — no clip, no
+  // hard shadow, no padding wrapper (children own their padding).
   if (themeFlags.flat) {
     return (
-      <div style={{ border: `1px solid ${frame}`, background: face, ...style, ...faceStyle }}>{children}</div>
+      <div style={{ border: `${borderWidth ?? 1}px solid ${frame}`, background: face, ...style, ...faceStyle }}>{children}</div>
     );
   }
 
   return (
-    <div style={{ background: frame, padding: 2, ...clipNotch, filter: hardShadow(shadow, shadow, shadowColor), ...style }}>
+    <div style={{ background: frame, padding: borderWidth ?? 2, ...clipNotch, filter: hardShadow(shadow, shadow, shadowColor), ...style }}>
       <div style={{ background: face, ...clipNotch, ...faceStyle }}>{children}</div>
     </div>
   );
@@ -45,16 +46,17 @@ export function SectionHead({ label, accent = color.accent, right }: { label: st
 
 // A collapsible bordered section — the frame color is the section's identity; the header toggles it open.
 // One consistent wrapper for the engine panel's sections (the inner panels render content only).
-export function Section({ label, accent = color.accent, open, onToggle, right, children }: {
+export function Section({ label, accent = color.accent, open, onToggle, right, borderWidth, children }: {
   label: string;
   accent?: string;
   open: boolean;
   onToggle: () => void;
   right?: ReactNode;
+  borderWidth?: number;
   children: ReactNode;
 }) {
   return (
-    <Card frame={accent} faceStyle={{ display: "flex", flexDirection: "column" }}>
+    <Card frame={accent} borderWidth={borderWidth} faceStyle={{ display: "flex", flexDirection: "column" }}>
       <div onClick={onToggle} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", cursor: "pointer", userSelect: "none" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>{label}</span>
