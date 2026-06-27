@@ -1902,13 +1902,22 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       notify.error(errorMessage(why, `Deploy of system contract ${name} failed`));
       return false;
     }
-    const wasm = base64ToBytes(res.wasm);
-    await eng.deploy(res.index, wasm, res.idl);
-    const address = await eng.addressOf(res.index);
-    deployedRef.current = { ...deployedRef.current, [name]: { name, slot: res.index, address, idl: res.idl, source: "", wasm, calls: [] } };
-    setDeployed({ ...deployedRef.current });
-    appendLog(`deployed system ${name} → slot ${res.index}`);
-    return true;
+    // Wrap the in-engine deploy: a throw here (e.g. wasm instantiation) must not leave the UI stuck on
+    // "compiling…" with no feedback — surface it as an error like a compile failure.
+    try {
+      const wasm = base64ToBytes(res.wasm);
+      await eng.deploy(res.index, wasm, res.idl);
+      const address = await eng.addressOf(res.index);
+      deployedRef.current = { ...deployedRef.current, [name]: { name, slot: res.index, address, idl: res.idl, source: "", wasm, calls: [] } };
+      setDeployed({ ...deployedRef.current });
+      appendLog(`deployed system ${name} → slot ${res.index}`);
+      return true;
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      appendLog(`✗ ${name}: deploy failed — ${why}`);
+      notify.error(errorMessage(why, `Deploy of system contract ${name} failed`));
+      return false;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters
   }, []);
 
