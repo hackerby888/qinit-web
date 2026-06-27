@@ -22,7 +22,11 @@ async function main(): Promise<void> {
     res = { ok: false, diagnostics: [], error: (e as Error).message };
   }
 
-  process.stdout.write(JSON.stringify(res));
+  // Await the flush before returning: process.exit() drops un-flushed stdout, so a large result (e.g. a big
+  // contract's wasm base64) would be truncated and reach the parent as "exited 0 with no result".
+  await new Promise<void>((resolve, reject) => {
+    process.stdout.write(JSON.stringify(res), (err) => (err ? reject(err) : resolve()));
+  });
 }
 
 void main().then(() => process.exit(0));
