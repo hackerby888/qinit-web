@@ -2,6 +2,7 @@
 // inputs (no blocking prompts); delete asks via an in-app confirm. Names are normalised to a `.h` file;
 // folders are virtual (a path prefix), with a hidden `.keep` placeholder holding empty ones open.
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
+import { Crosshair, ChevronsDownUp, ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, FileCode, FilePlus, Pencil, Trash2 } from "lucide-react";
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
@@ -96,6 +97,9 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   const iconBtn: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
     border: "none",
     background: "transparent",
     color: color.textGhostDk,
@@ -507,17 +511,17 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
               style={{ position: "relative", display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", paddingLeft: rowPad(depth), cursor: "pointer", opacity: clip?.mode === "cut" && clip.paths.includes(node.path) ? 0.5 : 1, color: color.textMutedDk, background: dragOver === node.path ? DROP : selected.has(node.path) ? SEL : hover === node.path ? HOVER : "transparent" }}
             >
               {guideLines(depth, false)}
-              <span style={{ width: 10, flex: "none", color: color.textGhostDk, fontSize: 10 }}>{open ? "▾" : "▸"}</span>
-              <span style={{ flex: "none", color: hover === node.path ? color.accent : color.textGhostDk, fontSize: 11 }}>{open ? "🗁" : "🗀"}</span>
+              <span style={{ width: 12, flex: "none", display: "inline-flex", alignItems: "center", color: color.textGhostDk }}>{open ? <ChevronDown size={12} strokeWidth={2} /> : <ChevronRight size={12} strokeWidth={2} />}</span>
+              <span style={{ flex: "none", display: "inline-flex", alignItems: "center", color: hover === node.path ? color.accent : color.textGhostDk }}>{open ? <FolderOpen size={14} strokeWidth={2} /> : <Folder size={14} strokeWidth={2} />}</span>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
               {hover === node.path && (
-                <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}>+</button>
+                <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}><FilePlus size={13} strokeWidth={2} /></button>
               )}
               {hover === node.path && (
-                <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startMkdir(node.path); }} title={`New folder in ${node.path}`} style={{ ...iconBtn, fontSize: 11 }}>⊞</button>
+                <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startMkdir(node.path); }} title={`New folder in ${node.path}`} style={iconBtn}><FolderPlus size={13} strokeWidth={2} /></button>
               )}
               {hover === node.path && files.some((f) => !f.name.startsWith(`${node.path}/`)) && (
-                <button onClick={(e) => { e.stopPropagation(); delFolder(node.path); }} title={`Delete folder ${node.path}`} style={iconBtn}>×</button>
+                <button onClick={(e) => { e.stopPropagation(); delFolder(node.path); }} title={`Delete folder ${node.path}`} style={iconBtn}><Trash2 size={13} strokeWidth={2} /></button>
               )}
             </div>
           );
@@ -564,13 +568,13 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
         >
           {guideLines(depth, on)}
           <span style={{ width: 10, flex: "none" }} />
-          <span style={{ flex: "none", fontSize: 11, color: on ? color.accent : color.textGhostDk }}>🗎</span>
+          <span style={{ flex: "none", display: "inline-flex", alignItems: "center", color: on ? color.accent : color.textGhostDk }}><FileCode size={14} strokeWidth={2} /></span>
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
           {(on || hover === node.path) && (
-            <button onClick={(e) => { e.stopPropagation(); setRenaming(node.path); setRenameDraft(node.path); }} title="Rename" style={iconBtn}>✎</button>
+            <button onClick={(e) => { e.stopPropagation(); setRenaming(node.path); setRenameDraft(node.path); }} title="Rename" style={iconBtn}><Pencil size={13} strokeWidth={2} /></button>
           )}
           {(on || hover === node.path) && files.length > 1 && (
-            <button onClick={(e) => { e.stopPropagation(); del(node.path); }} title="Delete" style={iconBtn}>×</button>
+            <button onClick={(e) => { e.stopPropagation(); del(node.path); }} title="Delete" style={iconBtn}><Trash2 size={13} strokeWidth={2} /></button>
           )}
         </div>,
       ];
@@ -588,10 +592,10 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 10px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>EXPLORER</span>
-        <button onClick={revealActive} title="Reveal active file" style={{ ...iconBtn, marginLeft: "auto", fontSize: 13 }}>⌖</button>
-        <button onClick={collapseAll} title="Collapse all folders" style={{ ...iconBtn, fontSize: 13 }}>⊟</button>
-        <button onClick={() => { expand(contextDir); startMkdir(contextDir); }} title={`New folder in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 14, color: color.accent }}>⊞</button>
-        <button onClick={() => { expand(contextDir); startAdd(contextDir); }} title={`New file in ${contextDir || "root"}`} style={{ ...iconBtn, fontSize: 16, color: color.accent }}>+</button>
+        <button onClick={revealActive} title="Reveal active file" style={{ ...iconBtn, marginLeft: "auto" }}><Crosshair size={14} strokeWidth={2} /></button>
+        <button onClick={collapseAll} title="Collapse all folders" style={iconBtn}><ChevronsDownUp size={14} strokeWidth={2} /></button>
+        <button onClick={() => { expand(contextDir); startMkdir(contextDir); }} title={`New folder in ${contextDir || "root"}`} style={{ ...iconBtn, color: color.accent }}><FolderPlus size={15} strokeWidth={2} /></button>
+        <button onClick={() => { expand(contextDir); startAdd(contextDir); }} title={`New file in ${contextDir || "root"}`} style={{ ...iconBtn, color: color.accent }}><FilePlus size={15} strokeWidth={2} /></button>
       </div>
 
       {notice && (
