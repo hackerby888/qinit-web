@@ -128,18 +128,20 @@ const slotAtOrAbove = (reg: Record<string, DeployedContract>, name: string, floo
 const scanCallees = (src: string): string[] =>
   [...new Set([...src.matchAll(/(?:CALL|INVOKE)_OTHER_CONTRACT_\w+\s*\(\s*(\w+)/g)].map((m) => m[1]))];
 
-// Resolve a source's callees to the project files that define them, for passing to the compiler. The slot is
-// the deployed index when known, else a provisional ascending one — its value only affects the emitted index
-// constants, so the contract compiles either way (used for live diagnostics before a deploy).
+// Resolve a source's callees to the source that defines them, for passing to the compiler. Prefer an open
+// project file; else fall back to the source the in-page node stored when the callee was deployed — so a
+// deployed-but-not-open callee still resolves (the same way `qinit deploy` pulls callees off the node registry).
+// The slot is the deployed index when known, else a provisional ascending one — its value only affects the
+// emitted index constants, so the contract compiles either way (used for live diagnostics before a deploy).
 const resolveCallees = (files: { name: string; source: string }[], reg: Record<string, DeployedContract>, src: string): { name: string; source: string; slot: number }[] => {
   const out: { name: string; source: string; slot: number }[] = [];
   let provisional = SLOT_BASE;
   for (const name of scanCallees(src)) {
-    const f = files.find((x) => baseName(x.name) === name);
-    if (!f) {
+    const source = files.find((x) => baseName(x.name) === name)?.source ?? reg[name]?.source;
+    if (!source) {
       continue; // unresolved — let clang report the missing callee type
     }
-    out.push({ name, source: f.source, slot: reg[name]?.slot ?? provisional++ });
+    out.push({ name, source, slot: reg[name]?.slot ?? provisional++ });
   }
   return out;
 };
