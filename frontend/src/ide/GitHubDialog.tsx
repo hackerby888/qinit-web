@@ -184,7 +184,7 @@ export function GitHubDialog({ files, signedIn, initialTab, onImport, onSignIn, 
           )}
 
           {error && (
-            <span style={{ fontFamily: font.mono, fontSize: 12, color: "#ff6b6b", lineHeight: 1.5 }}>{error}</span>
+            <span style={{ fontFamily: font.mono, fontSize: 12, color: "#f85149", lineHeight: 1.5 }}>{error}</span>
           )}
         </div>
       </div>

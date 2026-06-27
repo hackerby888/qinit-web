@@ -308,15 +308,15 @@ export default function Projects() {
         </div>
 
         {authErr && (
-          <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #FF8B7E`, background: "#FF8B7E14", fontFamily: font.mono, fontSize: 12, color: "#FF8B7E" }}>
+          <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #f85149`, background: "#f8514914", fontFamily: font.mono, fontSize: 12, color: "#f85149" }}>
             sign-in failed: {authErr}
           </div>
         )}
 
         {loadErr && (
-          <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #FF8B7E`, background: "#FF8B7E14", fontFamily: font.mono, fontSize: 12, color: "#FF8B7E", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ marginBottom: 18, padding: "8px 12px", border: `1px solid #f85149`, background: "#f8514914", fontFamily: font.mono, fontSize: 12, color: "#f85149", display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ flex: 1 }}>couldn't load your projects: {loadErr}</span>
-            <NeoBtn onClick={() => void reload()} accent="#FF8B7E" title="Try again">retry</NeoBtn>
+            <NeoBtn onClick={() => void reload()} accent="#f85149" title="Try again">retry</NeoBtn>
           </div>
         )}
 
@@ -368,7 +368,7 @@ export default function Projects() {
                   <NeoBtn onClick={() => startRename(m)} title="Rename">✎</NeoBtn>
                   <NeoBtn onClick={() => void duplicate(m.id)} title="Duplicate">⧉</NeoBtn>
                   <NeoBtn onClick={() => void exportOne(m.id)} title="Export to .json">⤓</NeoBtn>
-                  <NeoBtn onClick={() => void del(m.id, m.name)} title="Delete" accent="#FF8B7E">✕</NeoBtn>
+                  <NeoBtn onClick={() => void del(m.id, m.name)} title="Delete" accent="#f85149">✕</NeoBtn>
                 </div>
               </div>
             </Card>

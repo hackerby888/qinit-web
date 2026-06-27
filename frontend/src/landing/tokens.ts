@@ -38,37 +38,39 @@ const NEO = {
   swatchOff: "#2A312C", // inactive window traffic-light
 };
 
-// The IDE-only "flat" theme: near-black surfaces, near-monochrome, one dim teal-grey accent. No notches
-// or hard shadows (the structure lives in the chrome, gated on themeFlags.flat). Same 25 keys as NEO.
+// The IDE-only "flat" theme: GitHub-dark. Blue-black canvas with layered surfaces, visible gray borders,
+// high-contrast text, a green signal accent (Qinit identity, doubling as GitHub's primary-button green) and
+// GitHub blue as the secondary. No notches or hard shadows (structure lives in the chrome, gated on
+// themeFlags.flat). Same 25 keys as NEO. Values mirror Primer dark (canvas/border/fg/accent roles).
 const FLAT: typeof NEO = {
-  void: "#0A0A0B",
-  panel: "#121214",
-  panelDeep: "#0E0E10",
-  ink: "#26262B",
-  paper: "#E8E8EA",
-  white: "#F4F4F5",
+  void: "#0d1117",      // canvas.default — primary dark bg
+  panel: "#161b22",     // canvas.subtle — cards / panels
+  panelDeep: "#010409",  // canvas.inset — title/status bars (deepest)
+  ink: "#30363d",       // border.default — universal border
+  paper: "#e6edf3",     // light surface (rare in the dark IDE)
+  white: "#f0f3f6",
 
-  accent: "#7FA6AD",
-  accentMid: "#5E8086",
-  accentDeep: "#466065",
-  accentShadow: "#2B3A3D",
-  secondary: "#8A8F98",
-  secondaryDeep: "#5A5E66",
-  secondaryDk: "#44474E",
-  yellow: "#AEA686",
+  accent: "#3fb950",      // success.fg — primary signal / active / the green button
+  accentMid: "#2ea043",
+  accentDeep: "#238636",  // success.emphasis — button frame
+  accentShadow: "#16401f",
+  secondary: "#2f81f7",   // accent.fg — links / secondary
+  secondaryDeep: "#1f6feb",
+  secondaryDk: "#194fb3",
+  yellow: "#d29922",      // attention.fg
 
-  textLight: "#B8BABF",
-  textLightHi: "#D2D4D8",
-  textMutedDk: "#8A8D93",
-  textFaintDk: "#6C6F75",
-  textGhostDk: "#54575C",
-  textBody: "#2A2B2E",
-  textMutedLt: "#6A6B6E",
+  textLight: "#c9d1d9",   // body on dark
+  textLightHi: "#e6edf3", // headings (fg.default, brightest)
+  textMutedDk: "#8b949e", // muted (fg.muted)
+  textFaintDk: "#6e7681", // faint (fg.subtle)
+  textGhostDk: "#545d68", // ghost (comments/prompts) — a touch above subtle for readability
+  textBody: "#1f2328",    // body on light
+  textMutedLt: "#656d76",
 
-  hair: "#222226",
-  hair2: "#2A2A2F",
-  dotOff: "#222226",
-  swatchOff: "#2E2E33",
+  hair: "#21262d",   // border.muted — dividers inside windows
+  hair2: "#30363d",  // border.default — stronger hairline
+  dotOff: "#21262d",
+  swatchOff: "#30363d",
 };
 
 // The live, mutable active palette. Every chrome read goes through this object; applyTheme() swaps its

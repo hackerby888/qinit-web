@@ -98,7 +98,7 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
                   >
                     <span style={{ color: color.textGhostDk, width: 16, flex: "none" }}>{idx + 1}</span>
                     <span style={{ color: on ? color.textLight : color.textMutedDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.contract}.{s.label}</span>
-                    <span style={{ marginLeft: "auto", flex: "none", color: s.ok ? color.accent : "#FF8B7E" }}>{s.ok ? "✓" : "✗"}</span>
+                    <span style={{ marginLeft: "auto", flex: "none", color: s.ok ? color.accent : "#f85149" }}>{s.ok ? "✓" : "✗"}</span>
                   </div>
                 );
               })}
@@ -118,7 +118,7 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
                     ↪ source
                   </button>
                 )}
-                <span style={{ marginLeft: onJump && (cur.kind === 0 || cur.kind === 1) ? 0 : "auto", fontFamily: font.mono, fontSize: 11, color: cur.ok ? color.accent : "#FF8B7E" }}>{cur.ok ? "ok" : "trapped"}</span>
+                <span style={{ marginLeft: onJump && (cur.kind === 0 || cur.kind === 1) ? 0 : "auto", fontFamily: font.mono, fontSize: 11, color: cur.ok ? color.accent : "#f85149" }}>{cur.ok ? "ok" : "trapped"}</span>
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>

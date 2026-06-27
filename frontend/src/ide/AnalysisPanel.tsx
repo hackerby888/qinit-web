@@ -7,7 +7,7 @@ import type { AnalysisFinding } from "./qpi/analyze";
 // Fixed display order — determinism + state first (the Qubic-specific invariants), then the rest.
 const ORDER = ["Determinism", "State", "Types", "Memory", "Language", "Registration", "Interface", "Other"];
 
-const sevColor = (s: AnalysisFinding["severity"]): string => (s === "error" ? "#FF8B7E" : s === "warn" ? color.yellow : color.textMutedDk);
+const sevColor = (s: AnalysisFinding["severity"]): string => (s === "error" ? "#f85149" : s === "warn" ? color.yellow : color.textMutedDk);
 const sevIcon = (s: AnalysisFinding["severity"]): string => (s === "error" ? "⊘" : s === "warn" ? "⚠" : "ⓘ");
 const sevRank = (s: AnalysisFinding["severity"]): number => (s === "error" ? 0 : s === "warn" ? 1 : 2);
 

@@ -37,7 +37,7 @@ export function TestPanel({ results, running, title, onClose, onRerun }: {
             <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>TESTS</span>
             {title && <span style={{ ...mono, color: color.textMutedDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>}
             {!running && total > 0 && (
-              <span style={{ ...mono, color: allOk ? color.accent : "#FF8B7E" }}>{allOk ? "✓" : "✗"} {pass}/{total} passed</span>
+              <span style={{ ...mono, color: allOk ? color.accent : "#f85149" }}>{allOk ? "✓" : "✗"} {pass}/{total} passed</span>
             )}
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               <button onClick={onRerun} disabled={running} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: running ? color.textFaintDk : color.accent, ...mono, padding: "2px 10px", cursor: running ? "default" : "pointer" }}>{running ? "running…" : "▶ re-run"}</button>
@@ -51,13 +51,13 @@ export function TestPanel({ results, running, title, onClose, onRerun }: {
             )}
 
             {results.map((r, i) => (
-              <div key={i} style={{ padding: "7px 16px", borderLeft: `3px solid ${r.ok ? color.accent : "#FF8B7E"}` }}>
+              <div key={i} style={{ padding: "7px 16px", borderLeft: `3px solid ${r.ok ? color.accent : "#f85149"}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ ...mono, color: r.ok ? color.accent : "#FF8B7E" }}>{r.ok ? "✓" : "✗"}</span>
+                  <span style={{ ...mono, color: r.ok ? color.accent : "#f85149" }}>{r.ok ? "✓" : "✗"}</span>
                   <span style={{ ...mono, color: color.textLight }}>{r.name}</span>
                   <span style={{ marginLeft: "auto", ...mono, fontSize: 10, color: color.textGhostDk }}>{r.ms}ms</span>
                 </div>
-                {r.error && <div style={{ ...mono, color: "#FF8B7E", paddingLeft: 18, paddingTop: 3, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{r.error}</div>}
+                {r.error && <div style={{ ...mono, color: "#f85149", paddingLeft: 18, paddingTop: 3, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{r.error}</div>}
                 {r.logs.map((l, k) => (
                   <div key={k} style={{ ...mono, fontSize: 10.5, color: color.textGhostDk, paddingLeft: 18 }}>› {l}</div>
                 ))}

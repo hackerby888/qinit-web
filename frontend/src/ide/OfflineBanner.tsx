@@ -22,7 +22,7 @@ export function OfflineBanner() {
   }
 
   return (
-    <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 26, background: "#FF8B7E", color: color.void, fontFamily: font.mono, fontSize: 11.5, fontWeight: 600, letterSpacing: ".02em" }}>
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 9998, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, height: 26, background: "#f85149", color: color.void, fontFamily: font.mono, fontSize: 11.5, fontWeight: 600, letterSpacing: ".02em" }}>
       <span>⚠ You're offline — changes won't sync until you reconnect.</span>
     </div>
   );

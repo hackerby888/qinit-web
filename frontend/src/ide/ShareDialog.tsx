@@ -129,7 +129,7 @@ export function ShareDialog({ projectId, isLive, peerCount, onGoLive, onClose }:
           </span>
           <span style={{ flex: "none", fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>{relExpiry(link.expiresAt)}</span>
           <NeoBtn onClick={() => void copy(link.linkId)} title="Copy link">{copied === link.linkId ? "copied" : "copy"}</NeoBtn>
-          <NeoBtn onClick={() => void revoke(link.linkId)} disabled={busy === link.linkId} title="Revoke link" accent="#FF8B7E">revoke</NeoBtn>
+          <NeoBtn onClick={() => void revoke(link.linkId)} disabled={busy === link.linkId} title="Revoke link" accent="#f85149">revoke</NeoBtn>
         </div>
       ) : (
         <NeoBtn onClick={() => void create(mode)} disabled={busy === mode} active title={`Create a ${mode} link`}>
@@ -179,7 +179,7 @@ export function ShareDialog({ projectId, isLive, peerCount, onGoLive, onClose }:
               The engine sandbox — deploys, ticks, accounts — is local to each person. Only file edits are shared.
             </div>
 
-            {err && <div style={{ fontFamily: font.mono, fontSize: 11, color: "#FF8B7E" }}>error: {err}</div>}
+            {err && <div style={{ fontFamily: font.mono, fontSize: 11, color: "#f85149" }}>error: {err}</div>}
           </div>
         </Card>
       </div>

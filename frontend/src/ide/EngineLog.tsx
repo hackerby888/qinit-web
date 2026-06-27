@@ -20,7 +20,7 @@ const FILTERS: { key: string; label: string; min: number }[] = [
 
 const levelColor = (level: EngineLogEvent["level"]): string => {
   if (level === "error") {
-    return "#FF8B7E";
+    return "#f85149";
   }
   if (level === "warn") {
     return color.yellow;
