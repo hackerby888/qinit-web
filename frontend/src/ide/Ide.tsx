@@ -28,9 +28,10 @@ import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, fetchBuildQueue, fetchSystemCatalog, compileSystem, type CompileResult, type BuildQueue, type SystemContractEntry } from "./api";
-import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
+import { EngineLog } from "./EngineLog";
 import { runTests, type TestContract } from "./tests/runner";
 import { TestPanel } from "./tests/TestPanel";
 import { useIdeLayout } from "./useIdeLayout";
@@ -703,6 +704,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
+  const [engineLog, setEngineLog] = useState<EngineLogEvent[]>([]); // the virtual engine's diagnostic stream, for the ENGINE-log popup
+  const [engineLogOpen, setEngineLogOpen] = useState(false);
   const { testRun, setTestRun, scenarios, setScenarios, scenResults, setScenResults, runningScen, setRunningScen } = useTestRunner();
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
@@ -1945,6 +1948,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       const { IdeEngine } = await import("./engine");
       const eng = new IdeEngine();
       eng.onTick = (info) => setEngineInfo(info);
+      eng.onLog = (e) => setEngineLog((l) => [...l.slice(-999), e]); // buffer the engine's diagnostic stream for the popup
+
       eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
         setPending((p) => {
           const next = { ...p };
@@ -2405,11 +2410,18 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
             {collab && <span title="In collab the engine runs in your browser only — deploys, ticks and accounts aren't shared" style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>· local to you</span>}
             {sel && <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.accent }}>{sel.name} · slot {sel.slot}</span>}
+            <button
+              onClick={() => setEngineLogOpen(true)}
+              title="Virtual-engine log — ticks, epochs, deploys, txs, faults, dormant + digest skips"
+              style={{ marginLeft: sel ? 8 : "auto", flex: "none", border: `1px solid ${color.hair2}`, background: color.panel, color: color.textMutedDk, fontFamily: font.mono, fontSize: 10.5, padding: "3px 8px", cursor: "pointer" }}
+            >
+              ⊟ log{engineLog.length ? ` ${engineLog.length}` : ""}
+            </button>
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
             {engineInfo && (
-              <Section label="TESTNET" accent="#3FB950" open={!collapsed.testnet} onToggle={() => toggleSection("testnet")}>
+              <Section label="TESTNET" accent={color.hair2} borderWidth={2} open={!collapsed.testnet} onToggle={() => toggleSection("testnet")}>
                 <EngineControls
                   paused={paused}
                   speed={speed}
@@ -2426,7 +2438,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             )}
 
             {accounts.length > 0 && (
-              <Section label="ACCOUNTS" accent={color.secondary} open={!collapsed.accounts} onToggle={() => toggleSection("accounts")}>
+              <Section label="ACCOUNTS" accent={color.hair2} borderWidth={2} open={!collapsed.accounts} onToggle={() => toggleSection("accounts")}>
                 <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} onFund={(id, qus) => void fundFromFaucet(id, qus)} />
               </Section>
             )}
@@ -2587,6 +2599,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       {debug && <Debugger steps={debug.steps} title={debug.title} onClose={() => setDebug(null)} onJump={jumpToStep} onBack={debug.onBack} />}
 
       {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title, onBack: () => { setDebug(null); setShowTxs(true); } }); }} />}
+      {engineLogOpen && <EngineLog log={engineLog} onClose={() => setEngineLogOpen(false)} onClear={() => setEngineLog([])} />}
 
       {shareOpen && id && <ShareDialog projectId={id} isLive={!!collab} peerCount={collabApi.peers.length} onGoLive={() => { void goLive(); }} onClose={() => setShareOpen(false)} />}
 

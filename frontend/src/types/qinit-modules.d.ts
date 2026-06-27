@@ -11,11 +11,18 @@ declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
 }
 
 declare module "@qinit/engine" {
+  export interface EngineLogEvent {
+    level: "debug" | "info" | "warn" | "error";
+    tick: number;
+    cat: string;
+    msg: string;
+  }
   export class VirtualNode {
     constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint });
     // The chain-sim, exposed for epoch control (the tick path goes through advanceTick, which switches
     // epoch on a boundary via sim.advance).
     readonly sim: { epochN: number; epochLength: number };
+    onLog?: ((e: EngineLogEvent) => void) | undefined;
     deploy(slot: number, wasm: Uint8Array, name?: string): unknown;
     querySmartContract(contractIndex: number, inputType: number, input: Uint8Array): Promise<Uint8Array>;
     broadcastTx(txBytes: Uint8Array): Promise<{ moneyFlew?: boolean; [k: string]: unknown }>;
