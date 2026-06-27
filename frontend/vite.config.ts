@@ -22,7 +22,7 @@ export default defineConfig({
       "@qinit/build": qinit("build/src/idl.ts"),
       // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.
       "@qinit/inspector": qinit("cli/src/trace-format.ts"),
-      "@qinit/core": here("vendor/qinit-core.browser.ts"),
+      "@qinit/core": qinit("core/src/browser.ts"),
     },
   },
   server: {
