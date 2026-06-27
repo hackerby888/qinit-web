@@ -900,11 +900,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // Picking a contract in the deployed list opens its source tab; the sync effect then points the panel
   // at it. Falls back to a bare select if no open file matches (e.g. the source was renamed/closed).
   const selectDeployed = (cn: string) => {
+    // Always select the clicked contract — `sel` (the CALLS form + the deployed highlight) is derived from
+    // `selected`, so this must run even when a matching editor file is already active (selectFile would no-op
+    // and leave the previous selection, e.g. a system contract, stuck).
+    setSelected(deployed[cn] ? cn : null);
     const file = ws.files.find((f) => baseName(f.name) === cn);
     if (file) {
-      selectFile(file.name);
-    } else {
-      setSelected(cn);
+      selectFile(file.name); // a user contract: also focus its editor tab
     }
   };
 
