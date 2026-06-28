@@ -2495,8 +2495,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           )}
         </div>
 
-        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ position: "relative", cursor: "col-resize", pointerEvents: leftHidden ? "none" : "auto", display: leftHidden ? "none" : "block" }}>
-          <DividerCollapse side="left" onCollapse={() => setLeftHidden(true)} />
+        {/* Resizer stays a grid item even when the panel is collapsed (its column just goes to 0) — display:none
+            here would drop it from the grid and shift the editor into the wrong column. */}
+        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ position: "relative", cursor: "col-resize", pointerEvents: leftHidden ? "none" : "auto" }}>
+          {!leftHidden && <DividerCollapse side="left" onCollapse={() => setLeftHidden(true)} />}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
@@ -2545,8 +2547,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           </div>
         </div>
 
-        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ position: "relative", cursor: "col-resize", display: rightHidden ? "none" : "block" }}>
-          <DividerCollapse side="right" onCollapse={() => setRightHidden(true)} />
+        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ position: "relative", cursor: "col-resize", pointerEvents: rightHidden ? "none" : "auto" }}>
+          {!rightHidden && <DividerCollapse side="right" onCollapse={() => setRightHidden(true)} />}
         </div>
 
         {rightHidden ? (
