@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
+import { bytesToIdentity } from "@qinit/core";
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { NeoBtn, Section } from "./ui";
@@ -98,6 +99,29 @@ function CollabBar({ status, peers, mode, selfName, selfColor }: { status: Colla
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
+
+// A 32-byte id as hex → bytes. Asset issuer/owner ids cross from the engine as hex; the panel needs raw bytes
+// to tell a contract id apart from a wallet and to derive the Qubic identity.
+const hexToBytes = (hex: string): Uint8Array => {
+  const n = (hex.length / 2) | 0;
+  const out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+};
+
+// A contract id is id(slot, 0, 0, 0): only the leading 8-byte slot index is non-zero. Returns the slot, or
+// null for a real wallet identity.
+const contractSlotOf = (hex: string): number | null => {
+  const b = hexToBytes(hex);
+  for (let i = 8; i < 32; i++) {
+    if (b[i] !== 0) {
+      return null;
+    }
+  }
+  return b.length >= 32 ? Number(new DataView(b.buffer).getBigUint64(0, true)) : null;
+};
 
 const assignSlot = (reg: Record<string, DeployedContract>, name: string): number => {
   if (reg[name]) {
@@ -413,11 +437,10 @@ function hasState(dump?: StateDump): boolean {
 // The asset universe — every issued asset (qpi.issueAsset) and its share holdings. Global, not per-contract:
 // assets live in the spectrum universe, not a contract's state. `mgr` is the contract managing a holding
 // (the ownership-management slot). Refreshes each tick like balances/state.
-function AssetsPanel({ assets, slotName }: { assets: AssetView[]; slotName: (slot: number) => string }) {
+function AssetsPanel({ assets, slotName, fmtHolder }: { assets: AssetView[]; slotName: (slot: number) => string; fmtHolder: (hex: string) => string }) {
   if (assets.length === 0) {
     return null;
   }
-  const shortHex = (h: string): string => (h && h.length > 12 ? `${h.slice(0, 6)}…${h.slice(-4)}` : h);
   const num = (s: string): string => Number(s).toLocaleString("en-US");
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -425,12 +448,12 @@ function AssetsPanel({ assets, slotName }: { assets: AssetView[]; slotName: (slo
           <div key={a.issuer + a.name} style={{ fontFamily: font.mono, fontSize: 11, display: "flex", flexDirection: "column", gap: 2 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
               <span style={{ color: color.yellow, fontSize: 12 }}>{a.name}</span>
-              <span style={{ color: color.textGhostDk }}>by {shortHex(a.issuer)}</span>
+              <span style={{ color: color.textGhostDk }}>by {fmtHolder(a.issuer)}</span>
               <span style={{ marginLeft: "auto", color: color.accent }}>{num(a.totalShares)} sh</span>
             </div>
             {a.holdings.map((h, i) => (
               <div key={i} style={{ display: "flex", gap: 8, paddingLeft: 12, color: color.textMutedDk }}>
-                <span style={{ color: color.textGhostDk }}>{shortHex(h.owner)}</span>
+                <span style={{ color: color.textGhostDk }}>{fmtHolder(h.owner)}</span>
                 <span style={{ color: color.secondary }}>{num(h.shares)}</span>
                 <span style={{ marginLeft: "auto", color: color.textGhostDk }}>mgr {slotName(h.ownMgmt)}</span>
               </div>
@@ -720,6 +743,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [sysSel, setSysSel] = useState<string[]>([]); // names the user chose to host on the in-browser node
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
+  const [idNames, setIdNames] = useState<Record<string, string>>({}); // hex id → Qubic identity, resolved async for the assets panel
   const [txDetail, setTxDetail] = useState<Record<string, TxDetail>>({});
   const [txLog, setTxLog] = useState<TxRow[]>([]); // every processed tx this session, for the tx/tick explorer
   const [engineLog, setEngineLog] = useState<EngineLogEvent[]>([]); // the virtual engine's diagnostic stream, for the ENGINE-log popup
@@ -906,6 +930,50 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       engineRef.current?.stop();
     };
   }, []);
+
+  // Resolve the asset universe's wallet ids (hex) to Qubic identities for display — async (the identity
+  // checksum needs crypto), cached in idNames so each id resolves once. Contract ids are skipped (the panel
+  // shows the managing contract's name instead).
+  useEffect(() => {
+    let cancelled = false;
+    const pending = new Set<string>();
+    for (const a of assetsView) {
+      for (const hex of [a.issuer, ...a.holdings.map((h) => h.owner)]) {
+        if (hex && !idNames[hex] && contractSlotOf(hex) === null) {
+          pending.add(hex);
+        }
+      }
+    }
+    if (pending.size === 0) {
+      return;
+    }
+    void (async () => {
+      const resolved: Record<string, string> = {};
+      for (const hex of pending) {
+        try {
+          resolved[hex] = await bytesToIdentity(hexToBytes(hex));
+        } catch {}
+      }
+      if (!cancelled && Object.keys(resolved).length > 0) {
+        setIdNames((prev) => ({ ...prev, ...resolved }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assetsView, idNames]);
+
+  // Format an asset holder id: a contract → its name; a wallet → its Qubic identity (short), pending resolve.
+  const fmtHolder = useCallback(
+    (hex: string): string => {
+      const slot = contractSlotOf(hex);
+      if (slot !== null) {
+        return Object.values(deployed).find((d) => d.slot === slot)?.name ?? `slot ${slot}`;
+      }
+      return idNames[hex] ? shortId(idNames[hex]) : shortId(hex);
+    },
+    [idNames, deployed],
+  );
 
 
   const selectFile = (name: string) => {
@@ -2496,7 +2564,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
                 {assetsView.length > 0 && (
                   <Section label="ASSETS" accent={color.hair2} open={!collapsed.assets} onToggle={() => toggleSection("assets")}>
-                    <AssetsPanel assets={assetsView} slotName={(slot) => Object.values(deployed).find((d) => d.slot === slot)?.name ?? `slot ${slot}`} />
+                    <AssetsPanel assets={assetsView} slotName={(slot) => Object.values(deployed).find((d) => d.slot === slot)?.name ?? `slot ${slot}`} fmtHolder={fmtHolder} />
                   </Section>
                 )}
 
