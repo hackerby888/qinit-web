@@ -12,6 +12,8 @@ export interface IdeLayout {
   setConsoleH: (n: number) => void;
   leftHidden: boolean;
   rightHidden: boolean;
+  setLeftHidden: (v: boolean) => void;
+  setRightHidden: (v: boolean) => void;
   toggleLeft: () => void;
   toggleRight: () => void;
   collapsed: Record<string, boolean>;
@@ -63,5 +65,5 @@ export function useIdeLayout(): IdeLayout {
   // Fold / unfold an engine-panel section (default open — an absent key means open).
   const toggleSection = (name: string): void => setCollapsed((c) => ({ ...c, [name]: !c[name] }));
 
-  return { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, toggleLeft, toggleRight, collapsed, toggleSection };
+  return { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, setLeftHidden, setRightHidden, toggleLeft, toggleRight, collapsed, toggleSection };
 }

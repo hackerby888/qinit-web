@@ -58,19 +58,47 @@ const frame = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.ink}`;
 const hair = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
 
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
+const RAIL = 22;      // collapsed-panel rail width (px) — a thin clickable spine at the screen edge
+const MOD = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl"; // shortcut hint
 
 type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array; calls?: string[] };
 
-// A compact toolbar toggle that hides/shows the left file explorer or the right engine panel.
-function PanelToggle({ hidden, side, onClick }: { hidden: boolean; side: "left" | "right"; onClick: () => void }) {
-  const label = side === "left" ? (hidden ? "❯ files" : "❮ files") : (hidden ? "engine ❮" : "engine ❯");
+// A collapsed panel's rail — a thin vertical spine at the screen edge with the panel's name + an expand
+// chevron. Click anywhere on it (or the keyboard shortcut) to restore the panel to its remembered width.
+function PanelRail({ side, label, onExpand }: { side: "left" | "right"; label: string; onExpand: () => void }) {
+  const key = side === "left" ? `${MOD}+B` : `${MOD}+Shift+B`;
   return (
     <button
-      onClick={onClick}
-      title={`${hidden ? "Show" : "Hide"} ${side === "left" ? "file explorer" : "engine panel"}`}
-      style={{ border: `1px solid ${color.hair2}`, background: hidden ? "transparent" : color.void, color: hidden ? color.textGhostDk : color.textLight, fontFamily: font.mono, fontSize: 11, padding: "3px 8px", cursor: "pointer", flex: "none" }}
+      onClick={onExpand}
+      title={`Show ${label.toLowerCase()} panel (${key})`}
+      className="pix-rail"
+      style={{
+        width: "100%", height: "100%", flex: 1,
+        border: "none",
+        borderRight: side === "left" ? hair() : "none",
+        borderLeft: side === "right" ? hair() : "none",
+        background: color.panelDeep, color: color.textGhostDk, cursor: "pointer",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 9, paddingTop: 11,
+      }}
     >
-      {label}
+      <span style={{ fontSize: 12, lineHeight: 1 }}>{side === "left" ? "›" : "‹"}</span>
+      <span style={{ writingMode: "vertical-rl", transform: side === "right" ? "rotate(180deg)" : "none", fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".18em", textTransform: "uppercase" }}>{label}</span>
+    </button>
+  );
+}
+
+// The collapse chevron that appears on a column divider on hover — the in-place control to fold the panel the
+// divider borders. onMouseDown stops the resize drag from starting when the chevron itself is clicked.
+function DividerCollapse({ side, onCollapse }: { side: "left" | "right"; onCollapse: () => void }) {
+  return (
+    <button
+      className="pix-collapse"
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={onCollapse}
+      title={`Collapse ${side === "left" ? "file explorer" : "engine panel"} (${side === "left" ? `${MOD}+B` : `${MOD}+Shift+B`})`}
+      style={{ position: "absolute", top: "50%", [side === "left" ? "left" : "right"]: -8, transform: "translateY(-50%)", width: 17, height: 30, border: `1px solid ${color.hair2}`, background: color.panelDeep, color: color.textMutedDk, cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", padding: 0, zIndex: 3 }}
+    >
+      {side === "left" ? "‹" : "›"}
     </button>
   );
 }
@@ -755,7 +783,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [speed, setSpeed] = useState(1); // auto-ticks per second
   const [epochLen, setEpochLen] = useState(3000); // ticks per epoch (from the engine)
   const { problems, setProblems, problemsOpen, setProblemsOpen, bottomTab, setBottomTab } = useProblemsPanel();
-  const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
+  const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, setLeftHidden, setRightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [built, setBuilt] = useState<Record<string, string>>({}); // last source per file that compiled clean — drives the dirty dot
 
@@ -931,6 +959,23 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       engineRef.current?.stop();
     };
   }, []);
+
+  // Panel shortcuts — Mod+B toggles the file explorer, Mod+Shift+B the engine panel (VS Code parity for the
+  // left; the right mirrors it with Shift). Not Monaco bindings, so no editor conflict.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          toggleRight();
+        } else {
+          toggleLeft();
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleLeft, toggleRight]);
 
   // Resolve the asset universe's wallet ids (hex) to Qubic identities for display — async (the identity
   // checksum needs crypto), cached in idNames so each id resolves once. Contract ids are skipped (the panel
@@ -1850,10 +1895,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
+      // Drag-to-collapse: dragging a panel below its min width past a snap threshold folds it to the rail
+      // (its width is kept, so re-expanding restores it). Otherwise clamp within the panel's size range.
       if (which === "explorer") {
-        setExplorerW(Math.max(160, Math.min(380, startW + dx)));
+        const intended = startW + dx;
+        if (intended < 110) {
+          setLeftHidden(true);
+          onUp();
+          return;
+        }
+        setExplorerW(Math.max(160, Math.min(380, intended)));
       } else {
-        setEngineW(Math.max(280, Math.min(560, startW - dx)));
+        const intended = startW - dx;
+        if (intended < 200) {
+          setRightHidden(true);
+          onUp();
+          return;
+        }
+        setEngineW(Math.max(280, Math.min(560, intended)));
       }
     };
     const onUp = () => {
@@ -2343,7 +2402,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
-      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
+      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-rail{transition:background .1s,color .1s}.pix-rail:hover{background:${color.panel};color:${color.textLight}}.pix-collapse{opacity:0;transition:opacity .1s}.pix-resizer:hover .pix-collapse{opacity:1}.pix-collapse:hover{color:${color.accent} !important;border-color:${color.accent} !important}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
       <Toasts />
       <OfflineBanner />
 
@@ -2385,8 +2444,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <TrafficLights />
         <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textFaintDk, marginLeft: 6 }}>qinit ide — my-contract</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-          <PanelToggle hidden={leftHidden} side="left" onClick={toggleLeft} />
-          <PanelToggle hidden={rightHidden} side="right" onClick={toggleRight} />
           <button
             onClick={() => setSearchOpen(true)}
             title="Search files (Ctrl+Shift+F)"
@@ -2411,30 +2468,36 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         </div>
       </div>
 
-      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${leftHidden ? 0 : explorerW}px ${leftHidden ? 0 : 5}px 1fr ${rightHidden ? 0 : 5}px ${rightHidden ? 0 : engineW}px`, minHeight: 0 }}>
-        {/* Explorer + its resizer stay grid items even when hidden (col widths collapse to 0, content clips) —
-            display:none here would remove them and shift the editor into the 0px column. */}
-        <div style={{ minWidth: 0, overflow: "hidden", display: "grid" }}>
-          <FileExplorer
-            files={ws.files}
-            active={ws.active}
-            source={source}
-            onSelect={selectFile}
-            onCreate={createFile}
-            onRename={renameFile}
-            onDelete={deleteFile}
-            onCreateFolder={createFolder}
-            onDeleteFolder={deleteFolder}
-            onRenameFolder={renameFolder}
-            onDuplicate={duplicateFile}
-            onMovePaths={movePaths}
-            onCopyPaths={copyPaths}
-            onDeletePaths={deletePaths}
-            onJump={jumpToSymbol}
-          />
+      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${leftHidden ? RAIL : explorerW}px ${leftHidden ? 0 : 5}px 1fr ${rightHidden ? 0 : 5}px ${rightHidden ? RAIL : engineW}px`, minHeight: 0 }}>
+        {/* Explorer column: the file tree, or — when collapsed — a thin rail spine to bring it back. Stays a
+            grid item either way so the editor keeps its column. */}
+        <div style={{ minWidth: 0, overflow: "hidden", display: leftHidden ? "flex" : "grid" }}>
+          {leftHidden ? (
+            <PanelRail side="left" label="Files" onExpand={toggleLeft} />
+          ) : (
+            <FileExplorer
+              files={ws.files}
+              active={ws.active}
+              source={source}
+              onSelect={selectFile}
+              onCreate={createFile}
+              onRename={renameFile}
+              onDelete={deleteFile}
+              onCreateFolder={createFolder}
+              onDeleteFolder={deleteFolder}
+              onRenameFolder={renameFolder}
+              onDuplicate={duplicateFile}
+              onMovePaths={movePaths}
+              onCopyPaths={copyPaths}
+              onDeletePaths={deletePaths}
+              onJump={jumpToSymbol}
+            />
+          )}
         </div>
 
-        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ cursor: "col-resize", pointerEvents: leftHidden ? "none" : "auto" }} />
+        <div className="pix-resizer" onMouseDown={(e) => startResize("explorer", e)} style={{ position: "relative", cursor: "col-resize", pointerEvents: leftHidden ? "none" : "auto", display: leftHidden ? "none" : "block" }}>
+          <DividerCollapse side="left" onCollapse={() => setLeftHidden(true)} />
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
@@ -2482,9 +2545,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           </div>
         </div>
 
-        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ cursor: "col-resize", display: rightHidden ? "none" : "block" }} />
+        <div className="pix-resizer" onMouseDown={(e) => startResize("engine", e)} style={{ position: "relative", cursor: "col-resize", display: rightHidden ? "none" : "block" }}>
+          <DividerCollapse side="right" onCollapse={() => setRightHidden(true)} />
+        </div>
 
-        <div style={{ borderLeft: hair(), background: color.panelDeep, display: rightHidden ? "none" : "flex", flexDirection: "column", minHeight: 0 }}>
+        {rightHidden ? (
+          <PanelRail side="right" label="Engine" onExpand={toggleRight} />
+        ) : (
+        <div style={{ borderLeft: hair(), background: color.panelDeep, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div style={{ padding: "11px 14px 9px", display: "flex", alignItems: "center", gap: 8, borderBottom: hair() }}>
             <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
             <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>ENGINE</span>
@@ -2659,6 +2727,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             </div>
           </div>
         </div>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
