@@ -12,7 +12,13 @@ const Projects = React.lazy(() => import("./ide/Projects"));
 const SharedEntry = React.lazy(() => import("./ide/SharedEntry"));
 const Admin = React.lazy(() => import("./ide/Admin"));
 
-const ideFallback = <div style={{ minHeight: "100vh", background: "#070908" }} />;
+// Suspense fallback while the Ide chunk loads — match the IDE's chosen palette (via the inline <script> that
+// sets window.__QINIT_IDE_THEME__ before bundle load), defaulting to flat void (#0d1117).
+function ideFallbackBg(): string {
+  if (typeof window !== "undefined" && (window as any).__QINIT_IDE_THEME__ === "neo") return "#070908";
+  return "#0d1117"; // flat void (default)
+}
+const ideFallback = <div style={{ minHeight: "100vh", background: ideFallbackBg() }} />;
 
 const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
 

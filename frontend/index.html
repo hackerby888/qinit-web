@@ -18,10 +18,12 @@
             var m = document.querySelector('meta[name="theme-color"]');
             if (m) m.setAttribute("content", "#0B0E0C");
           }
-          // IDE chrome theme (neo ↔ flat) — stash on <html> before the JS bundle loads so tokens.ts
-          // can initialise `color` synchronously. Default flat on the IDE route.
+          // IDE chrome theme (neo ↔ flat) — stash a global so tokens.ts can initialise `color`
+          // synchronously (before React mounts). Must be a global, not a DOM attribute: the JS
+          // bundle imports tokens.ts as a module, and we need the value available at module eval
+          // time, which is always after this blocking script.
           if (location.pathname.startsWith("/ide")) {
-            document.documentElement.dataset.ideTheme = localStorage.getItem("ide.theme") || "flat";
+            window.__QINIT_IDE_THEME__ = localStorage.getItem("ide.theme") || "flat";
           }
         } catch (e) {}
       })();

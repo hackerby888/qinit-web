@@ -2,9 +2,18 @@ import { useState } from "react";
 import { applyTheme, type ThemeName } from "../landing/tokens";
 import { type EditorThemeId } from "./editorThemes";
 
-// IDE theming: the chrome palette (neo ↔ flat) and the editor syntax theme, both persisted to localStorage. The
-// chrome initializer applies the persisted palette before the first paint (mutating the shared `color` singleton)
-// so the whole subtree renders in the right theme on mount. Extracted from the Ide shell.
+// Apply the persisted IDE theme at module-import time — before any React component renders. The Ide chunk is
+// lazy-loaded (React.lazy), so this runs after the main landing bundle. It switches the shared `color` singleton
+// from NEO (set by the landing page at initial load) to the user's chosen IDE palette before the first <Ide>
+// render. The inline <script> in index.html also sets window.__QINIT_IDE_THEME__ for the full-page-reload path
+// (see tokens.ts readInitialTheme); this call covers the client-side navigation path where the module was
+// already evaluated as NEO.
+(function applyPersistedTheme() {
+  try {
+    const t = localStorage.getItem("ide.theme") || "flat";
+    applyTheme(t as ThemeName);
+  } catch {}
+})();
 export interface IdeTheme {
   theme: ThemeName;
   editorTheme: EditorThemeId;

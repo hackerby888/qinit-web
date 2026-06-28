@@ -78,8 +78,8 @@ const FLAT: typeof NEO = {
 // from the <html> data-ide-theme attribute (set inline in index.html before the JS bundle loads) so the
 // IDE starts in the right palette without a flash; defaults to NEO (landing / gallery / non-IDE routes).
 function readInitialTheme(): ThemeName {
-  if (typeof document === "undefined") return "neo";
-  return document.documentElement.dataset.ideTheme === "flat" ? "flat" : "neo";
+  if (typeof window !== "undefined" && (window as any).__QINIT_IDE_THEME__ === "flat") return "flat";
+  return "neo";
 }
 
 export const color = readInitialTheme() === "flat" ? { ...FLAT } : { ...NEO };
