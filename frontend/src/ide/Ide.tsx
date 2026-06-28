@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
-import { color, font, themeFlags, applyTheme } from "../landing/tokens";
+import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
@@ -889,13 +889,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     };
   }, []);
 
-  // Reset the palette to neo when leaving the editor, so the landing (/) and projects gallery (/ide)
-  // always render neo-brutalist regardless of the IDE's chosen theme.
-  useEffect(() => {
-    return () => {
-      applyTheme("neo");
-    };
-  }, []);
 
   const selectFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));

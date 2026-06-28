@@ -10,8 +10,7 @@ import { type EditorThemeId } from "./editorThemes";
 // already evaluated as NEO.
 (function applyPersistedTheme() {
   try {
-    const t = localStorage.getItem("ide.theme") || "flat";
-    applyTheme(t as ThemeName);
+    applyTheme((localStorage.getItem("ide.theme") || "flat") as ThemeName);
   } catch {}
 })();
 export interface IdeTheme {
