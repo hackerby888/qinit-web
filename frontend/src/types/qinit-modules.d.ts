@@ -64,6 +64,13 @@ declare module "@qinit/engine" {
     entries: DebugEntry[];
   }
   export function initK12(): Promise<void>;
+
+  export interface TestResult {
+    name: string;
+    passed: boolean;
+    message: string;
+  }
+  export function runTests(testWasm: Uint8Array): Promise<TestResult[]>;
 }
 
 declare module "@qinit/inspector" {

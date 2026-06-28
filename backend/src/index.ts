@@ -65,14 +65,14 @@ app.get("/ready", (_req, res) => {
 
 // Browser IDE: compile a qpi.h contract to wasm (the frontend runs it in-page via @qinit/engine).
 app.post("/api/compile", compileLimiter, async (req, res) => {
-  const { source, name, slot, skipVerify, callees } = req.body ?? {};
+  const { source, name, slot, skipVerify, callees, testSource, testName } = req.body ?? {};
   if (typeof source !== "string" || !source.trim()) {
     res.status(400).json({ ok: false, diagnostics: [], error: "missing `source`" });
     return;
   }
 
   try {
-    res.json(await compile({ source, name, slot, skipVerify, callees }));
+    res.json(await compile({ source, name, slot, skipVerify, callees, testSource, testName }));
   } catch (e) {
     res.status(500).json({ ok: false, diagnostics: [], error: (e as Error).message });
   }

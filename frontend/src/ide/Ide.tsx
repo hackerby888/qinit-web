@@ -822,6 +822,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   filesRef.current = ws.files;
 
   const activeIsTest = /\.tsx?$/.test(ws.active); // a .ts test file -> run-tests, not compile
+  const activeIsGtest = /\.(cpp|cc|cxx)$/.test(ws.active); // a C++ gtest file -> run-gtest (compile into the contract wasm)
 
   // Collab identity for the awareness name (the signed-in user, else "You").
   useEffect(() => {
@@ -2295,6 +2296,34 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
+  // Run a C++ gtest file: compile it INTO the paired contract's wasm (one combined module), then run it on a
+  // fresh isolated engine in the browser. The contract is paired by matching the test filename (<Name>.test.cpp)
+  // to a deployed contract, else the only/first deployed one.
+  const runGtestFile = async () => {
+    const eng = await ensureEngine();
+    const deployed = Object.values(deployedRef.current);
+    if (deployed.length === 0) {
+      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: "Compile & Run the contract first — a gtest compiles your C++ test into the deployed contract's wasm.", logs: [] }], running: false, title: ws.active });
+      return;
+    }
+
+    const base = (ws.active.split("/").pop() ?? "").replace(/\.(cpp|cc|cxx)$/i, "").replace(/\.test$/i, "");
+    const target = deployed.find((d) => d.name.toLowerCase() === base.toLowerCase()) ?? deployed[0];
+
+    setTestRun({ results: [], running: true, title: ws.active });
+    try {
+      const res = await compileContract({ source: target.source, name: target.name, slot: target.slot, skipVerify: true, testSource: source, testName: ws.active.split("/").pop() });
+      if (!res.ok || !res.wasm) {
+        const diag = (res.diagnostics ?? []).map((d) => `${d.line}:${d.column}  ${d.message}`).join("\n");
+        throw new Error(res.error || diag || res.stderr || "gtest compile failed");
+      }
+      const results = (await eng.runGtest(base64ToBytes(res.wasm))).map((t) => ({ name: t.name, ok: t.passed, ms: 0, error: t.passed ? undefined : t.message, logs: [] as string[] }));
+      setTestRun({ results, running: false, title: `${ws.active} → ${target.name}` });
+    } catch (e) {
+      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: (e as Error).message, logs: [] }], running: false, title: ws.active });
+    }
+  };
+
   const coerce = (entry: IdlEntry, input: Record<string, string>): Record<string, unknown> => {
     const json: Record<string, unknown> = {};
     for (const f of entry.inFields) {
@@ -2420,6 +2449,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           {activeIsTest ? (
             <ToolButton variant="accent" onClick={() => void runTestFile()} disabled={!!testRun?.running}>
               {testRun?.running ? "Running…" : "▶ Run tests"}
+            </ToolButton>
+          ) : activeIsGtest ? (
+            <ToolButton variant="accent" onClick={() => void runGtestFile()} disabled={!!testRun?.running}>
+              {testRun?.running ? "Running…" : "▶ Run gtest"}
             </ToolButton>
           ) : (
             <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling" || collabApi.building.byOther}>

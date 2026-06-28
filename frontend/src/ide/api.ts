@@ -31,7 +31,7 @@ export interface CompileCallee {
   slot: number;
 }
 
-export async function compileContract(req: { source: string; name: string; slot: number; skipVerify?: boolean; callees?: CompileCallee[] }): Promise<CompileResult> {
+export async function compileContract(req: { source: string; name: string; slot: number; skipVerify?: boolean; callees?: CompileCallee[]; testSource?: string; testName?: string }): Promise<CompileResult> {
   let r: Response;
   try {
     r = await fetch("/api/compile", {

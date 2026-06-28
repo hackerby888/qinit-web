@@ -29,13 +29,13 @@ function resolveCorePath(): string | null {
 
 // Parse clang's `file:line:col: error|warning: message` lines into editor diagnostics. Only the contract file's
 // own lines matter (diagnostics inside qpi.h / the build wrapper are toolchain-internal).
-function parseDiagnostics(stderr: string, contractFile: string): CompileDiagnostic[] {
+function parseDiagnostics(stderr: string, files: string[]): CompileDiagnostic[] {
   const out: CompileDiagnostic[] = [];
   const re = /^(.+?):(\d+):(\d+):\s+(error|warning):\s+(.*)$/gm;
 
   let m: RegExpExecArray | null;
   while ((m = re.exec(stderr)) !== null) {
-    if (!m[1].endsWith(contractFile)) {
+    if (!files.some((f) => m![1].endsWith(f))) {
       continue;
     }
     out.push({ severity: m[4] as "error" | "warning", line: Number(m[2]), column: Number(m[3]), message: m[5].trim() });
@@ -76,8 +76,10 @@ export async function runBuild(req: CompileRequest): Promise<CompileResponse> {
       dynCallees[cname] = { header: cpath, index: Number(c.slot) };
     }
 
-    const r = await buildContract({ contractPath, name, stateType, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees, arenaSz: req.arenaSz ?? 64 * 1024 * 1024 });
-    const diagnostics = parseDiagnostics(r.stderr ?? "", contractFile);
+    // gtest build: compile the test source INTO the wasm after the contract (a combined module runTests drives).
+    const testName = req.testSource ? (req.testName ? sanitizeName(req.testName.replace(/\.(cpp|cc|cxx)$/i, "")) + ".test.cpp" : `${name}.test.cpp`) : undefined;
+    const r = await buildContract({ contractPath, name, stateType, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees, arenaSz: req.arenaSz ?? 64 * 1024 * 1024, testSource: req.testSource, testPath: testName });
+    const diagnostics = parseDiagnostics(r.stderr ?? "", testName ? [contractFile, testName] : [contractFile]);
 
     if (!r.ok || !r.so) {
       return { ok: false, diagnostics, verify: r.verify, stderr: r.stderr };

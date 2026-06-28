@@ -19,6 +19,10 @@ export interface CompileRequest {
   skipVerify?: boolean;
   callees?: CompileCallee[];
   arenaSz?: number;   // LITE_WASM_ARENA_SZ bytes (default 64MB for browser; set 0 to force the C++ 1GB default)
+  // gtest build: when set, the test source is compiled INTO the wasm after the contract (a combined module the
+  // browser engine runs via @qinit/engine runTests). testName is the display path for EXPECT_* file:line.
+  testSource?: string;
+  testName?: string;
 }
 
 export interface CompileDiagnostic {

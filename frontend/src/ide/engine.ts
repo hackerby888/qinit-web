@@ -2,7 +2,7 @@
 //   function (read)  -> querySmartContract (no signing)
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> broadcastTx -> advanceTick
 // One IdeEngine instance backs an IDE session; deploy() (re)loads a contract into its slot.
-import { VirtualNode, initK12, type AssetSnapshot, type EngineLogEvent } from "@qinit/engine";
+import { VirtualNode, initK12, runTests, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
 
 export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
@@ -131,6 +131,12 @@ export class IdeEngine {
   async deploy(slot: number, wasm: Uint8Array, idl: ContractIdl): Promise<void> {
     await this.ensureK12();
     this.engine.deploy(slot, wasm, idl.name);
+  }
+
+  // Run a combined contract+gtest wasm. runTests builds its OWN throwaway Virtual Node (fresh genesis ledger),
+  // so the tests are fully isolated from this live session — deployed contracts, balances, and tick are untouched.
+  async runGtest(testWasm: Uint8Array): Promise<TestResult[]> {
+    return runTests(testWasm);
   }
 
   // Emulate the live network: advance one tick per `speedMs`. Each tick runs the contracts' BEGIN/END_TICK
