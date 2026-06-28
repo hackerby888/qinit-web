@@ -107,7 +107,10 @@ export interface DeployImage {
 
 // The IDE runs its own mempool (submitProcedure schedules to a future tick + the auto-ticker applies it) and an
 // instant, fee-free UX, so it opts out of the engine's realistic node defaults (mempool / sig-verify / fees).
-const IDE_ENGINE_OPTS = { mempool: false, verifySigs: false, fees: "off" } as const;
+// liteTicking: skip the per-tick committee quorum (8 FourQ votes + leader signature) for EMPTY ticks. The IDE
+// never serves the peer protocol that reads those records, and it lets a full-epoch jump (~3000 ticks) run
+// without signing ~27k times on the main thread. State digests are unaffected (still computed every tick).
+const IDE_ENGINE_OPTS = { mempool: false, verifySigs: false, fees: "off", liteTicking: true } as const;
 
 export class IdeEngine {
   private engine = new VirtualNode(IDE_ENGINE_OPTS);
@@ -193,7 +196,13 @@ export class IdeEngine {
   // emitted once at the end so a long jump doesn't thrash the UI.
   async step(n = 1): Promise<void> {
     for (let i = 0; i < n; i++) {
-      await this.tickOnce(i === n - 1);
+      // On chunk boundaries: emit a tick update so a long jump shows live progress (not a frozen counter), and
+      // yield to the event loop so the page stays responsive during a multi-thousand-tick epoch jump.
+      const checkpoint = i > 0 && i % 128 === 0;
+      await this.tickOnce(i === n - 1 || checkpoint);
+      if (checkpoint) {
+        await new Promise<void>((r) => setTimeout(r));
+      }
     }
   }
 
