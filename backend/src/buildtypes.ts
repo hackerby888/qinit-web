@@ -18,6 +18,7 @@ export interface CompileRequest {
   slot?: number;
   skipVerify?: boolean;
   callees?: CompileCallee[];
+  arenaSz?: number;   // LITE_WASM_ARENA_SZ bytes (default 64MB for browser; set 0 to force the C++ 1GB default)
 }
 
 export interface CompileDiagnostic {

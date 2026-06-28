@@ -24,7 +24,7 @@ async function runBuild(req: CompileRequest): Promise<CompileResponse> {
 
 export async function compile(req: CompileRequest): Promise<CompileResponse> {
   const key = createHash("sha256")
-    .update(`${req.slot ?? 28}\0${req.name ?? ""}\0${req.stateType ?? ""}\0${req.skipVerify ? 1 : 0}\0${JSON.stringify(req.callees ?? [])}\0${req.source}`)
+    .update(`${req.slot ?? 28}\0${req.name ?? ""}\0${req.stateType ?? ""}\0${req.skipVerify ? 1 : 0}\0${req.arenaSz ?? 0}\0${JSON.stringify(req.callees ?? [])}\0${req.source}`)
     .digest("hex");
 
   const hit = cacheGet<CompileResponse>(key);

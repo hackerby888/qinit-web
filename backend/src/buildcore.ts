@@ -76,7 +76,7 @@ export async function runBuild(req: CompileRequest): Promise<CompileResponse> {
       dynCallees[cname] = { header: cpath, index: Number(c.slot) };
     }
 
-    const r = await buildContract({ contractPath, name, stateType, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees });
+    const r = await buildContract({ contractPath, name, stateType, slot, corePath, outDir: dir, skipVerify: req.skipVerify, dynCallees, arenaSz: req.arenaSz ?? 64 * 1024 * 1024 });
     const diagnostics = parseDiagnostics(r.stderr ?? "", contractFile);
 
     if (!r.ok || !r.so) {
