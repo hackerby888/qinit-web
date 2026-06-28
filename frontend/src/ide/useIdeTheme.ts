@@ -14,7 +14,7 @@ export interface IdeTheme {
 
 export function useIdeTheme(): IdeTheme {
   const [theme, setTheme] = useState<ThemeName>(() => {
-    const t = (localStorage.getItem("ide.theme") as ThemeName) || "neo";
+    const t = (localStorage.getItem("ide.theme") as ThemeName) || "flat";
     applyTheme(t);
     return t;
   });
