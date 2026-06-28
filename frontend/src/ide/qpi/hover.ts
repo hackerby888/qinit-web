@@ -4,6 +4,7 @@
 //   3. a QPI builtin / type / macro keyword -> a short description
 //   4. any struct field by name (fallback) -> "Struct.field : type"
 import type * as Monaco from "monaco-editor";
+import { isGtestModel } from "./gtest";
 import { extractIdl } from "@qinit/build/idl";
 import { QPI_API, CONTAINERS, collectStructs, containerKind, walkPath, enclosingEntryBase, type Method, type Field } from "./members";
 import { QPI_TYPES, QPI_MACROS } from "./vocab";
@@ -48,6 +49,9 @@ export function registerQpiHover(monaco: typeof Monaco): void {
 
   monaco.languages.registerHoverProvider("cpp", {
     provideHover(model, position) {
+      if (isGtestModel(model)) {
+        return null;
+      }
       const wordInfo = model.getWordAtPosition(position);
       if (!wordInfo) {
         return null;

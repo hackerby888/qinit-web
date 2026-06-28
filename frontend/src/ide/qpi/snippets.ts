@@ -2,6 +2,7 @@
 // real macro name with a body/arg snippet), the QPI scalar/container types, and the framework builtins
 // (state / input / output / locals / qpi). Member access off these is resolved separately in ./members.
 import type * as Monaco from "monaco-editor";
+import { isGtestModel } from "./gtest";
 import { QPI_TYPES, QPI_BUILTINS, QPI_MACROS } from "./vocab";
 import { enclosingEntry, collectStructs, isUserEntry } from "./members";
 
@@ -85,6 +86,9 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
 
   monaco.languages.registerCompletionItemProvider("cpp", {
     provideCompletionItems(model, position) {
+      if (isGtestModel(model)) {
+        return { suggestions: [] }; // a gtest test gets the gtest provider, not the contract snippets
+      }
       const word = model.getWordUntilPosition(position);
 
       // After a `.` the member-completion provider owns the list — don't flood it with snippets/types.

@@ -7,6 +7,7 @@
 //   input. / output. / locals.  -> the enclosing entry's <Name>_input/_output/_locals fields
 //   qpi.              -> the QPI host API (transfer, invocator, …)
 import type * as Monaco from "monaco-editor";
+import { isGtestModel } from "./gtest";
 
 export interface Field {
   name: string;
@@ -451,6 +452,9 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
   monaco.languages.registerCompletionItemProvider("cpp", {
     triggerCharacters: ["."],
     provideCompletionItems(model, position) {
+      if (isGtestModel(model)) {
+        return { suggestions: [] }; // members like state./qpi. don't exist in a gtest test
+      }
       const line = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column });
       const items = memberCompletionAt(model.getValue(), line, model.getOffsetAt(position));
       if (!items) {

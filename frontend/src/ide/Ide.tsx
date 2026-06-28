@@ -43,6 +43,7 @@ import { useProblemsPanel, type ProblemItem } from "./useProblemsPanel";
 import { useOverlays } from "./useOverlays";
 import { useTestRunner } from "./useTestRunner";
 import { genQinitDts } from "./tests/dts";
+import { setGtestIdls } from "./qpi/gtest";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
 import { ScenarioPanel, compare, uid, type Scenario, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
@@ -1638,6 +1639,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     qinitLibRef.current?.dispose();
     const idls = Object.values(deployedRef.current).map((d) => d.idl);
     qinitLibRef.current = monaco.languages.typescript.typescriptDefaults.addExtraLib(genQinitDts(idls), "file:///.qinit.d.ts");
+    setGtestIdls(idls); // same IDLs drive contract-type completion in .cpp gtest files
   };
 
   const onEditorMount: OnMount = (editor, monaco) => {
@@ -1981,6 +1983,31 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       setDiag({ state: "idle", count: 0 }); // .ts test files aren't clang-compiled
       return;
     }
+
+    // A .cpp gtest test is compiled AS a test (the paired contract + testSource), so clang checks the
+    // harness + the contract's types instead of mis-parsing TEST()/ContractTest as a contract. It needs a
+    // deployed contract to pair against; until then, clear any stale markers and stay idle.
+    const isGtest = /\.(cpp|cc|cxx)$/.test(fileName);
+    const gtestTarget = isGtest
+      ? (() => {
+          const deployed = Object.values(deployedRef.current);
+          if (!deployed.length) {
+            return null;
+          }
+          const base = (fileName.split("/").pop() ?? "").replace(/\.(cpp|cc|cxx)$/i, "").replace(/\.test$/i, "");
+          return deployed.find((d) => d.name.toLowerCase() === base.toLowerCase()) ?? deployed[0];
+        })()
+      : undefined;
+    if (isGtest && !gtestTarget) {
+      const monaco = monacoRef.current;
+      const model = editorRef.current?.getModel();
+      if (monaco && model) {
+        monaco.editor.setModelMarkers(model, "clang", []);
+      }
+      setDiag({ state: "idle", count: 0 });
+      return;
+    }
+
     if (!src.trim() || src === autoSentRef.current) {
       return;
     }
@@ -1996,9 +2023,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
     let res: CompileResult | null = null;
     try {
-      const slot = assignSlot(deployedRef.current, name);
-      const callees = resolveCallees(filesRef.current, deployedRef.current, src);
-      res = await compileContract({ source: src, name, slot, skipVerify: true, callees });
+      if (gtestTarget) {
+        res = await compileContract({ source: gtestTarget.source, name: gtestTarget.name, slot: gtestTarget.slot, skipVerify: true, testSource: src, testName: fileName.split("/").pop() });
+      } else {
+        const slot = assignSlot(deployedRef.current, name);
+        const callees = resolveCallees(filesRef.current, deployedRef.current, src);
+        res = await compileContract({ source: src, name, slot, skipVerify: true, callees });
+      }
     } catch {
       res = null;
     }
@@ -2016,9 +2047,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const errs = res.diagnostics.filter((d) => d.severity === "error").length;
     setDiag({ state: errs ? "error" : "ok", count: errs });
 
-    if (res.ok && res.wasm && res.idl) {
-      warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy
+    if (!isGtest && res.ok && res.wasm && res.idl) {
+      warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy (contracts only)
       setBuilt((b) => ({ ...b, [fileName]: src })); // clears this file's dirty dot
+    } else if (isGtest && res.ok) {
+      setBuilt((b) => ({ ...b, [fileName]: src })); // the test compiled clean — clear its dirty dot
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs; intentionally stable
   }, []);

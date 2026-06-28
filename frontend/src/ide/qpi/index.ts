@@ -6,6 +6,7 @@ import { registerQpiMembers } from "./members";
 import { registerQpiSignatureHelp } from "./signature";
 import { registerQpiDefinition } from "./definition";
 import { registerQpiCodeActions } from "./codeactions";
+import { registerQpiGtest } from "./gtest";
 import { attachQpiDiagnostics } from "./markers";
 
 export function setupQpi(monaco: typeof Monaco, editor: Monaco.editor.IStandaloneCodeEditor): Monaco.IDisposable {
@@ -14,6 +15,7 @@ export function setupQpi(monaco: typeof Monaco, editor: Monaco.editor.IStandalon
   registerQpiSignatureHelp(monaco);
   registerQpiDefinition(monaco);
   registerQpiCodeActions(monaco);
+  registerQpiGtest(monaco); // gtest .cpp tests: harness + IDL completions (contract providers skip tests)
 
   return attachQpiDiagnostics(monaco, editor);
 }

@@ -2,6 +2,7 @@
 // markers — `T[N]` → `Array<T, N>`, `a / b` → `div(a, b)` / `a % b` → `mod(a, b)`, and moving a
 // stack-local into a `<fn>_locals` struct. Each transform self-declines when the rewrite isn't safe.
 import type * as Monaco from "monaco-editor";
+import { isGtestModel } from "./gtest";
 import { arrayFixForLine, divModFixForLine, moveLocalToWithLocalsEdits, type SourceEdit } from "./codefix";
 
 interface RangeText {
@@ -46,6 +47,9 @@ export function registerQpiCodeActions(monaco: typeof Monaco): void {
 
   monaco.languages.registerCodeActionProvider("cpp", {
     provideCodeActions(model, _range, context) {
+      if (isGtestModel(model)) {
+        return { actions: [], dispose() {} };
+      }
       const actions: Monaco.languages.CodeAction[] = [];
 
       for (const marker of context.markers) {

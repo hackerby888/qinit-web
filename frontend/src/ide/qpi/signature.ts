@@ -4,6 +4,7 @@
 // resolution member completion uses) or the container's template params, and read the parameter names
 // straight out of the method's insert snippet. The active parameter tracks the commas you've typed.
 import type * as Monaco from "monaco-editor";
+import { isGtestModel } from "./gtest";
 import { QPI_API, CONTAINERS, collectStructs, containerKind, walkPath, enclosingEntryBase, type Method } from "./members";
 
 // The innermost unclosed `open` bracket before the cursor + the count of top-level commas after it (the
@@ -147,6 +148,9 @@ export function registerQpiSignatureHelp(monaco: typeof Monaco): void {
     signatureHelpTriggerCharacters: ["(", ",", "<"],
     signatureHelpRetriggerCharacters: [",", "<"],
     provideSignatureHelp(model, position) {
+      if (isGtestModel(model)) {
+        return null;
+      }
       const line = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column });
       const sig = signatureAt(model.getValue(), line, model.getOffsetAt(position));
       if (!sig) {

@@ -7,12 +7,14 @@ import { scanNativeTypes } from "./lint/native-types";
 import { scanScRules } from "./lint/sc-rules";
 import { idlChecks } from "./lint/idl-checks";
 import { scanContext, type ContextFinding } from "./contextlint";
+import { isGtestModel } from "./gtest";
 
 const OWNER = "qpi";
 
 export function runQpiDiagnostics(monaco: typeof Monaco, model: Monaco.editor.ITextModel): void {
-  // QPI lint is for qpi.h contracts only — never a .ts test file. Clear any stale qpi markers and bail.
-  if (model.getLanguageId() !== "cpp") {
+  // QPI lint is for qpi.h contracts only — never a .ts test file, never a .cpp gtest (its TEST()/EXPECT_*
+  // macros + integer math would be flagged as contract-rule violations). Clear any stale markers and bail.
+  if (model.getLanguageId() !== "cpp" || isGtestModel(model)) {
     monaco.editor.setModelMarkers(model, OWNER, []);
     return;
   }

@@ -3,6 +3,7 @@
 // -> its `struct Name`; a field name -> its `Type field;` declaration. Symbols that live in qpi.h (the
 // containers, qpi methods) aren't in the open model, so they resolve to nothing — as expected.
 import type * as Monaco from "monaco-editor";
+import { isGtestModel } from "./gtest";
 
 // The source offset where `word` is *defined*, or null. Uses the regex `d` flag to read the captured
 // group's start index precisely.
@@ -36,6 +37,9 @@ export function registerQpiDefinition(monaco: typeof Monaco): void {
 
   monaco.languages.registerDefinitionProvider("cpp", {
     provideDefinition(model, position) {
+      if (isGtestModel(model)) {
+        return null;
+      }
       const wordInfo = model.getWordAtPosition(position);
       if (!wordInfo) {
         return null;
