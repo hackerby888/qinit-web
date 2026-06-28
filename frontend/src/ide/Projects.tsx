@@ -13,6 +13,7 @@ import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } f
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace } from "./workspace";
+import { STARTER } from "./examples";
 import { Toasts } from "./Toasts";
 import { OfflineBanner } from "./OfflineBanner";
 import { notify, errorMessage } from "./notify";
@@ -186,10 +187,13 @@ export default function Projects() {
     }
   };
 
-  const create = async () => {
+  // "standard" (the default click) seeds a Counter contract + its TS test + its C++ gtest; "dev" (the
+  // bottom-right region) seeds the full example playground (all the starter contracts).
+  const create = async (mode: "standard" | "dev" = "standard") => {
     try {
       const n = (metas?.length ?? 0) + 1;
-      const p = await getStore().create(`Project ${n}`);
+      const seed = mode === "standard" ? STARTER.map((e) => ({ name: e.file, source: e.source })) : undefined;
+      const p = await getStore().create(`Project ${n}`, seed);
       await getStore().setCurrentId(p.id);
       setSplash({ label: "Creating workspace", go: () => navigate(`/ide/p/${p.id}`) });
     } catch (e) {
@@ -321,15 +325,7 @@ export default function Projects() {
         )}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
-          <button onClick={create} title="New project" style={{ all: "unset", cursor: "pointer", display: "block" }}>
-            <Card frame={color.accentDeep} shadow={5} faceStyle={{ minHeight: 150 }}>
-              <div style={{ padding: 16, minHeight: 150, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                <span style={{ fontFamily: font.display, fontSize: 40, color: color.accent, lineHeight: 1 }}>+</span>
-                <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>New project</span>
-                <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>blank contract</span>
-              </div>
-            </Card>
-          </button>
+          <NewProjectCard onStandard={() => void create("standard")} onDev={() => void create("dev")} />
 
           {(metas ?? []).map((m) => (
             <Card key={m.id} faceStyle={{ minHeight: 150 }}>
@@ -426,6 +422,49 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+// The "New project" tile. The main face creates the standard project (Counter + TS test + gtest); the
+// bottom-right "dev" region — highlighted on hover so it's discoverable — seeds the full example playground.
+function NewProjectCard({ onStandard, onDev }: { onStandard: () => void; onDev: () => void }) {
+  const [devHover, setDevHover] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      <button onClick={onStandard} title="New project — Counter contract + TS test + C++ gtest" style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
+        <Card frame={color.accentDeep} shadow={5} faceStyle={{ minHeight: 150 }}>
+          <div style={{ padding: 16, minHeight: 150, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <span style={{ fontFamily: font.display, fontSize: 40, color: color.accent, lineHeight: 1 }}>+</span>
+            <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>New project</span>
+            <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>Counter · TS test · gtest</span>
+          </div>
+        </Card>
+      </button>
+      <div
+        onClick={(e) => { e.stopPropagation(); onDev(); }}
+        onMouseEnter={() => setDevHover(true)}
+        onMouseLeave={() => setDevHover(false)}
+        title="Dev playground — seed every example contract (Adder, Bank, Token, Proxy, Shares, Equity…)"
+        style={{
+          // Hidden by default (not exposed) — only appears when the bottom-right corner is hovered. opacity:0
+          // keeps it in layout, so the corner stays hoverable + clickable without ever showing unprompted.
+          position: "absolute",
+          right: 6,
+          bottom: 6,
+          cursor: "pointer",
+          fontFamily: font.mono,
+          fontSize: 10.5,
+          padding: "3px 9px",
+          color: color.void,
+          background: color.accent,
+          border: `1px solid ${color.accent}`,
+          opacity: devHover ? 1 : 0,
+          transition: "opacity .12s",
+        }}
+      >
+        dev ▸
       </div>
     </div>
   );

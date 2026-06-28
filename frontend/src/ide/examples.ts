@@ -506,6 +506,35 @@ test("increments again on the same chain", async () => {
 });
 `;
 
+const counterGtest = `// Counter gtest — C++ tests that run in the engine (▶ Run gtest) and are the form Qubic mainnet review
+// wants. Compile & Run Counter first; the harness (ContractTest, TEST / EXPECT_*) + the contract's types
+// compile in around this file. Each TEST gets a fresh, isolated genesis node (like core's GoogleTest).
+TEST(Counter, StartsAtZero) {
+    ContractTest t;
+    Counter::Get_input in{};
+    EXPECT_EQ(t.call<Counter::Get_output>(1, in).value, 0ull);   // function it=1
+}
+
+TEST(Counter, IncrementsAreCumulative) {
+    ContractTest t;
+    QPI::id user = t.idFromSeed("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    t.fund(user, 1000000000);
+
+    Counter::Inc_input in{};
+    for (int i = 0; i < 5; i++) {
+        t.invoke<Counter::Inc_output>(1, in, 0, user);           // procedure it=1: (it, input, amount, origin)
+    }
+    EXPECT_EQ(t.state<Counter::StateData>().counter, 5ull);      // read StateData directly
+}
+
+TEST(Counter, EachTestStartsFresh) {
+    ContractTest t;                  // a new fixture -> counter is 0 again, not 5
+    Counter::Get_input g{};
+    EXPECT_EQ(t.call<Counter::Get_output>(1, g).value, 0ull);
+}
+`;
+
+// The dev playground — every starter contract (used by the create button's bottom-right "dev" region).
 export const EXAMPLES: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Adder.h", name: "Adder", slot: 28, source: adder },
@@ -515,4 +544,11 @@ export const EXAMPLES: Example[] = [
   { file: "Shares.h", name: "Shares", slot: 28, source: shares },
   { file: "Equity.h", name: "Equity", slot: 28, source: equity },
   { file: "Counter.test.ts", name: "Counter.test", slot: 0, source: counterTest },
+];
+
+// The standard project — one Counter contract + its TS test + its C++ gtest. The default for a new project.
+export const STARTER: Example[] = [
+  { file: "Counter.h", name: "Counter", slot: 28, source: counter },
+  { file: "Counter.test.ts", name: "Counter.test", slot: 0, source: counterTest },
+  { file: "Counter.test.cpp", name: "Counter.test", slot: 0, source: counterGtest },
 ];
