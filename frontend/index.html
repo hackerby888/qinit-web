@@ -18,6 +18,11 @@
             var m = document.querySelector('meta[name="theme-color"]');
             if (m) m.setAttribute("content", "#0B0E0C");
           }
+          // IDE chrome theme (neo ↔ flat) — stash on <html> before the JS bundle loads so tokens.ts
+          // can initialise `color` synchronously. Default flat on the IDE route.
+          if (location.pathname.startsWith("/ide")) {
+            document.documentElement.dataset.ideTheme = localStorage.getItem("ide.theme") || "flat";
+          }
         } catch (e) {}
       })();
     </script>

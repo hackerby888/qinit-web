@@ -74,15 +74,21 @@ const FLAT: typeof NEO = {
 };
 
 // The live, mutable active palette. Every chrome read goes through this object; applyTheme() swaps its
-// values in place so existing inline `color.*` reads pick up the change on the next render. Initialised to
-// NEO so module-level captures (landing / gallery) bake the neo-brutalist look at import.
-export const color = { ...NEO };
+// values in place so existing inline `color.*` reads pick up the change on the next render. Initialised
+// from the <html> data-ide-theme attribute (set inline in index.html before the JS bundle loads) so the
+// IDE starts in the right palette without a flash; defaults to NEO (landing / gallery / non-IDE routes).
+function readInitialTheme(): ThemeName {
+  if (typeof document === "undefined") return "neo";
+  return document.documentElement.dataset.ideTheme === "flat" ? "flat" : "neo";
+}
+
+export const color = readInitialTheme() === "flat" ? { ...FLAT } : { ...NEO };
 
 export type ThemeName = "neo" | "flat";
 
 // Live structural flag for the chrome — read at render time, never destructured into a local. Tells the
 // notch/shadow code paths to collapse to flat 1px borders.
-export const themeFlags = { flat: false };
+export const themeFlags = { flat: readInitialTheme() === "flat" };
 
 // Swap the active palette in place (mutates `color` so live inline reads update) and flip the flat flag.
 export function applyTheme(name: ThemeName): void {
