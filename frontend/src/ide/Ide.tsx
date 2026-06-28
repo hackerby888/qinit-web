@@ -23,7 +23,7 @@ import { notify, errorMessage } from "./notify";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, FastForward } from "lucide-react";
 import { getToken, fetchMe, login, type Me } from "./auth";
 import { GitHubDialog } from "./GitHubDialog";
 import type { RepoFile } from "./githubApi";
@@ -594,7 +594,7 @@ function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpo
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
           <NeoBtn onClick={onToggle} active={paused} title={paused ? "Resume auto-tick" : "Pause auto-tick"}>{paused ? "▶ run" : "⏸ pause"}</NeoBtn>
           <NeoBtn onClick={() => onStep(1)} title="Advance 1 tick">⏭ +1</NeoBtn>
-          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks">⏩ +10</NeoBtn>
+          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks"><span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#f5a623" }}><FastForward size={11} fill="#f5a623" /> +10</span></NeoBtn>
           <NeoBtn onClick={onEpoch} accent={color.secondary} title={`Jump to tick ${nextBoundary} (the next epoch boundary) — fires END_EPOCH → BEGIN_EPOCH`}>⤓ epoch</NeoBtn>
           <NeoBtn onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset</NeoBtn>
           <NeoBtn onClick={onReplay} title="Replay every tx this session from genesis">↻ replay</NeoBtn>
