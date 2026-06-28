@@ -34,6 +34,9 @@ const levelColor = (level: EngineLogEvent["level"]): string => {
 export function EngineLog({ log, onClose, onClear }: { log: EngineLogEvent[]; onClose: () => void; onClear: () => void }) {
   const [min, setMin] = useState(1); // default: info and above
   const bodyRef = useRef<HTMLDivElement>(null);
+  // Stick-to-bottom: only auto-scroll when the user is already pinned to the newest line. If they scrolled up
+  // to read an older event, new appends must NOT yank them back down. Updated on every scroll; starts pinned.
+  const stick = useRef(true);
   const shown = log.filter((e) => RANK[e.level] >= min);
 
   useEffect(() => {
@@ -46,13 +49,22 @@ export function EngineLog({ log, onClose, onClear }: { log: EngineLogEvent[]; on
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  // Auto-scroll to the newest line as the stream grows (a console, not an explorer).
+  // Auto-scroll to the newest line as the stream grows — but ONLY while pinned to the bottom (stick.current).
+  // A user who scrolled up keeps their position; new events accrue below without moving the viewport.
   useEffect(() => {
     const el = bodyRef.current;
-    if (el) {
+    if (el && stick.current) {
       el.scrollTop = el.scrollHeight;
     }
   }, [shown.length]);
+
+  // Track whether the viewport is pinned to the bottom (within a small slack), recomputed on each scroll.
+  const onScroll = () => {
+    const el = bodyRef.current;
+    if (el) {
+      stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    }
+  };
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#000000cc", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -80,7 +92,7 @@ export function EngineLog({ log, onClose, onClear }: { log: EngineLogEvent[]; on
             <button onClick={onClose} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, ...line, padding: "2px 8px", cursor: "pointer" }}>✕</button>
           </div>
 
-          <div ref={bodyRef} style={{ overflowY: "auto", padding: "8px 14px 12px", lineHeight: 1.7 }}>
+          <div ref={bodyRef} onScroll={onScroll} style={{ overflowY: "auto", padding: "8px 14px 12px", lineHeight: 1.7 }}>
             {shown.length === 0 ? (
               <div style={{ ...line, color: color.textGhostDk }}>— no engine events at this level — run the chain, or widen the filter —</div>
             ) : (
