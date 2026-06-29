@@ -63,6 +63,61 @@ app.get("/ready", (_req, res) => {
   res.status(r.ready ? 200 : 503).json(r);
 });
 
+// Serve the qpi.h headers so the browser-side compiler can use them for local compilation.
+app.get("/api/qpi-header", (_req, res) => {
+  const env = process.env.QINIT_CORE;
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const os = require("node:os");
+  let core: string | null = null;
+
+  if (env && fs.existsSync(env)) {
+    core = env;
+  } else {
+    try {
+      const cur = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".cache/qinit/current.json"), "utf8"));
+      if (cur.coreHeaders && fs.existsSync(cur.coreHeaders)) {
+        core = cur.coreHeaders;
+      }
+    } catch {
+      // no cache
+    }
+  }
+
+  if (!core) {
+    res.status(503).json({ error: "core headers not found — set QINIT_CORE or run qinit up" });
+    return;
+  }
+
+  try {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const files = [
+      "contract_core/pre_qpi_def.h",
+      "contracts/qpi.h",
+      "contract_core/qpi_proposal_voting.h",
+      "oracle_core/oracle_interfaces_def.h",
+    ];
+    let content = `#define NO_UEFI
+#define LITE_WASM_TU_BUILD
+#include <cstdint>
+#include <cstddef>
+#include <cstring>
+#include <cstdlib>
+`;
+    for (const f of files) {
+      const fp = path.join(core, "src", f);
+      if (fs.existsSync(fp)) {
+        content += fs.readFileSync(fp, "utf8") + "\n";
+      }
+    }
+    res.set("Content-Type", "text/plain; charset=utf-8");
+    res.send(content);
+  } catch (e) {
+    res.status(500).json({ error: `Failed to read qpi headers: ${(e as Error).message}` });
+  }
+});
+
 // Browser IDE: compile a qpi.h contract to wasm (the frontend runs it in-page via @qinit/engine).
 app.post("/api/compile", compileLimiter, async (req, res) => {
   const { source, name, slot, skipVerify, callees, testSource, testName } = req.body ?? {};

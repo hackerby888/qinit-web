@@ -23,6 +23,7 @@ export default defineConfig({
       // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.
       "@qinit/inspector": qinit("cli/src/trace-format.ts"),
       "@qinit/core": qinit("core/src/browser.ts"),
+      "@qinit/compile": qinit("compile/src/index.ts"),
     },
   },
   server: {
@@ -38,5 +39,5 @@ export default defineConfig({
       "/collab": { target: "http://127.0.0.1:8787", ws: true, changeOrigin: true },
     },
   },
-  optimizeDeps: { exclude: ["@qinit/engine", "@qinit/proto", "@qinit/build", "@qinit/core"] },
+  optimizeDeps: { exclude: ["@qinit/engine", "@qinit/proto", "@qinit/build", "@qinit/core", "@qinit/compile"] },
 });
