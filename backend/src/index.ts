@@ -3,8 +3,7 @@ import express from "express";
 import cors from "cors";
 import { getDb } from "./db";
 import { latestRelease, bumpVisits } from "./release";
-import { compile, buildQueueState } from "./compile";
-import { systemCatalog, compileSystem } from "./system";
+import { systemCatalog, systemSource } from "./system";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
 import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut, shareCreate, shareList, shareRevoke, shareResolve } from "./projects";
 import { importRepo, exportGist } from "./github";
@@ -37,7 +36,6 @@ const num = (v: string | undefined, dflt: number): number => {
 
 // Rate limits (per-IP, per minute). Generous global ceiling + strict caps on the expensive / abusable routes.
 const apiLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_API, 600) });
-const compileLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_COMPILE, 12) });
 const authLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_AUTH, 30) });
 const shareLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_SHARE, 30) });
 const githubLimiter = rateLimit({ windowMs: 60_000, limit: num(process.env.RL_GITHUB, 10) });
@@ -63,38 +61,16 @@ app.get("/ready", (_req, res) => {
   res.status(r.ready ? 200 : 503).json(r);
 });
 
-// Browser IDE: compile a qpi.h contract to wasm (the frontend runs it in-page via @qinit/engine).
-app.post("/api/compile", compileLimiter, async (req, res) => {
-  const { source, name, slot, skipVerify, callees, testSource, testName } = req.body ?? {};
-  if (typeof source !== "string" || !source.trim()) {
-    res.status(400).json({ ok: false, diagnostics: [], error: "missing `source`" });
-    return;
-  }
-
-  try {
-    res.json(await compile({ source, name, slot, skipVerify, callees, testSource, testName }));
-  } catch (e) {
-    res.status(500).json({ ok: false, diagnostics: [], error: (e as Error).message });
-  }
-});
-
-// Build-pool snapshot — the IDE polls this while a compile is pending to show "waiting for a build slot".
-app.get("/api/compile/queue", (_req, res) => res.json(buildQueueState()));
-
-// Built-in system contracts for the IDE's in-browser virtual node: the catalog (picker) + compile-by-name
-// (the browser can't compile, so it asks the backend; result is cached server-side and deployed in-page).
+// Built-in system contracts for the IDE's in-browser virtual node: the catalog (picker) + source-by-name.
+// The browser compiles the source itself (@qinit/compile worker) and deploys the wasm in-page.
 app.get("/api/system-contracts", (_req, res) => res.json({ contracts: systemCatalog() }));
-app.post("/api/compile-system", compileLimiter, async (req, res) => {
-  const name = req.body?.name;
-  if (typeof name !== "string" || !name.trim()) {
-    res.status(400).json({ ok: false, diagnostics: [], error: "missing `name`" });
+app.get("/api/system-contracts/:name/source", (req, res) => {
+  const r = systemSource(req.params.name);
+  if (!r.ok) {
+    res.status(r.status).json({ error: r.error });
     return;
   }
-  try {
-    res.json(await compileSystem(name));
-  } catch (e) {
-    res.status(500).json({ ok: false, diagnostics: [], error: (e as Error).message });
-  }
+  res.json({ name: r.name, index: r.index, source: r.source });
 });
 
 // Auth (Google / GitHub OAuth) + the authed user. The dev mint must precede the :provider route.

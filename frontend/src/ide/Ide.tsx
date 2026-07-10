@@ -29,10 +29,12 @@ import { GitHubDialog } from "./GitHubDialog";
 import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
-import { compileContract, base64ToBytes, fetchBuildQueue, fetchSystemCatalog, compileSystem, type CompileResult, type BuildQueue, type SystemContractEntry } from "./api";
-import { compileSmart } from "./compile/local";
+import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, type CompileResult, type SystemContractEntry } from "./api";
+import { compileInBrowser, getCompilerInfo } from "./compile/local";
+import type { CompilerInfo } from "@qinit/compile/browser";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent } from "./engine";
 import { Debugger } from "./Debugger";
+import { SystemSourceView } from "./SystemSourceView";
 import { TxExplorer, type TxRow } from "./TxExplorer";
 import { EngineLog } from "./EngineLog";
 import { runTests, type TestContract } from "./tests/runner";
@@ -237,6 +239,29 @@ function EngineStrip({ info, mempool = 0 }: { info: { tick: number; epoch: numbe
       ) : (
         <span style={{ color: color.textGhostDk }}>idle · compile to start</span>
       )}
+    </div>
+  );
+}
+
+// Identity of the in-browser TS compiler, from the worker's hello handshake: package version plus
+// the core-lite commit its embedded QPI snapshot was generated from ("*" = dirty checkout). The
+// full pin (snapshot hash, generator/protocol versions) lives in the hover tooltip. Not rendered
+// when the worker is unavailable — compiles then run on the backend clang path.
+function CompilerStrip({ info }: { info: CompilerInfo }) {
+  const dirty = info.coreCommit.endsWith("-dirty");
+  const commit = info.coreCommit.replace(/-dirty$/, "").slice(0, 8);
+  const detail = [
+    `in-browser TS compiler v${info.qinitVersion}`,
+    `core ${info.coreCommit}`,
+    `snapshot ${info.snapshotHash}`,
+    `generator v${info.generatorVersion} · protocol v${info.protocolVersion}`,
+  ].join("\n");
+
+  return (
+    <div title={detail} style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, cursor: "help" }}>
+      <span style={{ color: color.textMutedDk, letterSpacing: ".14em" }}>TS-QPI</span>
+      <span><span style={{ color: color.textGhostDk }}>v</span><span style={{ color: color.textMutedDk }}>{info.qinitVersion}</span></span>
+      <span><span style={{ color: color.textGhostDk }}>core </span><span style={{ color: color.textMutedDk }}>{commit}{dirty ? "*" : ""}</span></span>
     </div>
   );
 }
@@ -648,12 +673,14 @@ function DeployedList({ deployed, selected, onSelect }: {
 }
 
 // Built-in system contracts (QX, QEARN, …) the user can host on the in-browser virtual node — toggle chips.
-// On = selected/deployed (compiled by the backend, run in-page). A real node embeds these; this is dev-only.
-function SystemPicker({ catalog, selected, deployed, onToggle }: {
+// On = selected/deployed (compiled in the browser, run in-page). Ctrl+click opens the contract's source in a
+// read-only popup instead of toggling. A real node embeds these; this is dev-only.
+function SystemPicker({ catalog, selected, deployed, onToggle, onView }: {
   catalog: SystemContractEntry[];
   selected: string[];
   deployed: Record<string, DeployedContract>;
   onToggle: (name: string) => void;
+  onView: (name: string) => void;
 }) {
   if (!catalog.length) {
     return null;
@@ -666,8 +693,8 @@ function SystemPicker({ catalog, selected, deployed, onToggle }: {
         return (
           <button
             key={c.name}
-            onClick={() => onToggle(c.name)}
-            title={`${c.name} · slot ${c.index} — ${on ? "deployed (click to remove)" : "click to compile + deploy"}`}
+            onClick={(e) => ((e.ctrlKey || e.metaKey) ? onView(c.name) : onToggle(c.name))}
+            title={`${c.name} · slot ${c.index} — ${on ? "deployed (click to remove)" : "click to compile + deploy"} · Ctrl+click to view the source`}
             style={{ padding: "2px 7px", border: `1px solid ${on ? color.accent : color.hair}`, background: on ? `${color.accent}14` : color.panel, color: on ? color.accent : color.textLight, cursor: "pointer", fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.5 }}
           >
             {c.name}
@@ -758,12 +785,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const { debug, setDebug, palette, setPalette, github, setGithub, showTxs, setShowTxs, shareOpen, setShareOpen } = useOverlays();
   const { searchOpen, setSearchOpen, searchQuery, setSearchQuery, searchCase, setSearchCase, searchRegex, setSearchRegex } = useWorkspaceSearch();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [buildQueue, setBuildQueue] = useState<BuildQueue | null>(null); // backend pool state while a compile is pending
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
   const [log, setLog] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [engineInfo, setEngineInfo] = useState<{ tick: number; epoch: number } | null>(null);
+  const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
   const [pending, setPending] = useState<Record<string, { name: string; targetTick: number }>>({});
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [caller, setCaller] = useState<string>("");
@@ -772,6 +799,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [selected, setSelected] = useState<string | null>(null);
   const [sysCatalog, setSysCatalog] = useState<SystemContractEntry[]>([]); // built-in system contracts (QX, …)
   const [sysSel, setSysSel] = useState<string[]>([]); // names the user chose to host on the in-browser node
+  const [sysView, setSysView] = useState<{ name: string; index: number; source: string } | null>(null); // Ctrl+click source popup
   const [stateView, setStateView] = useState<Record<string, StateDump>>({});
   const [assetsView, setAssetsView] = useState<AssetView[]>([]); // the engine's asset universe (issued assets + shares)
   const [idNames, setIdNames] = useState<Record<string, string>>({}); // hex id → Qubic identity, resolved async for the assets panel
@@ -813,6 +841,20 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const warmRef = useRef<{ source: string; name: string; res: CompileResult } | null>(null); // warm deploy artifact
 
   const appendLog = (line: string) => setLog((l) => [...l.slice(-200), line]);
+
+  useEffect(() => {
+    let alive = true;
+
+    void getCompilerInfo().then((info) => {
+      if (alive && info) {
+        setCompiler(info);
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const activeFile = ws.files.find((f) => f.name === ws.active) ?? ws.files[0];
   const source = activeFile?.source ?? "";
@@ -1796,28 +1838,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setProblemsOpen(true);
   };
 
-  // While a compile is pending, poll the backend build pool so the status line can show "waiting for a build
-  // slot" when the box is saturated by other builds.
-  useEffect(() => {
-    if (phase !== "compiling") {
-      setBuildQueue(null);
-      return;
-    }
-    let alive = true;
-    const tick = () => {
-      void fetchBuildQueue().then((q) => {
-        if (alive) {
-          setBuildQueue(q);
-        }
-      });
-    };
-    tick();
-    const iv = setInterval(tick, 600);
-    return () => {
-      alive = false;
-      clearInterval(iv);
-    };
-  }, [phase]);
 
   // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
   // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
@@ -1981,25 +2001,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const name = contractNameRef.current;
     const fileName = activeNameRef.current;
     if (/\.tsx?$/.test(fileName)) {
-      setDiag({ state: "idle", count: 0 }); // .ts test files aren't clang-compiled
+      setDiag({ state: "idle", count: 0 }); // .ts test files aren't contract sources
       return;
     }
 
-    // A .cpp gtest test is compiled AS a test (the paired contract + testSource), so clang checks the
-    // harness + the contract's types instead of mis-parsing TEST()/ContractTest as a contract. It needs a
-    // deployed contract to pair against; until then, clear any stale markers and stay idle.
-    const isGtest = /\.(cpp|cc|cxx)$/.test(fileName);
-    const gtestTarget = isGtest
-      ? (() => {
-          const deployed = Object.values(deployedRef.current);
-          if (!deployed.length) {
-            return null;
-          }
-          const base = (fileName.split("/").pop() ?? "").replace(/\.(cpp|cc|cxx)$/i, "").replace(/\.test$/i, "");
-          return deployed.find((d) => d.name.toLowerCase() === base.toLowerCase()) ?? deployed[0];
-        })()
-      : undefined;
-    if (isGtest && !gtestTarget) {
+    // A .cpp gtest file isn't a contract — the in-browser compiler has no gtest support, so it gets no
+    // background diagnostics. Clear any stale markers and stay idle.
+    if (/\.(cpp|cc|cxx)$/.test(fileName)) {
       const monaco = monacoRef.current;
       const model = editorRef.current?.getModel();
       if (monaco && model) {
@@ -2024,13 +2032,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
     let res: CompileResult | null = null;
     try {
-      if (gtestTarget) {
-        res = await compileContract({ source: gtestTarget.source, name: gtestTarget.name, slot: gtestTarget.slot, skipVerify: true, testSource: src, testName: fileName.split("/").pop() });
-      } else {
-        const slot = assignSlot(deployedRef.current, name);
-        const callees = resolveCallees(filesRef.current, deployedRef.current, src);
-        res = await compileSmart({ source: src, name, slot, skipVerify: true, callees });
-      }
+      const slot = assignSlot(deployedRef.current, name);
+      const callees = resolveCallees(filesRef.current, deployedRef.current, src);
+      res = await compileInBrowser({ source: src, name, slot, callees });
     } catch {
       res = null;
     }
@@ -2048,11 +2052,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const errs = res.diagnostics.filter((d) => d.severity === "error").length;
     setDiag({ state: errs ? "error" : "ok", count: errs });
 
-    if (!isGtest && res.ok && res.wasm && res.idl) {
-      warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy (contracts only)
+    if (res.ok && res.wasm && res.idl) {
+      warmRef.current = { source: src, name, res }; // warm artifact for an instant deploy
       setBuilt((b) => ({ ...b, [fileName]: src })); // clears this file's dirty dot
-    } else if (isGtest && res.ok) {
-      setBuilt((b) => ({ ...b, [fileName]: src })); // the test compiled clean — clear its dirty dot
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs; intentionally stable
   }, []);
@@ -2068,26 +2070,38 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // Spin up the in-process engine: create it, start the auto-ticker, fund the dev accounts, publish the
   // first tick. Idempotent — returns the running engine if already up. Called on mount (so the testnet
   // panel is live from the start) and before the first deploy.
-  // Compile (on the backend) + deploy a built-in system contract (QX, …) into the in-browser virtual node at its
-  // canonical index, then register it like any deployed contract so the call forms + inspector work.
+  // Fetch a built-in system contract's source (QX, …), compile it in the browser, and deploy it into the
+  // in-browser virtual node at its canonical index, then register it like any deployed contract so the call
+  // forms + inspector work.
   const deploySystem = useCallback(async (eng: IdeEngine, name: string): Promise<boolean> => {
     appendLog(`compiling system contract ${name}…`);
-    const res = await compileSystem(name);
-    if (!res.ok || !res.wasm || !res.idl || res.index === undefined) {
-      const why = res.error ?? "compile failed";
+    const src = await fetchSystemSource(name);
+    if ("error" in src) {
+      appendLog(`✗ ${name}: ${src.error}`);
+      notify.error(errorMessage(src.error, `Deploy of system contract ${name} failed`));
+      return false;
+    }
+
+    const res = await compileInBrowser({ source: src.source, name: src.name, slot: src.index });
+    if (!res.ok || !res.wasm || !res.idl) {
+      const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s)` : "compile failed");
       appendLog(`✗ ${name}: ${why}`);
+      res.diagnostics.slice(0, 8).forEach((d) => appendLog(`  ${d.severity} ${name}.h:${d.line}:${d.column} — ${d.message}`));
       notify.error(errorMessage(why, `Deploy of system contract ${name} failed`));
       return false;
     }
+    appendLog(`  compiled in browser (${Math.round(res.ms ?? 0)} ms)`);
+
     // Wrap the in-engine deploy: a throw here (e.g. wasm instantiation) must not leave the UI stuck on
     // "compiling…" with no feedback — surface it as an error like a compile failure.
     try {
       const wasm = base64ToBytes(res.wasm);
-      await eng.deploy(res.index, wasm, res.idl);
-      const address = await eng.addressOf(res.index);
-      deployedRef.current = { ...deployedRef.current, [name]: { name, slot: res.index, address, idl: res.idl, source: "", wasm, calls: [] } };
+      await eng.deploy(src.index, wasm, res.idl);
+      eng.registerSource(src.index, src.source, src.name);
+      const address = await eng.addressOf(src.index);
+      deployedRef.current = { ...deployedRef.current, [name]: { name, slot: src.index, address, idl: res.idl, source: src.source, wasm, calls: [] } };
       setDeployed({ ...deployedRef.current });
-      appendLog(`deployed system ${name} → slot ${res.index}`);
+      appendLog(`deployed system ${name} → slot ${src.index}`);
       return true;
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
@@ -2097,6 +2111,17 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters
   }, []);
+
+  // Ctrl+click on a system-contract chip: fetch its source and show it in the read-only popup.
+  const viewSystem = async (name: string): Promise<void> => {
+    const src = await fetchSystemSource(name);
+    if ("error" in src) {
+      appendLog(`✗ ${name}: ${src.error}`);
+      notify.error(errorMessage(src.error, `Couldn't load the ${name} source`));
+      return;
+    }
+    setSysView(src);
+  };
 
   // Toggle a system contract on the in-browser node (deploy + persist when adding; remove + undeploy when off).
   const toggleSystem = async (name: string): Promise<void> => {
@@ -2213,9 +2238,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       // A leaf contract with a warm background-compiled artifact deploys instantly; everything else builds fresh.
       const warm = warmRef.current;
       const cached = calleeArgs.length === 0 && warm && warm.source === src && warm.name === name ? warm.res : null;
-      const fresh = cached ? null : await compileSmart({ source: src, name, slot, skipVerify: true, callees: calleeArgs }, { fallbackOnErrors: true });
+      const fresh = cached ? null : await compileInBrowser({ source: src, name, slot, callees: calleeArgs });
       const res = cached ?? fresh!;
-      if (fresh?.via === "browser") {
+      if (fresh) {
         appendLog(`  compiled in browser (${Math.round(fresh.ms ?? 0)} ms)`);
       }
       if (name === contractName) {
@@ -2231,20 +2256,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s) — see the editor` : "compile failed");
         appendLog(`✗ ${name}: ${why}`);
 
-        // A transport / toolchain failure (backend down, server error) carries an `error` but no located
-        // diagnostics — surface it loudly. Real compile errors (with diagnostics) already open the editor.
+        // A compiler failure (worker crash/timeout) carries an `error` but no located diagnostics —
+        // surface it loudly. Real compile errors (with diagnostics) already open the editor.
         if (res.error && res.diagnostics.length === 0) {
           notify.error(errorMessage(res.error, `Build of ${name} failed`));
         }
 
-        // Detail: the per-line clang diagnostics, then the tail of the raw toolchain stderr.
         res.diagnostics.slice(0, 8).forEach((d) => appendLog(`  ${d.severity} ${name}.h:${d.line}:${d.column} — ${d.message}`));
-        if (res.verify && res.verify.ok === false && res.verify.errors?.length) {
-          res.verify.errors.slice(0, 8).forEach((e) => appendLog(`  protocol: ${e}`));
-        }
-        if (res.stderr) {
-          res.stderr.split("\n").map((l) => l.trimEnd()).filter(Boolean).slice(-14).forEach((l) => appendLog(`  ${l}`));
-        }
         throw new Error(why);
       }
 
@@ -2334,32 +2352,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  // Run a C++ gtest file: compile it INTO the paired contract's wasm (one combined module), then run it on a
-  // fresh isolated engine in the browser. The contract is paired by matching the test filename (<Name>.test.cpp)
-  // to a deployed contract, else the only/first deployed one.
-  const runGtestFile = async () => {
-    const eng = await ensureEngine();
-    const deployed = Object.values(deployedRef.current);
-    if (deployed.length === 0) {
-      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: "Compile & Run the contract first — a gtest compiles your C++ test into the deployed contract's wasm.", logs: [] }], running: false, title: ws.active });
-      return;
-    }
-
-    const base = (ws.active.split("/").pop() ?? "").replace(/\.(cpp|cc|cxx)$/i, "").replace(/\.test$/i, "");
-    const target = deployed.find((d) => d.name.toLowerCase() === base.toLowerCase()) ?? deployed[0];
-
-    setTestRun({ results: [], running: true, title: ws.active });
-    try {
-      const res = await compileContract({ source: target.source, name: target.name, slot: target.slot, skipVerify: true, testSource: source, testName: ws.active.split("/").pop() });
-      if (!res.ok || !res.wasm) {
-        const diag = (res.diagnostics ?? []).map((d) => `${d.line}:${d.column}  ${d.message}`).join("\n");
-        throw new Error(res.error || diag || res.stderr || "gtest compile failed");
-      }
-      const results = (await eng.runGtest(base64ToBytes(res.wasm))).map((t) => ({ name: t.name, ok: t.passed, ms: 0, error: t.passed ? undefined : t.message, logs: [] as string[] }));
-      setTestRun({ results, running: false, title: `${ws.active} → ${target.name}` });
-    } catch (e) {
-      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: (e as Error).message, logs: [] }], running: false, title: ws.active });
-    }
+  // C++ gtest files needed the removed backend clang path (they compile the test INTO the contract wasm);
+  // the in-browser compiler has no gtest support yet, so running one reports that directly. Use .test.ts
+  // scenario tests instead.
+  const runGtestFile = () => {
+    setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: "C++ gtest files aren't supported — the in-browser compiler can't build them (the backend clang path was removed). Write a .test.ts scenario test instead.", logs: [] }], running: false, title: ws.active });
   };
 
   const coerce = (entry: IdlEntry, input: Record<string, string>): Record<string, unknown> => {
@@ -2535,6 +2532,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           {collab && <CollabBar status={collabApi.status} peers={collabApi.peers} mode={collab.mode} selfName={collab.displayName} selfColor={collab.color} />}
+          {compiler && <CompilerStrip info={compiler} />}
           <EngineStrip info={engineInfo} mempool={Object.keys(pending).length} />
         </div>
       </div>
@@ -2665,11 +2663,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             )}
 
             {phase === "compiling" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 12, color: buildQueue && buildQueue.active >= buildQueue.limit ? color.yellow : color.textMutedDk }}>
-                <span style={{ width: 7, height: 7, flex: "none", background: buildQueue && buildQueue.active >= buildQueue.limit ? color.yellow : color.accent, animation: "nodePulse 1.4s ease-in-out infinite" }} />
-                {buildQueue && buildQueue.active >= buildQueue.limit
-                  ? `waiting for a build slot — ${buildQueue.queued} queued · ${buildQueue.active}/${buildQueue.limit} building`
-                  : "compiling on the node toolchain…"}
+              <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>
+                <span style={{ width: 7, height: 7, flex: "none", background: color.accent, animation: "nodePulse 1.4s ease-in-out infinite" }} />
+                compiling in the browser…
               </div>
             )}
 
@@ -2681,8 +2677,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
             {sysCatalog.length > 0 && (
               <div style={{ marginBottom: 8 }}>
-                <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: 0.5, color: color.textGhostDk, marginBottom: 5 }}>SYSTEM CONTRACTS</div>
-                <SystemPicker catalog={sysCatalog} selected={sysSel} deployed={deployed} onToggle={(n) => void toggleSystem(n)} />
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: 0.5, color: color.textGhostDk }}>SYSTEM CONTRACTS</span>
+                  <span style={{ fontFamily: font.mono, fontSize: 9.5, color: color.textFaintDk }}>ctrl+click = source</span>
+                </div>
+                <SystemPicker catalog={sysCatalog} selected={sysSel} deployed={deployed} onToggle={(n) => void toggleSystem(n)} onView={(n) => void viewSystem(n)} />
               </div>
             )}
 
@@ -2822,6 +2821,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title, onBack: () => { setDebug(null); setShowTxs(true); } }); }} />}
       {engineLogOpen && <EngineLog log={engineLog} onClose={() => setEngineLogOpen(false)} onClear={() => setEngineLog([])} />}
+      {sysView && <SystemSourceView name={sysView.name} index={sysView.index} source={sysView.source} theme={resolveMonacoTheme(editorTheme, theme)} onClose={() => setSysView(null)} />}
 
       {shareOpen && id && <ShareDialog projectId={id} isLive={!!collab} peerCount={collabApi.peers.length} onGoLive={() => { void goLive(); }} onClose={() => setShareOpen(false)} />}
 

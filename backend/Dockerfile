@@ -3,9 +3,9 @@
 #
 #   docker build -f Qinit-web/backend/Dockerfile -t qinit-web-api ..
 #
-# NOTE on compile: the build endpoint runs clang from the qinit toolchain (wasi-sdk + core headers). Those are
-# NOT baked in — provision them by mounting a host `~/.cache/qinit` (after `qinit up`) into the container and/or
-# setting QINIT_CORE. Without the toolchain the API serves fine but /api/compile returns "core headers not found".
+# NOTE on system contracts: the catalog/source endpoints read core headers. Those are NOT baked in — provision
+# them by mounting a host `~/.cache/qinit` (after `qinit up`) into the container and/or setting QINIT_CORE.
+# Without them the API serves fine but the system-contract catalog is empty.
 FROM oven/bun:1 AS deps
 WORKDIR /app
 
@@ -19,7 +19,6 @@ RUN cd /app/Qinit-web/backend && bun install --frozen-lockfile
 COPY Qinit-web/backend /app/Qinit-web/backend
 
 FROM oven/bun:1
-# bash is required by the build sandbox (ulimit wrapper); the oven/bun (debian) base already ships it.
 WORKDIR /app/Qinit-web/backend
 COPY --from=deps /app /app
 

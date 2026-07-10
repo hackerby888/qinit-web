@@ -1,10 +1,9 @@
-// System-health metrics for the admin dashboard. Samples process + OS + build-pool + collab footprint, keeps
+// System-health metrics for the admin dashboard. Samples process + OS + collab footprint, keeps
 // a short in-memory ring for sparklines, and (when Mongo is up) persists a coarser series so trends survive a
 // restart. computeAlerts() turns a sample into overload warnings; it's pure so the thresholds are unit-tested.
 import { totalmem, freemem, loadavg, cpus } from "node:os";
 import { getDb } from "./db";
 import { redisUrl } from "./redis";
-import { buildQueueState, buildCacheSize } from "./buildpool";
 import { collabMetrics } from "./collab";
 
 export interface MetricSample {
@@ -12,7 +11,6 @@ export interface MetricSample {
   uptimeSec: number;
   proc: { rssMB: number; heapUsedMB: number; heapTotalMB: number; cpuPercent: number };
   sys: { memUsedPercent: number; totalMemMB: number; freeMemMB: number; load1: number; cpuCount: number; loadPercent: number };
-  build: { active: number; queued: number; limit: number; utilizationPercent: number; cached: number };
   collab: { rooms: number; connections: number };
   deps: { mongo: boolean; redis: boolean };
   status?: HealthStatus; // set when recorded by the sampler (drives incidents + bucket coloring)
@@ -27,8 +25,8 @@ export interface Incident {
   endTs?: number; // undefined while ongoing
   level: IncidentLevel;
   durationSec?: number;
-  peak: { loadPercent: number; memUsedPercent: number; queued: number };
-  keys: string[]; // which metrics tripped (build / mem / load), or ["outage"]
+  peak: { loadPercent: number; memUsedPercent: number };
+  keys: string[]; // which metrics tripped (mem / load), or ["outage"]
 }
 
 // One point of a downsampled history series — either a raw ring sample or a Mongo time-bucket aggregate.
@@ -38,8 +36,6 @@ export interface HistoryPoint {
   loadAvg: number;
   memMax: number;
   memAvg: number;
-  queueMax: number;
-  queuedMax: number;
   status: HealthStatus;
 }
 
@@ -131,7 +127,6 @@ export async function liveSnapshot(): Promise<MetricSample> {
   const cpuCount = Math.max(1, cpus()?.length ?? 1);
   const load1 = loadavg()[0] ?? 0;
 
-  const q = buildQueueState();
   const collab = collabMetrics();
   const mongo = (await getDb()) !== null;
 
@@ -152,13 +147,6 @@ export async function liveSnapshot(): Promise<MetricSample> {
       cpuCount,
       loadPercent: Math.round((load1 / cpuCount) * 1000) / 10,
     },
-    build: {
-      active: q.active,
-      queued: q.queued,
-      limit: q.limit,
-      utilizationPercent: Math.round((q.active / Math.max(1, q.limit)) * 100),
-      cached: buildCacheSize(),
-    },
     collab,
     deps: { mongo, redis: redisUrl() !== null },
   };
@@ -168,14 +156,6 @@ export async function liveSnapshot(): Promise<MetricSample> {
 
 export function computeAlerts(s: MetricSample, t: Thresholds): Alert[] {
   const alerts: Alert[] = [];
-
-  // A build only queues once every slot is busy, so any backlog means users are waiting (bad UX) — crit. A
-  // full pool that's still draining (no backlog) is a heads-up — warn.
-  if (s.build.queued > 0) {
-    alerts.push({ level: "crit", key: "build", message: `build queue saturated — ${s.build.active} active / ${s.build.queued} queued` });
-  } else if (s.build.active >= s.build.limit) {
-    alerts.push({ level: "warn", key: "build", message: `build pool at capacity — ${s.build.active}/${s.build.limit} slots busy` });
-  }
 
   if (s.sys.memUsedPercent >= t.memCrit) {
     alerts.push({ level: "crit", key: "mem", message: `system memory ${s.sys.memUsedPercent}% used` });
@@ -231,9 +211,9 @@ export function bucketFor(rangeMs: number): number {
   return HOUR_MS;
 }
 
-// Worst status implied by a bucket's peaks. Build saturation (any queued) and the crit cutoffs dominate.
-export function bucketStatus(m: { queuedMax: number; memMax: number; loadMax: number }, t: Thresholds): HealthStatus {
-  if (m.queuedMax > 0 || m.memMax >= t.memCrit || m.loadMax >= t.loadCrit) {
+// Worst status implied by a bucket's peaks — the crit cutoffs dominate.
+export function bucketStatus(m: { memMax: number; loadMax: number }, t: Thresholds): HealthStatus {
+  if (m.memMax >= t.memCrit || m.loadMax >= t.loadCrit) {
     return "crit";
   }
   if (m.memMax >= t.memWarn || m.loadMax >= t.loadWarn) {
@@ -248,7 +228,7 @@ export function stepIncident(open: Incident | null, sample: MetricSample, alerts
   if (status === "warn" || status === "crit") {
     const level: IncidentLevel = status === "crit" || open?.level === "crit" ? "crit" : "warn";
     const keys = [...new Set(alerts.filter((a) => a.level !== "info").map((a) => a.key))];
-    const here = { loadPercent: sample.sys.loadPercent, memUsedPercent: sample.sys.memUsedPercent, queued: sample.build.queued };
+    const here = { loadPercent: sample.sys.loadPercent, memUsedPercent: sample.sys.memUsedPercent };
 
     if (!open) {
       return { open: { startTs: sample.ts, level, peak: here, keys }, closed: null };
@@ -260,7 +240,6 @@ export function stepIncident(open: Incident | null, sample: MetricSample, alerts
       peak: {
         loadPercent: Math.max(open.peak.loadPercent, here.loadPercent),
         memUsedPercent: Math.max(open.peak.memUsedPercent, here.memUsedPercent),
-        queued: Math.max(open.peak.queued, here.queued),
       },
       keys: [...new Set([...open.keys, ...keys])],
     };
@@ -287,7 +266,7 @@ export function detectGap(lastTs: number, now: number, intervalMs: number): Inci
     endTs: now,
     level: "outage",
     durationSec: Math.round(gap / 1000),
-    peak: { loadPercent: 0, memUsedPercent: 0, queued: 0 },
+    peak: { loadPercent: 0, memUsedPercent: 0 },
     keys: ["outage"],
   };
 }
@@ -488,8 +467,7 @@ export async function metricsReport(): Promise<MetricsReport> {
 const round1 = (n: number): number => Math.round((n ?? 0) * 10) / 10;
 
 function ringToPoint(s: MetricSample, t: Thresholds): HistoryPoint {
-  const queue = s.build.active + s.build.queued;
-  const status = s.status ?? bucketStatus({ queuedMax: s.build.queued, memMax: s.sys.memUsedPercent, loadMax: s.sys.loadPercent }, t);
+  const status = s.status ?? bucketStatus({ memMax: s.sys.memUsedPercent, loadMax: s.sys.loadPercent }, t);
 
   return {
     ts: s.ts,
@@ -497,8 +475,6 @@ function ringToPoint(s: MetricSample, t: Thresholds): HistoryPoint {
     loadAvg: s.sys.loadPercent,
     memMax: s.sys.memUsedPercent,
     memAvg: s.sys.memUsedPercent,
-    queueMax: queue,
-    queuedMax: s.build.queued,
     status,
   };
 }
@@ -528,8 +504,6 @@ export async function historySeries(rangeMs: number): Promise<HistoryPoint[]> {
         loadAvg: { $avg: "$sys.loadPercent" },
         memMax: { $max: "$sys.memUsedPercent" },
         memAvg: { $avg: "$sys.memUsedPercent" },
-        queueMax: { $max: { $add: ["$build.active", "$build.queued"] } },
-        queuedMax: { $max: "$build.queued" },
       },
     },
     { $sort: { _id: 1 } },
@@ -545,9 +519,7 @@ export async function historySeries(rangeMs: number): Promise<HistoryPoint[]> {
     loadAvg: round1(r.loadAvg),
     memMax: round1(r.memMax),
     memAvg: round1(r.memAvg),
-    queueMax: r.queueMax ?? 0,
-    queuedMax: r.queuedMax ?? 0,
-    status: bucketStatus({ queuedMax: r.queuedMax ?? 0, memMax: r.memMax ?? 0, loadMax: r.loadMax ?? 0 }, t),
+    status: bucketStatus({ memMax: r.memMax ?? 0, loadMax: r.loadMax ?? 0 }, t),
   }));
 }
 

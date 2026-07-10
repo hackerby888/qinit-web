@@ -1,5 +1,5 @@
 // Admin dashboard (/admin) — live system health + overload detection. Gated by the shared admin token; once
-// unlocked it polls /api/admin/metrics every 2s and renders process/OS/build/collab tiles with sparklines and
+// unlocked it polls /api/admin/metrics every 2s and renders process/OS/collab tiles with sparklines and
 // an alert banner. Same neo-brutalist chrome as the IDE (Card/NeoBtn + tokens).
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { color, font } from "../landing/tokens";
@@ -171,8 +171,6 @@ function Dot({ on, label }: { on: boolean; label: string }) {
 interface ChartSeries {
   load: number[];
   mem: number[];
-  queue: number[];
-  queueMax: number;
 }
 
 function Dashboard({ data, series, chartRange, onChartRange, incidents, incidentRange, onIncidentRange, onLock }: {
@@ -186,8 +184,6 @@ function Dashboard({ data, series, chartRange, onChartRange, incidents, incident
   onLock: () => void;
 }) {
   const s = data.current;
-
-  const buildAccent = s.build.queued > 0 ? CRIT : s.build.active >= s.build.limit ? color.yellow : undefined;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 1100, margin: "0 auto", width: "100%" }}>
@@ -220,16 +216,6 @@ function Dashboard({ data, series, chartRange, onChartRange, incidents, incident
           accent={tone(s.sys.memUsedPercent, 85, 95)}
         >
           <Spark values={series.mem} max={100} stroke={tone(s.sys.memUsedPercent, 85, 95) ?? color.accent} />
-        </Tile>
-
-        <Tile
-          label="Build queue"
-          value={`${s.build.active}/${s.build.limit}`}
-          unit={s.build.queued > 0 ? `+${s.build.queued} queued` : "slots"}
-          sub={`${s.build.cached} cached builds`}
-          accent={buildAccent}
-        >
-          <Spark values={series.queue} max={series.queueMax} stroke={buildAccent ?? color.accent} />
         </Tile>
 
         <Tile
@@ -274,7 +260,7 @@ function IncidentRow({ inc }: { inc: Incident }) {
   const when = `${fmtTime(inc.startTs)}${inc.endTs ? ` – ${fmtTime(inc.endTs)}` : ""}`;
   const detail = inc.level === "outage"
     ? "server unreachable"
-    : `peak queue ${inc.peak.queued} · mem ${inc.peak.memUsedPercent}% · load ${inc.peak.loadPercent}%`;
+    : `peak mem ${inc.peak.memUsedPercent}% · load ${inc.peak.loadPercent}%`;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: `1px solid ${color.hair}` }}>
@@ -511,15 +497,11 @@ export default function Admin() {
   }, [token, incidentRange]);
 
   const series = useMemo<ChartSeries>(() => {
-    const limit = data?.current.build.limit ?? 8;
-
     if (chartRange === "1h") {
       const h = data?.history ?? [];
       return {
         load: h.map((x) => x.sys.loadPercent),
         mem: h.map((x) => x.sys.memUsedPercent),
-        queue: h.map((x) => x.build.active + x.build.queued),
-        queueMax: limit,
       };
     }
 
@@ -527,8 +509,6 @@ export default function Admin() {
     return {
       load: pts.map((p) => p.loadMax),
       mem: pts.map((p) => p.memMax),
-      queue: pts.map((p) => p.queueMax),
-      queueMax: limit,
     };
   }, [chartRange, data, history]);
 

@@ -24,7 +24,6 @@ function sample(over: Partial<MetricSample> = {}): MetricSample {
     uptimeSec: 10,
     proc: { rssMB: 100, heapUsedMB: 40, heapTotalMB: 60, cpuPercent: 5 },
     sys: { memUsedPercent: 50, totalMemMB: 16000, freeMemMB: 8000, load1: 1, cpuCount: 8, loadPercent: 12 },
-    build: { active: 0, queued: 0, limit: 8, utilizationPercent: 0, cached: 3 },
     collab: { rooms: 0, connections: 0 },
     deps: { mongo: true, redis: true },
     ...over,
@@ -34,21 +33,6 @@ function sample(over: Partial<MetricSample> = {}): MetricSample {
 describe("computeAlerts", () => {
   test("a healthy sample raises no alerts", () => {
     expect(computeAlerts(sample(), THRESHOLDS)).toEqual([]);
-  });
-
-  test("a full pool with no backlog is a warning (at capacity)", () => {
-    const alerts = computeAlerts(sample({ build: { active: 8, queued: 0, limit: 8, utilizationPercent: 100, cached: 0 } }), THRESHOLDS);
-    const build = alerts.find((a) => a.key === "build");
-
-    expect(build?.level).toBe("warn");
-  });
-
-  test("any backlog is critical (saturated — users waiting)", () => {
-    const alerts = computeAlerts(sample({ build: { active: 8, queued: 5, limit: 8, utilizationPercent: 100, cached: 0 } }), THRESHOLDS);
-    const build = alerts.find((a) => a.key === "build");
-
-    expect(build?.level).toBe("crit");
-    expect(build?.message).toContain("saturated");
   });
 
   test("memory crosses warn then crit thresholds", () => {
@@ -80,49 +64,49 @@ describe("statusFrom", () => {
   });
 
   test("crit dominates", () => {
-    expect(statusFrom([{ level: "warn", key: "mem", message: "" }, { level: "crit", key: "build", message: "" }])).toBe("crit");
+    expect(statusFrom([{ level: "warn", key: "mem", message: "" }, { level: "crit", key: "load", message: "" }])).toBe("crit");
   });
 });
 
 // Build a sample at a given time with specific overload values, for the incident-machine tests.
-function loaded(ts: number, loadPercent: number, memUsedPercent: number, queued: number): MetricSample {
+function loaded(ts: number, loadPercent: number, memUsedPercent: number): MetricSample {
   const s = sample();
-  return { ...s, ts, sys: { ...s.sys, loadPercent, memUsedPercent }, build: { ...s.build, queued, active: 8 } };
+  return { ...s, ts, sys: { ...s.sys, loadPercent, memUsedPercent } };
 }
 
 const warnAlert: Alert[] = [{ level: "warn", key: "mem", message: "" }];
-const critAlert: Alert[] = [{ level: "crit", key: "build", message: "" }];
+const critAlert: Alert[] = [{ level: "crit", key: "load", message: "" }];
 
 describe("stepIncident", () => {
   test("ok→warn→crit→ok yields one closed incident with escalated level, peak maxima, and duration", () => {
     let open: Incident | null = null;
     let closed: Incident | null = null;
 
-    ({ open, closed } = stepIncident(open, loaded(1_000, 150, 80, 0), warnAlert, "warn"));
+    ({ open, closed } = stepIncident(open, loaded(1_000, 150, 80), warnAlert, "warn"));
     expect(open?.level).toBe("warn");
     expect(closed).toBeNull();
 
-    ({ open, closed } = stepIncident(open, loaded(4_000, 220, 96, 5), critAlert, "crit"));
+    ({ open, closed } = stepIncident(open, loaded(4_000, 220, 96), critAlert, "crit"));
     expect(open?.level).toBe("crit");
     expect(closed).toBeNull();
 
-    ({ open, closed } = stepIncident(open, loaded(9_000, 10, 40, 0), [], "ok"));
+    ({ open, closed } = stepIncident(open, loaded(9_000, 10, 40), [], "ok"));
     expect(open).toBeNull();
     expect(closed?.level).toBe("crit");
     expect(closed?.durationSec).toBe(8); // (9000 - 1000) / 1000
-    expect(closed?.peak).toEqual({ loadPercent: 220, memUsedPercent: 96, queued: 5 });
-    expect(closed?.keys.sort()).toEqual(["build", "mem"]);
+    expect(closed?.peak).toEqual({ loadPercent: 220, memUsedPercent: 96 });
+    expect(closed?.keys.sort()).toEqual(["load", "mem"]);
   });
 
   test("staying ok never opens an incident", () => {
-    const r = stepIncident(null, loaded(1_000, 10, 30, 0), [], "ok");
+    const r = stepIncident(null, loaded(1_000, 10, 30), [], "ok");
     expect(r.open).toBeNull();
     expect(r.closed).toBeNull();
   });
 
   test("an ongoing overload stays open with nothing emitted", () => {
-    const r1 = stepIncident(null, loaded(1_000, 150, 80, 0), warnAlert, "warn");
-    const r2 = stepIncident(r1.open, loaded(2_000, 160, 82, 0), warnAlert, "warn");
+    const r1 = stepIncident(null, loaded(1_000, 150, 80), warnAlert, "warn");
+    const r2 = stepIncident(r1.open, loaded(2_000, 160, 82), warnAlert, "warn");
     expect(r2.open).not.toBeNull();
     expect(r2.closed).toBeNull();
   });
@@ -162,11 +146,10 @@ describe("bucketFor / parseRange / bucketStatus", () => {
   });
 
   test("bucketStatus reflects the worst peak in the bucket", () => {
-    expect(bucketStatus({ queuedMax: 1, memMax: 10, loadMax: 10 }, THRESHOLDS)).toBe("crit");
-    expect(bucketStatus({ queuedMax: 0, memMax: 97, loadMax: 10 }, THRESHOLDS)).toBe("crit");
-    expect(bucketStatus({ queuedMax: 0, memMax: 10, loadMax: 250 }, THRESHOLDS)).toBe("crit");
-    expect(bucketStatus({ queuedMax: 0, memMax: 88, loadMax: 10 }, THRESHOLDS)).toBe("warn");
-    expect(bucketStatus({ queuedMax: 0, memMax: 10, loadMax: 140 }, THRESHOLDS)).toBe("warn");
-    expect(bucketStatus({ queuedMax: 0, memMax: 50, loadMax: 50 }, THRESHOLDS)).toBe("ok");
+    expect(bucketStatus({ memMax: 97, loadMax: 10 }, THRESHOLDS)).toBe("crit");
+    expect(bucketStatus({ memMax: 10, loadMax: 250 }, THRESHOLDS)).toBe("crit");
+    expect(bucketStatus({ memMax: 88, loadMax: 10 }, THRESHOLDS)).toBe("warn");
+    expect(bucketStatus({ memMax: 10, loadMax: 140 }, THRESHOLDS)).toBe("warn");
+    expect(bucketStatus({ memMax: 50, loadMax: 50 }, THRESHOLDS)).toBe("ok");
   });
 });

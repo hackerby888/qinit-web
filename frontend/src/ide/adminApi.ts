@@ -9,7 +9,6 @@ export interface MetricSample {
   uptimeSec: number;
   proc: { rssMB: number; heapUsedMB: number; heapTotalMB: number; cpuPercent: number };
   sys: { memUsedPercent: number; totalMemMB: number; freeMemMB: number; load1: number; cpuCount: number; loadPercent: number };
-  build: { active: number; queued: number; limit: number; utilizationPercent: number; cached: number };
   collab: { rooms: number; connections: number };
   deps: { mongo: boolean; redis: boolean };
   status?: HealthStatus;
@@ -34,8 +33,6 @@ export interface HistoryPoint {
   loadAvg: number;
   memMax: number;
   memAvg: number;
-  queueMax: number;
-  queuedMax: number;
   status: HealthStatus;
 }
 
@@ -52,7 +49,7 @@ export interface Incident {
   endTs?: number;
   level: IncidentLevel;
   durationSec?: number;
-  peak: { loadPercent: number; memUsedPercent: number; queued: number };
+  peak: { loadPercent: number; memUsedPercent: number };
   keys: string[];
 }
 

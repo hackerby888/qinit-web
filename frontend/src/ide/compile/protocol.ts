@@ -37,10 +37,6 @@ export interface WorkerCompileResponse {
   idl?: ContractIdl;
   idlError?: string;
   diagnostics: CompileDiagnostic[];
-  // The local compiler couldn't take this request (unsupported construct, internal failure) — the
-  // caller should retry on the backend clang path. Distinct from ordinary source errors, which are
-  // real diagnostics the user must fix.
-  incapable: boolean;
   error?: string;
   ms: number;
 }

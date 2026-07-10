@@ -1,28 +1,29 @@
-// IDE compile facade: try the in-browser compiler (worker) first, fall back to the backend clang
-// build when the local compiler can't take the request. Results are normalized to the same
-// CompileResult shape the backend returns, so call sites don't care which path ran.
-import { compileContract as compileOnBackend, type CompileCallee, type CompileResult } from "../api";
-import type { WorkerCompileResponse, WorkerResponse } from "./protocol";
+// IDE compile facade: run the in-browser compiler (worker) and normalize its response to the
+// CompileResult shape the IDE consumes. This is the only compile path — there is no backend
+// compiler; a crashed or wedged worker surfaces as an error and the next compile gets a fresh one.
+import type { CompilerInfo } from "@qinit/compile/browser";
+import type { CompileCallee, CompileResult } from "../api";
+import type { WorkerCompileResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
 
-export interface SmartCompileRequest {
+export interface CompileRequest {
   source: string;
   name: string;
   slot: number;
-  skipVerify?: boolean;
   callees?: CompileCallee[];
 }
 
-export interface SmartCompileResult extends CompileResult {
-  via: "browser" | "backend";
+export interface BrowserCompileResult extends CompileResult {
   ms?: number;
 }
 
-// A wedged worker (pathological source) must not block builds forever — terminate and fall back.
+// A wedged worker (pathological source) must not block builds forever — terminate and report.
 const COMPILE_TIMEOUT_MS = 60_000;
+const HELLO_TIMEOUT_MS = 10_000;
 
 let _worker: Worker | null = null;
 let _seq = 0;
 const _pending = new Map<number, (r: WorkerCompileResponse | null) => void>();
+const _helloPending = new Map<number, (r: WorkerHelloResponse | null) => void>();
 
 function getWorker(): Worker | null {
   if (_worker) return _worker;
@@ -32,6 +33,14 @@ function getWorker(): Worker | null {
     return null;
   }
   _worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+    if (e.data.kind === "hello") {
+      const resolve = _helloPending.get(e.data.id);
+      if (resolve) {
+        _helloPending.delete(e.data.id);
+        resolve(e.data);
+      }
+      return;
+    }
     if (e.data.kind !== "compiled") return;
     const resolve = _pending.get(e.data.id);
     if (resolve) {
@@ -39,8 +48,8 @@ function getWorker(): Worker | null {
       resolve(e.data);
     }
   };
-  // A crashed worker (failed chunk load, OOM) fails all in-flight compiles over to the backend and
-  // is discarded — the next compile spawns a fresh one.
+  // A crashed worker (failed chunk load, OOM) fails all in-flight requests and is discarded — the
+  // next compile spawns a fresh one.
   _worker.onerror = () => {
     _worker?.terminate();
     _worker = null;
@@ -48,11 +57,15 @@ function getWorker(): Worker | null {
       _pending.delete(id);
       resolve(null);
     }
+    for (const [id, resolve] of _helloPending) {
+      _helloPending.delete(id);
+      resolve(null);
+    }
   };
   return _worker;
 }
 
-function compileInWorker(req: SmartCompileRequest): Promise<WorkerCompileResponse | null> {
+function compileInWorker(req: CompileRequest): Promise<WorkerCompileResponse | null> {
   const worker = getWorker();
   if (!worker) return Promise.resolve(null);
 
@@ -81,6 +94,46 @@ function compileInWorker(req: SmartCompileRequest): Promise<WorkerCompileRespons
   });
 }
 
+function requestHello(): Promise<WorkerHelloResponse | null> {
+  const worker = getWorker();
+  if (!worker) {
+    return Promise.resolve(null);
+  }
+
+  const id = ++_seq;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (_helloPending.has(id)) {
+        _helloPending.delete(id);
+        resolve(null);
+      }
+    }, HELLO_TIMEOUT_MS);
+    _helloPending.set(id, (r) => {
+      clearTimeout(timer);
+      resolve(r);
+    });
+    worker.postMessage({ id, kind: "hello" });
+  });
+}
+
+let _infoPromise: Promise<CompilerInfo | null> | null = null;
+
+// Identity of the in-browser compiler (embedded snapshot pin + versions). Resolves null when the
+// worker can't start or doesn't answer. A null result isn't cached, so a later call retries
+// against a fresh worker.
+export function getCompilerInfo(): Promise<CompilerInfo | null> {
+  if (!_infoPromise) {
+    _infoPromise = requestHello().then((r) => {
+      if (!r) {
+        _infoPromise = null;
+        return null;
+      }
+      return r.compilerInfo;
+    });
+  }
+  return _infoPromise;
+}
+
 // btoa on a giant binary string built with spread overflows the arg limit — chunk it.
 function bytesToBase64(bytes: Uint8Array): string {
   let bin = "";
@@ -91,9 +144,9 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
-function toCompileResult(r: WorkerCompileResponse): SmartCompileResult {
+function toCompileResult(r: WorkerCompileResponse): BrowserCompileResult {
   if (!r.ok || !r.wasm) {
-    return { ok: false, diagnostics: r.diagnostics, error: r.error, via: "browser", ms: r.ms };
+    return { ok: false, diagnostics: r.diagnostics, error: r.error, ms: r.ms };
   }
   return {
     ok: true,
@@ -103,26 +156,17 @@ function toCompileResult(r: WorkerCompileResponse): SmartCompileResult {
     idl: r.idl,
     idlError: r.idlError,
     diagnostics: r.diagnostics,
-    via: "browser",
     ms: r.ms,
   };
 }
 
-// Compile through the in-browser worker; use the backend when the local compiler is incapable
-// (unsupported construct, worker crash/timeout). With fallbackOnErrors (Compile & Run), ANY local
-// failure retries on the backend so the user always gets the authoritative clang verdict; without
-// it (background diagnostics), ordinary local source errors surface directly — no backend traffic
-// per keystroke.
-export async function compileSmart(req: SmartCompileRequest, opts?: { fallbackOnErrors?: boolean }): Promise<SmartCompileResult> {
+// Compile through the in-browser worker. Failures are final: source errors carry diagnostics, a
+// crash/timeout carries an error string.
+export async function compileInBrowser(req: CompileRequest): Promise<BrowserCompileResult> {
   const local = await compileInWorker(req);
 
-  if (local && local.ok) {
-    return toCompileResult(local);
+  if (!local) {
+    return { ok: false, diagnostics: [], error: "the in-browser compiler crashed or timed out — retry the compile" };
   }
-  if (local && !local.incapable && !opts?.fallbackOnErrors) {
-    return toCompileResult(local);
-  }
-
-  const backend = await compileOnBackend(req);
-  return { ...backend, via: "backend" };
+  return toCompileResult(local);
 }

@@ -17,9 +17,10 @@ the **API** (Bun/Express), backed by **MongoDB** (durable storage) and optional 
 
 - The sibling **`Qinit/`** monorepo checked out next to `Qinit-web/` (the API imports `@qinit/build`; the SPA
   bundles the engine from `../../Qinit`). The Docker build context is the parent dir for this reason.
-- The **qinit toolchain** for the compile endpoint: wasi-sdk + core headers. Provision on the host with
-  `qinit up` (populates `~/.cache/qinit`); compose mounts it read-only into the API. Without it the API serves
-  fine but `/api/compile` returns "core headers not found".
+- The **core headers** for the system-contract catalog/source endpoints. Provision on the host with
+  `qinit up` (populates `~/.cache/qinit`); compose mounts it read-only into the API. Without them the API
+  serves fine but the system-contract catalog is empty. Contract compilation itself happens in the browser
+  (`@qinit/compile` worker) — the API has no compile endpoint.
 
 ## Quick start
 
@@ -82,11 +83,11 @@ Ship stdout/stderr to your log aggregator.
 ## Scaling notes (multiple API instances)
 
 - Set `REDIS_URL` — collab fans out across instances and a single-writer lock debounces the cloud write-back.
-- Current gaps for >1 instance: the **rate limiter** and the **build cache** are per-instance (in-memory) — a
-  shared Redis store for both is a follow-up. Sticky sessions are not required (auth is stateless JWT).
+- Current gaps for >1 instance: the **rate limiter** is per-instance (in-memory) — a shared Redis store is a
+  follow-up. Sticky sessions are not required (auth is stateless JWT).
 
-## Compile-capable images (toolchain)
+## Core headers (system contracts)
 
-The API image does **not** bake the wasi-sdk/clang. Either (a) mount a host `~/.cache/qinit` populated by
+The API image does **not** bake the core headers. Either (a) mount a host `~/.cache/qinit` populated by
 `qinit up` (compose default), or (b) build a derived image that runs `qinit up` at build time. Set `QINIT_CORE`
 to override the header snapshot path.

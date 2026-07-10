@@ -16,10 +16,6 @@ import type { WorkerCompileRequest, WorkerCompileResponse, WorkerRequest } from 
 // make every deployed module reserve far more memory than a browser tab should.
 const ARENA_SZ = 64 * 1024 * 1024;
 
-// Diagnostics the TS compiler emits when it *refuses* a construct rather than the source being
-// wrong — those requests belong on the backend clang path.
-const INCAPABLE = /^Codegen failed|unsupported|not supported|not yet supported/i;
-
 const toHex = (bytes: Uint8Array): string => {
   let s = "";
   for (const b of bytes) s += b.toString(16).padStart(2, "0");
@@ -32,7 +28,7 @@ const mapDiagnostics = (ds: CompileDiagnostic[]) =>
 async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileResponse; transfer: Transferable[] }> {
   const started = performance.now();
   const fail = (partial: Partial<WorkerCompileResponse>): { res: WorkerCompileResponse; transfer: Transferable[] } => ({
-    res: { id: req.id, kind: "compiled", ok: false, diagnostics: [], incapable: false, ms: performance.now() - started, ...partial },
+    res: { id: req.id, kind: "compiled", ok: false, diagnostics: [], ms: performance.now() - started, ...partial },
     transfer: [],
   });
 
@@ -42,7 +38,7 @@ async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileRe
     for (const c of req.callees ?? []) {
       const cr = await compileContract({ source: c.source, name: c.name, slot: c.slot, arenaSz: ARENA_SZ });
       if (cr.diagnostics.some((d) => d.severity === "error")) {
-        return fail({ incapable: true, error: `callee ${c.name} failed to compile locally` });
+        return fail({ diagnostics: mapDiagnostics(cr.diagnostics), error: `callee ${c.name} failed to compile` });
       }
       callees.push({
         name: c.name,
@@ -64,10 +60,7 @@ async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileRe
 
     const errors = r.diagnostics.filter((d) => d.severity === "error");
     if (errors.length || r.wasm.byteLength === 0) {
-      return fail({
-        diagnostics: mapDiagnostics(r.diagnostics),
-        incapable: errors.some((d) => d.category === "fidelity" || INCAPABLE.test(d.message)),
-      });
+      return fail({ diagnostics: mapDiagnostics(r.diagnostics) });
     }
 
     // Rich IDL — the same derivation the backend runs (extractIdl on the contract source), so the
@@ -96,13 +89,12 @@ async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileRe
         idl,
         idlError,
         diagnostics: mapDiagnostics(r.diagnostics),
-        incapable: false,
         ms: performance.now() - started,
       },
       transfer: [buf],
     };
   } catch (e) {
-    return fail({ incapable: true, error: e instanceof Error ? e.message : String(e) });
+    return fail({ error: e instanceof Error ? e.message : String(e) });
   }
 }
 
