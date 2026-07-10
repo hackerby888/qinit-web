@@ -33,10 +33,19 @@ async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileRe
   });
 
   try {
+    // Slot order matters: a callee may itself invoke a lower-index contract (QSWAP → QUTIL → QX),
+    // so each callee compiles with every already-compiled lower callee cascaded in.
     const callees: CalleeIdl[] = [];
     const calleeSources: Array<{ name: string; source: string }> = [];
-    for (const c of req.callees ?? []) {
-      const cr = await compileContract({ source: c.source, name: c.name, slot: c.slot, arenaSz: ARENA_SZ });
+    for (const c of [...(req.callees ?? [])].sort((a, b) => a.slot - b.slot)) {
+      const cr = await compileContract({
+        source: c.source,
+        name: c.name,
+        slot: c.slot,
+        arenaSz: ARENA_SZ,
+        callees: callees.length ? callees : undefined,
+        calleeSources: calleeSources.length ? calleeSources : undefined,
+      });
       if (cr.diagnostics.some((d) => d.severity === "error")) {
         return fail({ diagnostics: mapDiagnostics(cr.diagnostics), error: `callee ${c.name} failed to compile` });
       }

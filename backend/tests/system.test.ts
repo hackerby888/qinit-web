@@ -1,7 +1,7 @@
 // The IDE's system-contract endpoints: the catalog (pick-list) and source-by-name. The browser compiles the
 // source itself, so the backend only needs the catalog shape and the no-core / unknown-name branches here.
 import { test, expect, describe } from "bun:test";
-import { systemCatalog, systemSource } from "../src/system";
+import { systemCatalog, systemSource, systemSources } from "../src/system";
 
 describe("system contracts API", () => {
   test("catalog: array of {index,name,idl}; QX is index 1 when a snapshot is present", () => {
@@ -31,7 +31,25 @@ describe("system contracts API", () => {
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.index).toBe(1);
+      expect(r.stateType).toBe("QX");
       expect(r.source.length).toBeGreaterThan(1000);
+    }
+  });
+
+  test("systemSources: one entry per catalog contract, stateType kept distinct from the ticker", () => {
+    const cat = systemCatalog();
+    const r = systemSources();
+    if (!cat.length) {
+      return;
+    }
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.contracts.length).toBe(cat.length);
+      expect(r.contracts.every((c) => typeof c.source === "string" && c.source.length > 0 && typeof c.stateType === "string")).toBe(true);
+      const qtry = r.contracts.find((c) => c.name === "QTRY");
+      if (qtry) {
+        expect(qtry.stateType).toBe("QUOTTERY");
+      }
     }
   });
 });

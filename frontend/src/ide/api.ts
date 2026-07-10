@@ -30,9 +30,12 @@ export interface CompileCallee {
 }
 
 // A built-in system contract the IDE can deploy onto its in-browser virtual node (QX, QEARN, …).
+// `stateType` is the contract's state-struct name, which can differ from the on-chain ticker
+// (QTRY → QUOTTERY) and is what the compiler compiles by.
 export interface SystemContractEntry {
   index: number;
   name: string;
+  stateType?: string;
   idl?: ContractIdl;
 }
 
@@ -51,6 +54,7 @@ export async function fetchSystemCatalog(): Promise<SystemContractEntry[]> {
 
 export interface SystemSource {
   name: string;
+  stateType?: string;
   index: number;
   source: string;
 }
@@ -69,7 +73,25 @@ export async function fetchSystemSource(name: string): Promise<SystemSource | { 
   if (!r.ok || !body || typeof body.source !== "string") {
     return { error: body?.error ?? `system-contract source request failed (HTTP ${r.status} ${r.statusText})` };
   }
-  return { name: body.name, index: body.index, source: body.source };
+  return { name: body.name, stateType: body.stateType, index: body.index, source: body.source };
+}
+
+// Every system contract's source in one request — the callee retry needs the target's lower-index
+// siblings compiled alongside it.
+export async function fetchSystemSources(): Promise<SystemSource[] | { error: string }> {
+  let r: Response;
+  try {
+    r = await fetch("/api/system-contracts/sources");
+  } catch (e) {
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    return { error: `network error fetching the system-contract sources — ${detail}` };
+  }
+
+  const body = (await r.json().catch(() => null)) as { contracts?: SystemSource[]; error?: string } | null;
+  if (!r.ok || !body?.contracts) {
+    return { error: body?.error ?? `system-contract sources request failed (HTTP ${r.status} ${r.statusText})` };
+  }
+  return body.contracts;
 }
 
 export function base64ToBytes(b64: string): Uint8Array {

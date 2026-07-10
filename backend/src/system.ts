@@ -22,19 +22,20 @@ function corePath(): string | null {
   return null;
 }
 
-export interface SystemCatalogEntry { index: number; name: string; idl: unknown }
+export interface SystemCatalogEntry { index: number; name: string; stateType: string; idl: unknown }
 
-// The pick-list: index + name + IDL (drives the call forms), no source — that comes from systemSource.
+// The pick-list: index + name + state-struct type (what the compiler compiles by) + IDL (drives the
+// call forms), no source — that comes from systemSource.
 export function systemCatalog(): SystemCatalogEntry[] {
   const core = corePath();
   if (!core) {
     return [];
   }
-  return systemContracts(core).map((c) => ({ index: c.index, name: c.name, idl: c.idl }));
+  return systemContracts(core).map((c) => ({ index: c.index, name: c.name, stateType: c.stateType, idl: c.idl }));
 }
 
 export type SystemSourceResult =
-  | { ok: true; name: string; index: number; source: string }
+  | { ok: true; name: string; stateType: string; index: number; source: string }
   | { ok: false; status: number; error: string };
 
 // The source of a named system contract, for the browser to compile at its canonical slot index.
@@ -49,5 +50,15 @@ export function systemSource(name: string): SystemSourceResult {
     return { ok: false, status: 404, error: `unknown system contract '${name}'` };
   }
 
-  return { ok: true, name: c.name, index: c.index, source: c.source };
+  return { ok: true, name: c.name, stateType: c.stateType, index: c.index, source: c.source };
+}
+
+// Every system contract's source, for the browser's callee retry: an inter-contract call needs the
+// lower-index callees compiled alongside the target.
+export function systemSources(): { ok: true; contracts: Array<{ name: string; stateType: string; index: number; source: string }> } | { ok: false; status: number; error: string } {
+  const core = corePath();
+  if (!core) {
+    return { ok: false, status: 503, error: "core headers not found — set QINIT_CORE or run `qinit node run`." };
+  }
+  return { ok: true, contracts: systemContracts(core).map((c) => ({ name: c.name, stateType: c.stateType, index: c.index, source: c.source })) };
 }

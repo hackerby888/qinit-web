@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { getDb } from "./db";
 import { latestRelease, bumpVisits } from "./release";
-import { systemCatalog, systemSource } from "./system";
+import { systemCatalog, systemSource, systemSources } from "./system";
 import { startAuth, authCallback, requireAuth, me, devToken } from "./auth";
 import { projectsList, projectGet, projectPut, projectDelete, currentGet, currentPut, shareCreate, shareList, shareRevoke, shareResolve } from "./projects";
 import { importRepo, exportGist } from "./github";
@@ -64,13 +64,21 @@ app.get("/ready", (_req, res) => {
 // Built-in system contracts for the IDE's in-browser virtual node: the catalog (picker) + source-by-name.
 // The browser compiles the source itself (@qinit/compile worker) and deploys the wasm in-page.
 app.get("/api/system-contracts", (_req, res) => res.json({ contracts: systemCatalog() }));
+app.get("/api/system-contracts/sources", (_req, res) => {
+  const r = systemSources();
+  if (!r.ok) {
+    res.status(r.status).json({ error: r.error });
+    return;
+  }
+  res.json({ contracts: r.contracts });
+});
 app.get("/api/system-contracts/:name/source", (req, res) => {
   const r = systemSource(req.params.name);
   if (!r.ok) {
     res.status(r.status).json({ error: r.error });
     return;
   }
-  res.json({ name: r.name, index: r.index, source: r.source });
+  res.json({ name: r.name, stateType: r.stateType, index: r.index, source: r.source });
 });
 
 // Auth (Google / GitHub OAuth) + the authed user. The dev mint must precede the :provider route.

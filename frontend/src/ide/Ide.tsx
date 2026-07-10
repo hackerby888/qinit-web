@@ -29,7 +29,7 @@ import { GitHubDialog } from "./GitHubDialog";
 import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
-import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, type CompileResult, type SystemContractEntry } from "./api";
+import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type CompileResult, type SystemContractEntry } from "./api";
 import { compileInBrowser, getCompilerInfo } from "./compile/local";
 import type { CompilerInfo } from "@qinit/compile/browser";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent } from "./engine";
@@ -2072,7 +2072,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // panel is live from the start) and before the first deploy.
   // Fetch a built-in system contract's source (QX, …), compile it in the browser, and deploy it into the
   // in-browser virtual node at its canonical index, then register it like any deployed contract so the call
-  // forms + inspector work.
+  // forms + inspector work. A contract that invokes lower-index siblings (QSWAP → QX) fails standalone with
+  // "no callee IDL" — the retry compiles it with every lower-index system contract as a callee.
   const deploySystem = useCallback(async (eng: IdeEngine, name: string): Promise<boolean> => {
     appendLog(`compiling system contract ${name}…`);
     const src = await fetchSystemSource(name);
@@ -2081,8 +2082,22 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       notify.error(errorMessage(src.error, `Deploy of system contract ${name} failed`));
       return false;
     }
+    const cname = src.stateType ?? src.name;
 
-    const res = await compileInBrowser({ source: src.source, name: src.name, slot: src.index });
+    let res = await compileInBrowser({ source: src.source, name: cname, slot: src.index });
+    if (!res.ok) {
+      const all = await fetchSystemSources();
+      const callees = "error" in all
+        ? []
+        : all.filter((o) => o.index < src.index).map((o) => ({ name: o.stateType ?? o.name, source: o.source, slot: o.index }));
+      if (callees.length) {
+        appendLog(`  retrying with ${callees.length} lower-index system contracts as callees…`);
+        const retry = await compileInBrowser({ source: src.source, name: cname, slot: src.index, callees });
+        if (retry.ok) {
+          res = retry;
+        }
+      }
+    }
     if (!res.ok || !res.wasm || !res.idl) {
       const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s)` : "compile failed");
       appendLog(`✗ ${name}: ${why}`);
@@ -2097,7 +2112,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     try {
       const wasm = base64ToBytes(res.wasm);
       await eng.deploy(src.index, wasm, res.idl);
-      eng.registerSource(src.index, src.source, src.name);
+      eng.registerSource(src.index, src.source, cname);
       const address = await eng.addressOf(src.index);
       deployedRef.current = { ...deployedRef.current, [name]: { name, slot: src.index, address, idl: res.idl, source: src.source, wasm, calls: [] } };
       setDeployed({ ...deployedRef.current });
