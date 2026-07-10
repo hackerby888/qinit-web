@@ -30,6 +30,7 @@ import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { compileContract, base64ToBytes, fetchBuildQueue, fetchSystemCatalog, compileSystem, type CompileResult, type BuildQueue, type SystemContractEntry } from "./api";
+import { compileSmart } from "./compile/local";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent } from "./engine";
 import { Debugger } from "./Debugger";
 import { TxExplorer, type TxRow } from "./TxExplorer";
@@ -2028,7 +2029,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       } else {
         const slot = assignSlot(deployedRef.current, name);
         const callees = resolveCallees(filesRef.current, deployedRef.current, src);
-        res = await compileContract({ source: src, name, slot, skipVerify: true, callees });
+        res = await compileSmart({ source: src, name, slot, skipVerify: true, callees });
       }
     } catch {
       res = null;
@@ -2212,7 +2213,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       // A leaf contract with a warm background-compiled artifact deploys instantly; everything else builds fresh.
       const warm = warmRef.current;
       const cached = calleeArgs.length === 0 && warm && warm.source === src && warm.name === name ? warm.res : null;
-      const res = cached ?? await compileContract({ source: src, name, slot, skipVerify: true, callees: calleeArgs });
+      const fresh = cached ? null : await compileSmart({ source: src, name, slot, skipVerify: true, callees: calleeArgs }, { fallbackOnErrors: true });
+      const res = cached ?? fresh!;
+      if (fresh?.via === "browser") {
+        appendLog(`  compiled in browser (${Math.round(fresh.ms ?? 0)} ms)`);
+      }
       if (name === contractName) {
         setResult(res);
         applyClangMarkers(res);

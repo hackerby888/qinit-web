@@ -1,9 +1,7 @@
 // Compile client — POST the editor source to the backend, which runs @qinit/build (native clang +
 // core headers) and returns the wasm (base64) + IDL + diagnostics. The frontend then runs the wasm
-// in-page via ./engine.
-// Also supports local compilation via @qinit/compile (offline/fallback path).
+// in-page via ./engine. The in-browser compile path lives in ./compile/local.ts (worker facade).
 import type { ContractIdl } from "@qinit/build/idl";
-import { compileContract as compileLocalTs } from "@qinit/compile";
 
 export interface CompileDiagnostic {
   severity: "error" | "warning";
@@ -80,74 +78,6 @@ export interface BuildQueue {
   active: number;
   queued: number;
   limit: number;
-}
-
-// Cache for the qpi.h headers (fetched once from backend, used by local compiler).
-let _qpiHeaderCache: string | null = null;
-let _qpiHeaderPromise: Promise<string> | null = null;
-
-async function fetchQpiHeader(): Promise<string> {
-  if (_qpiHeaderCache) return _qpiHeaderCache;
-  if (_qpiHeaderPromise) return _qpiHeaderPromise;
-
-  _qpiHeaderPromise = (async () => {
-    try {
-      const r = await fetch("/api/qpi-header");
-      if (r.ok) {
-        _qpiHeaderCache = await r.text();
-        return _qpiHeaderCache!;
-      }
-    } catch {
-      // Backend unavailable — return empty (local compile will fail gracefully)
-    }
-    _qpiHeaderCache = "";
-    return "";
-  })();
-
-  return _qpiHeaderPromise;
-}
-
-// Compile a contract locally using the in-browser TS compiler (no backend round-trip).
-// Falls back to empty result if local compilation is unavailable.
-export async function compileLocal(req: {
-  source: string;
-  name: string;
-  slot: number;
-  testSource?: string;
-  testName?: string;
-}): Promise<CompileResult> {
-  try {
-    const qpiHeader = await fetchQpiHeader();
-    if (!qpiHeader) {
-      return { ok: false, diagnostics: [], error: "Local compiler requires qpi.h headers — backend unavailable to fetch them" };
-    }
-
-    const result = req.testSource
-      ? await compileLocalTs({ source: req.source, name: req.name, slot: req.slot, qpiHeader, testSource: req.testSource, testPath: req.testName })
-      : await compileLocalTs({ source: req.source, name: req.name, slot: req.slot, qpiHeader });
-
-    const diagnostics = result.diagnostics.map((d) => ({
-      severity: d.severity,
-      line: d.span.line,
-      column: d.span.col,
-      message: d.message,
-    }));
-
-    if (result.diagnostics.some((d) => d.severity === "error")) {
-      return { ok: false, diagnostics, error: "Local compilation failed" };
-    }
-
-    const wasmBase64 = btoa(String.fromCharCode(...result.wasm));
-    return {
-      ok: true,
-      wasm: wasmBase64,
-      size: result.wasm.byteLength,
-      idl: result.idl as unknown as ContractIdl,
-      diagnostics,
-    };
-  } catch (e: any) {
-    return { ok: false, diagnostics: [], error: `Local compiler error: ${e.message}` };
-  }
 }
 
 // Poll the backend build-pool state while a compile is pending, to show "waiting for a build slot". Returns

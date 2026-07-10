@@ -138,6 +138,64 @@ declare module "@qinit/core" {
   export function deriveIdentity(seed: string): Promise<{ identity: string; publicKeyHex: string }>;
   export function identityToBytes(id: string): Uint8Array;
   export function bytesToIdentity(bytes: Uint8Array): Promise<string>;
+  export function initK12(): Promise<void>;
+  export function k12Sync(bytes: Uint8Array): Uint8Array;
+}
+
+declare module "@qinit/compile/browser" {
+  export interface CompileDiagnostic {
+    severity: "error" | "warning";
+    message: string;
+    span: { start: number; end: number; line: number; col: number };
+    category?: "fidelity";
+  }
+  export interface MinimalIdlEntry {
+    name: string;
+    inputType: number;
+    inSize: number;
+    outSize: number;
+  }
+  export interface ContractIdl {
+    name: string;
+    slot: number;
+    functions: MinimalIdlEntry[];
+    procedures: MinimalIdlEntry[];
+    stateSize: number;
+    sysprocMask: number;
+  }
+  export interface CalleeIdl {
+    name: string;
+    index: number;
+    functions: Record<string, { inputType: number; inSize: number; outSize: number }>;
+    procedures: Record<string, { inputType: number; inSize: number; outSize: number }>;
+  }
+  export interface CompileResult {
+    wasm: Uint8Array;
+    diagnostics: CompileDiagnostic[];
+    idl: ContractIdl;
+    timings?: Record<string, number>;
+  }
+  export interface CompilerInfo {
+    qinitVersion: string;
+    coreCommit: string;
+    snapshotHash: string;
+    generatorVersion: number;
+    protocolVersion: number;
+  }
+  export const COMPILER_PROTOCOL_VERSION: number;
+  export const compilerInfo: CompilerInfo;
+  export const qpiSnapshot: string;
+  export function compileContract(opts: {
+    source: string;
+    name: string;
+    slot: number;
+    arenaSz?: number;
+    callees?: CalleeIdl[];
+    calleeSources?: Array<{ name: string; source: string }>;
+    qpiHeader?: string;
+    strict?: boolean;
+    onPhase?: (phase: string) => void | Promise<void>;
+  }): Promise<CompileResult>;
 }
 
 declare module "@qinit/build/idl" {
