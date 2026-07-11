@@ -6,11 +6,11 @@
 // the qinit CLI's local-compile flow; their source also rides along so the caller can read the
 // callee's nested output types.
 /// <reference lib="webworker" />
-import { compileContract, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compile/browser";
+import { compileContract, compileGtest, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compile/browser";
 import type { CalleeIdl, CompileDiagnostic } from "@qinit/compile/browser";
 import { extractIdl } from "@qinit/build/idl";
 import { initK12, k12Sync } from "@qinit/core";
-import type { WorkerCompileRequest, WorkerCompileResponse, WorkerRequest } from "./protocol";
+import type { WorkerCompileRequest, WorkerCompileResponse, WorkerGtestRequest, WorkerGtestResponse, WorkerRequest } from "./protocol";
 
 // Matches the backend's browser default (LITE_WASM_ARENA_SZ) — the 1 GiB compiler default would
 // make every deployed module reserve far more memory than a browser tab should.
@@ -107,9 +107,39 @@ async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileRe
   }
 }
 
+async function handleGtest(req: WorkerGtestRequest): Promise<WorkerGtestResponse> {
+  const started = performance.now();
+  try {
+    const result = await compileGtest({ source: req.source, testSource: req.testSource, name: req.name, slot: req.slot });
+    const errors = result.diagnostics.filter((item) => item.severity === "error");
+    return {
+      id: req.id,
+      kind: "gtest-compiled",
+      ok: errors.length === 0 && !!result.program,
+      program: result.program,
+      wasm: result.wasm,
+      diagnostics: mapDiagnostics(result.diagnostics),
+      ms: performance.now() - started,
+    };
+  } catch (error) {
+    return {
+      id: req.id,
+      kind: "gtest-compiled",
+      ok: false,
+      diagnostics: [],
+      error: error instanceof Error ? error.message : String(error),
+      ms: performance.now() - started,
+    };
+  }
+}
+
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (e.data.kind === "hello") {
     self.postMessage({ id: e.data.id, kind: "hello", protocolVersion: COMPILER_PROTOCOL_VERSION, compilerInfo });
+    return;
+  }
+  if (e.data.kind === "compile-gtest") {
+    void handleGtest(e.data).then((response) => self.postMessage(response, response.wasm ? [response.wasm.buffer] : []));
     return;
   }
   void handle(e.data).then(({ res, transfer }) => self.postMessage(res, transfer));

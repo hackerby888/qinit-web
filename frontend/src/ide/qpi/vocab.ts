@@ -35,11 +35,11 @@ export const QPI_BUILTINS = [
   "qpi", "state", "input", "output", "locals",
 ];
 
-// The gtest harness vocabulary (core-lite extensions/lite_test.h) — coloured like the contract macros
+// The core-lite gtest harness vocabulary — coloured like the contract macros
 // (`annotation`). Only meaningful in a .cpp test; harmless on a contract (these never appear there).
 export const QPI_GTEST = [
   "TEST",
   "EXPECT_EQ", "EXPECT_NE", "EXPECT_LT", "EXPECT_LE", "EXPECT_GT", "EXPECT_GE", "EXPECT_TRUE", "EXPECT_FALSE",
   "ASSERT_EQ", "ASSERT_NE", "ASSERT_LT", "ASSERT_LE", "ASSERT_GT", "ASSERT_GE", "ASSERT_TRUE", "ASSERT_FALSE",
-  "ContractTest",
+  "ContractTesting",
 ];

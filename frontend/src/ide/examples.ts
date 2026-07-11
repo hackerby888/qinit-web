@@ -520,31 +520,53 @@ test("increments again on the same chain", async () => {
 });
 `;
 
-const counterGtest = `// Counter gtest — C++ tests that run in the engine (▶ Run gtest) and are the form Qubic mainnet review
-// wants. Compile & Run Counter first; the harness (ContractTest, TEST / EXPECT_*) + the contract's types
-// compile in around this file. Each TEST gets a fresh, isolated genesis node (like core's GoogleTest).
+const counterGtest = `// Standard core-lite contract_testing.h gtest. The same source builds natively with
+// core-lite and compiles in-browser through Qinit's TS gtest compiler.
+#define NO_UEFI
+#include "contract_testing.h"
+
+class ContractTestingCounter : protected ContractTesting {
+public:
+    ContractTestingCounter() {
+        initEmptySpectrum();
+        initEmptyUniverse();
+        INIT_CONTRACT(Counter);
+        callSystemProcedure(Counter_CONTRACT_INDEX, INITIALIZE);
+    }
+    void fund(const id& account, uint64 amount) { increaseEnergy(account, amount); }
+    Counter::Inc_output inc(const id& user, sint64 amount = 0) {
+        Counter::Inc_input input{};
+        Counter::Inc_output output{};
+        invokeUserProcedure(Counter_CONTRACT_INDEX, 1, input, output, user, amount);
+        return output;
+    }
+    Counter::Get_output get() const {
+        Counter::Get_input input{};
+        Counter::Get_output output{};
+        callFunction(Counter_CONTRACT_INDEX, 1, input, output);
+        return output;
+    }
+};
+
 TEST(Counter, StartsAtZero) {
-    ContractTest t;
-    Counter::Get_input in{};
-    EXPECT_EQ(t.call<Counter::Get_output>(1, in).value, 0ull);   // function it=1
+    ContractTestingCounter t;
+    EXPECT_EQ(t.get().value, 0ull);
 }
 
-TEST(Counter, IncrementsAreCumulative) {
-    ContractTest t;
-    QPI::id user = t.idFromSeed("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+TEST(Counter, Increments) {
+    ContractTestingCounter t;
+    const id user = id::randomValue();
     t.fund(user, 1000000000);
-
-    Counter::Inc_input in{};
-    for (int i = 0; i < 5; i++) {
-        t.invoke<Counter::Inc_output>(1, in, 0, user);           // procedure it=1: (it, input, amount, origin)
-    }
-    EXPECT_EQ(t.state<Counter::StateData>().counter, 5ull);      // read StateData directly
+    Counter::Inc_output ignored = t.inc(user);
+    (void)ignored;
+    EXPECT_EQ(((Counter::StateData*)contractStates[Counter_CONTRACT_INDEX])->counter, 1ull);
+    EXPECT_EQ(t.get().value + 1ull, 2ull);
 }
 
 TEST(Counter, EachTestStartsFresh) {
-    ContractTest t;                  // a new fixture -> counter is 0 again, not 5
-    Counter::Get_input g{};
-    EXPECT_EQ(t.call<Counter::Get_output>(1, g).value, 0ull);
+    ContractTestingCounter t;
+    Counter::Get_output output = t.get();
+    EXPECT_EQ(output.value, 0ull);
 }
 `;
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { compileContract } from "@qinit/compile/browser";
+import { compileContract, compileGtest } from "@qinit/compile/browser";
 import { STARTER } from "../../src/ide/examples";
 import { extractIdl } from "@qinit/build/idl";
 import { IdeEngine } from "../../src/ide/engine";
@@ -34,6 +34,23 @@ test("Counter starter LOG_INFO compiles and is decoded after Inc", async () => {
   expect(seen[0]).toContain("INFO CounterLog");
   expect(seen[0]).toContain("CounterIncremented");
   expect(seen[0]).toContain('"value":"1"');
+});
+
+test("Counter core-lite gtest compiles and runs in-browser without clang", async () => {
+  const source = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
+  const testSource = STARTER.find((file) => file.file === "Counter.test.cpp")?.source ?? "";
+  const contract = await compileContract({ source, name: "Counter", slot: 28, arenaSz: 64 * 1024 });
+  const gtest = await compileGtest({ source, testSource, name: "Counter", slot: 28 });
+  expect(gtest.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
+  expect(gtest.program).toBeDefined();
+
+  const engine = new IdeEngine();
+  const results = await engine.runGtest(gtest.program!, gtest.wasm!, { 28: contract.wasm });
+  expect(results.map((result) => [result.name, result.passed])).toEqual([
+    ["Counter.StartsAtZero", true],
+    ["Counter.Increments", true],
+    ["Counter.EachTestStartsFresh", true],
+  ]);
 });
 
 test("detailed function calls decode LOG_INFO for the Calls UI", async () => {

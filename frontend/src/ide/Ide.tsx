@@ -30,7 +30,7 @@ import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type CompileResult, type SystemContractEntry } from "./api";
-import { compileInBrowser, getCompilerInfo } from "./compile/local";
+import { compileGtestInBrowser, compileInBrowser, getCompilerInfo } from "./compile/local";
 import type { CompilerInfo } from "@qinit/compile/browser";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent, EngineMemoryUsage } from "./engine";
 import { Debugger } from "./Debugger";
@@ -2433,11 +2433,33 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  // C++ gtest files needed the removed backend clang path (they compile the test INTO the contract wasm);
-  // the in-browser compiler has no gtest support yet, so running one reports that directly. Use .test.ts
-  // scenario tests instead.
-  const runGtestFile = () => {
-    setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: "C++ gtest files aren't supported — the in-browser compiler can't build them (the backend clang path was removed). Write a .test.ts scenario test instead.", logs: [] }], running: false, title: ws.active });
+  // Compile the authoritative core-lite ContractTesting source into a portable test program, then execute it
+  // against the same deployed Wasm bytes on a throwaway worker-owned virtual node.
+  const runGtestFile = async () => {
+    const fileContract = ws.active.replace(/\.test\.(cpp|cc|cxx)$/i, "").replace(/\.(cpp|cc|cxx)$/i, "");
+    const target = deployedRef.current[fileContract] ?? (Object.keys(deployedRef.current).length === 1 ? Object.values(deployedRef.current)[0] : undefined);
+    setTestRun({ results: [], running: true, title: ws.active });
+    if (!target) {
+      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: `deploy '${fileContract}' before running its gtest`, logs: [] }], running: false, title: ws.active });
+      return;
+    }
+    try {
+      const compiled = await compileGtestInBrowser({ source: target.source, testSource: source, name: target.name, slot: target.slot });
+      if (!compiled.ok || !compiled.program || !compiled.wasm) {
+        const detail = compiled.error ?? (compiled.diagnostics.map((item) => `L${item.line}:${item.column} ${item.message}`).join("\n") || "gtest compilation failed");
+        setTestRun({ results: [{ name: "(gtest compile)", ok: false, ms: Math.round(compiled.ms ?? 0), error: detail, logs: [] }], running: false, title: ws.active });
+        return;
+      }
+      const contracts = Object.fromEntries(Object.values(deployedRef.current).map((contract) => [contract.slot, contract.wasm]));
+      const results = await (await ensureEngine()).runGtest(compiled.program, compiled.wasm, contracts);
+      setTestRun({
+        results: results.map((result) => ({ name: result.name, ok: result.passed, ms: 0, error: result.message || undefined, logs: [] })),
+        running: false,
+        title: ws.active,
+      });
+    } catch (error) {
+      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: error instanceof Error ? error.message : String(error), logs: [] }], running: false, title: ws.active });
+    }
   };
 
   const formatOut = (out: unknown): string =>

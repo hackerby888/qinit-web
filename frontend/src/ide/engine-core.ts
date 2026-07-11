@@ -2,7 +2,8 @@
 //   function (read)  -> querySmartContract (no signing)
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> include in the next tick now
 // Worker-owned engine implementation. The browser-facing IdeEngine proxy lives in ./engine.ts.
-import { VirtualNode, initK12, runTests, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
+import { VirtualNode, initK12, runCompiledGtest, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
+import type { GtestProgram } from "@qinit/compile/browser";
 
 export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
@@ -138,10 +139,9 @@ export class IdeEngineCore {
     this.engine.deploy(slot, wasm, idl.name);
   }
 
-  // Run a combined contract+gtest wasm. runTests builds its OWN throwaway Virtual Node (fresh genesis ledger),
-  // so the tests are fully isolated from this live session — deployed contracts, balances, and tick are untouched.
-  async runGtest(testWasm: Uint8Array): Promise<TestResult[]> {
-    return runTests(testWasm);
+  // Execute a TS-compiled core-lite-style gtest program on a throwaway virtual node.
+  async runGtest(program: GtestProgram, runnerWasm: Uint8Array, contracts: Record<number, Uint8Array>): Promise<TestResult[]> {
+    return runCompiledGtest(program, runnerWasm, contracts);
   }
 
   // Emulate the live network: advance one tick per `speedMs`. Procedure submissions also advance their own

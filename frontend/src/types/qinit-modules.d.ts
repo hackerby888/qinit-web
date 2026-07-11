@@ -75,7 +75,7 @@ declare module "@qinit/engine" {
     passed: boolean;
     message: string;
   }
-  export function runTests(testWasm: Uint8Array): Promise<TestResult[]>;
+  export function runCompiledGtest(program: unknown, runnerWasm: Uint8Array, contracts: Record<number, Uint8Array>): Promise<TestResult[]>;
 }
 
 declare module "@qinit/inspector" {
@@ -180,6 +180,19 @@ declare module "@qinit/compile/browser" {
     idl: ContractIdl;
     timings?: Record<string, number>;
   }
+  export interface GtestProgram {
+    version: 2;
+    contract: string;
+    mainSlot: number;
+    runnerSlot: number;
+    tests: Array<{ name: string; inputType: number }>;
+  }
+  export interface GtestCompileResult {
+    wasm?: Uint8Array;
+    program?: GtestProgram;
+    diagnostics: CompileDiagnostic[];
+    idl: ContractIdl;
+  }
   export interface CompilerInfo {
     qinitVersion: string;
     coreCommit: string;
@@ -201,6 +214,13 @@ declare module "@qinit/compile/browser" {
     strict?: boolean;
     onPhase?: (phase: string) => void | Promise<void>;
   }): Promise<CompileResult>;
+  export function compileGtest(opts: {
+    source: string;
+    testSource: string;
+    name: string;
+    slot: number;
+    qpiHeader?: string;
+  }): Promise<GtestCompileResult>;
 }
 
 declare module "@qinit/build/idl" {

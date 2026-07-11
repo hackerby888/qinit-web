@@ -16,6 +16,7 @@ class FakeWorker {
     queueMicrotask(() => {
       const value = message.method === "callFunction" ? 42n
         : message.method === "callFunctionDetailed" ? { output: 42n, detail: { in: "(none)", out: "42", caller: "(none)", diff: [], hostCalls: [], logs: ["INFO CounterLog { value=42 }"], steps: [] } }
+        : message.method === "runGtest" ? [{ name: "Counter.Expression", passed: true, message: "" }]
         : message.method === "info" ? { tick: 7, epoch: 1 }
           : message.method === "assets" ? []
             : undefined;
@@ -41,6 +42,17 @@ test("browser IdeEngine sends contract execution to the worker", async () => {
 
   expect(await engine.callFunction(28, "1", entry, {})).toBe(42n);
   expect(worker.calls.map((call) => call.method)).toEqual(["callFunction"]);
+});
+
+test("browser IdeEngine sends the compiled gtest Wasm and target contracts to the worker", async () => {
+  const worker = new FakeWorker(true);
+  const engine = new IdeEngine({ workerFactory: () => workerAsBrowser(worker) });
+  const program = { version: 2 as const, contract: "Counter", mainSlot: 28, runnerSlot: 65534, tests: [{ name: "Counter.Expression", inputType: 1 }] };
+
+  const result = await engine.runGtest(program, Uint8Array.of(1, 2), { 28: Uint8Array.of(3, 4) });
+  expect(result[0]?.passed).toBe(true);
+  expect(worker.calls[0]?.method).toBe("runGtest");
+  expect(worker.calls[0]?.args).toEqual([program, Uint8Array.of(1, 2), { 28: Uint8Array.of(3, 4) }]);
 });
 
 test("browser IdeEngine returns function logs from the worker", async () => {

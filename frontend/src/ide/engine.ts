@@ -3,6 +3,7 @@
 // Bun tests use the same IdeEngineCore in-process because there is no browser UI thread to protect.
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
 import type { EngineLogEvent, TestResult } from "@qinit/engine";
+import type { GtestProgram } from "@qinit/compile/browser";
 import type { StateDump } from "@qinit/inspector";
 import type {
   Account,
@@ -216,8 +217,8 @@ export class IdeEngine {
     this.assetsValue = await this.call<AssetView[]>("assets", []);
   }
 
-  async runGtest(testWasm: Uint8Array): Promise<TestResult[]> {
-    return this.call("runGtest", [testWasm.slice()]);
+  async runGtest(program: GtestProgram, runnerWasm: Uint8Array, contracts: Record<number, Uint8Array>): Promise<TestResult[]> {
+    return this.call("runGtest", [program, runnerWasm.slice(), Object.fromEntries(Object.entries(contracts).map(([slot, wasm]) => [slot, wasm.slice()]))]);
   }
 
   start(): void { this.running = true; this.fire("start", []); }
