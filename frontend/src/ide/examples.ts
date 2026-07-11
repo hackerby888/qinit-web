@@ -24,12 +24,26 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
     struct Inc_input {};
     struct Inc_output {};
+    enum LogKind { CounterIncremented = 1 };
+    struct CounterLog
+    {
+        uint32 _contractIndex;
+        uint32 _type;
+        uint64 value;
+        sint8 _terminator;
+    };
+    struct Inc_locals { CounterLog log; };
     struct Get_input {};
     struct Get_output { uint64 value; };
 
-    PUBLIC_PROCEDURE(Inc)
+    PUBLIC_PROCEDURE_WITH_LOCALS(Inc)
     {
         state.mut().counter += 1;
+        locals.log._contractIndex = 0;
+        locals.log._type = CounterIncremented;
+        locals.log.value = state.get().counter;
+        locals.log._terminator = 0;
+        LOG_INFO(locals.log);
     }
 
     PUBLIC_FUNCTION(Get)

@@ -23,7 +23,7 @@ import { notify, errorMessage } from "./notify";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
-import { Copy, Check, FastForward } from "lucide-react";
+import { Copy, Check, FastForward, LoaderCircle } from "lucide-react";
 import { getToken, fetchMe, login, type Me } from "./auth";
 import { GitHubDialog } from "./GitHubDialog";
 import type { RepoFile } from "./githubApi";
@@ -32,7 +32,7 @@ import { definitionOffset } from "./qpi/definition";
 import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type CompileResult, type SystemContractEntry } from "./api";
 import { compileInBrowser, getCompilerInfo } from "./compile/local";
 import type { CompilerInfo } from "@qinit/compile/browser";
-import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent, EngineMemoryUsage } from "./engine";
 import { Debugger } from "./Debugger";
 import { SystemSourceView } from "./SystemSourceView";
 import { TxExplorer, type TxRow } from "./TxExplorer";
@@ -50,6 +50,8 @@ import { setGtestIdls } from "./qpi/gtest";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
 import { ScenarioPanel, compare, uid, type Scenario, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
+import { InputFields } from "./InputFields";
+import { buildInput, inputToDraft, type InputDraft } from "./input-values";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { StateDump } from "@qinit/inspector";
@@ -222,8 +224,40 @@ function TrafficLights() {
 
 // In-process engine clock — the single-authority dev testnet your contracts deploy to. Time is
 // explicit (advances on tick/invoke), so this reflects engine state, not a wall clock.
-function EngineStrip({ info }: { info: { tick: number; epoch: number } | null }) {
+interface IdeMemoryUsage {
+  engine: EngineMemoryUsage;
+  pageHeapBytes?: number;
+}
+
+function formatMemory(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
+  const mib = bytes / (1024 * 1024);
+  if (mib < 1024) return `${mib < 100 ? mib.toFixed(1) : Math.round(mib)} MiB`;
+  return `${(mib / 1024).toFixed(2)} GiB`;
+}
+
+function memorySnapshot(engine: EngineMemoryUsage): IdeMemoryUsage {
+  const pm = typeof performance === "undefined" ? undefined : (performance as Performance & {
+    memory?: { usedJSHeapSize: number };
+  }).memory;
+  return {
+    engine,
+    pageHeapBytes: pm?.usedJSHeapSize,
+  };
+}
+
+function infoPopoverStyle(width: number): CSSProperties {
+  return {
+    position: "absolute", zIndex: 200, top: "calc(100% + 9px)", right: 0, width,
+    flexDirection: "column", gap: 7, padding: "11px 12px",
+    border: `1px solid ${color.hair2}`, background: color.panelDeep, boxShadow: "0 10px 28px #0009",
+    color: color.textMutedDk, fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.45,
+  };
+}
+
+function EngineStrip({ info, memory }: { info: { tick: number; epoch: number } | null; memory: IdeMemoryUsage | null }) {
   const live = !!info;
+  const ideBytes = memory ? memory.engine.linearMemoryBytes + (memory.pageHeapBytes ?? 0) : 0;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk }}>
       <span style={{ width: 7, height: 7, flex: "none", background: live ? color.accent : color.swatchOff, animation: live ? "nodePulse 2s ease-in-out infinite" : undefined }} />
@@ -232,6 +266,28 @@ function EngineStrip({ info }: { info: { tick: number; epoch: number } | null })
         <>
           <span><span style={{ color: color.textGhostDk }}>tick </span><span style={{ color: color.accent }}>{info.tick.toLocaleString("en-US")}</span></span>
           <span><span style={{ color: color.textGhostDk }}>epoch </span><span style={{ color: color.textMutedDk }}>{info.epoch}</span></span>
+          {memory && (
+            <span
+              className="pix-info-hover"
+              tabIndex={0}
+              aria-label="IDE page RAM breakdown"
+              style={{ position: "relative", cursor: "default", outline: "none" }}
+            >
+              <span style={{ color: color.textGhostDk, borderBottom: `1px dotted ${color.textGhostDk}` }}>ram </span>
+              <span style={{ color: color.textMutedDk }}>{memory.pageHeapBytes === undefined ? "≥ " : ""}{formatMemory(ideBytes)}</span>
+              <span className="pix-info-popover" role="tooltip" style={infoPopoverStyle(330)}>
+                <span style={{ display: "flex", justifyContent: "space-between", gap: 16, color: color.textLightHi }}>
+                  <span>IDE PAGE RAM {memory.pageHeapBytes === undefined ? "LOWER BOUND" : "ESTIMATE"}</span>
+                  <span style={{ color: color.accent }}>{formatMemory(ideBytes)}</span>
+                </span>
+                <span style={{ height: 1, background: color.hair2 }} />
+                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>virtual-node Wasm</span><span>{formatMemory(memory.engine.linearMemoryBytes)} exact</span></span>
+                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>contract state</span><span>{formatMemory(memory.engine.stateBytes)}</span></span>
+                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>deployed contracts</span><span>{memory.engine.contractCount}</span></span>
+                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>page JS heap</span><span>{memory.pageHeapBytes === undefined ? "unavailable" : `${formatMemory(memory.pageHeapBytes)} estimate`}</span></span>
+              </span>
+            </span>
+          )}
         </>
       ) : (
         <span style={{ color: color.textGhostDk }}>idle · compile to start</span>
@@ -247,18 +303,21 @@ function EngineStrip({ info }: { info: { tick: number; epoch: number } | null })
 function CompilerStrip({ info }: { info: CompilerInfo }) {
   const dirty = info.coreCommit.endsWith("-dirty");
   const commit = info.coreCommit.replace(/-dirty$/, "").slice(0, 8);
-  const detail = [
-    `in-browser TS compiler v${info.qinitVersion}`,
-    `core ${info.coreCommit}`,
-    `snapshot ${info.snapshotHash}`,
-    `generator v${info.generatorVersion} · protocol v${info.protocolVersion}`,
-  ].join("\n");
 
   return (
-    <div title={detail} style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, cursor: "help" }}>
+    <div className="pix-info-hover" tabIndex={0} aria-label="TS-QPI compiler details" style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, outline: "none" }}>
       <span style={{ color: color.textMutedDk, letterSpacing: ".14em" }}>TS-QPI</span>
       <span><span style={{ color: color.textGhostDk }}>v</span><span style={{ color: color.textMutedDk }}>{info.qinitVersion}</span></span>
-      <span><span style={{ color: color.textGhostDk }}>core </span><span style={{ color: color.textMutedDk }}>{commit}{dirty ? "*" : ""}</span></span>
+      <span style={{ borderBottom: `1px dotted ${color.textGhostDk}` }}><span style={{ color: color.textGhostDk }}>core </span><span style={{ color: color.textMutedDk }}>{commit}{dirty ? "*" : ""}</span></span>
+      <span className="pix-info-popover" role="tooltip" style={infoPopoverStyle(360)}>
+        <span style={{ color: color.textLightHi }}>IN-BROWSER TS-QPI COMPILER</span>
+        <span style={{ height: 1, background: color.hair2 }} />
+        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>qinit version</span><span>{info.qinitVersion}</span></span>
+        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>core commit</span><span>{info.coreCommit}</span></span>
+        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>snapshot</span><span style={{ maxWidth: 225, overflow: "hidden", textOverflow: "ellipsis" }}>{info.snapshotHash}</span></span>
+        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>generator</span><span>v{info.generatorVersion}</span></span>
+        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>protocol</span><span>v{info.protocolVersion}</span></span>
+      </span>
     </div>
   );
 }
@@ -384,17 +443,18 @@ const fieldInput = (): CSSProperties => ({
   outline: "none",
 });
 
-function CallRow({ kind, id, entry, busy, output, detail, onRun, onDebug }: {
+function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDebug }: {
   kind: "function" | "procedure";
   id: string;
   entry: IdlEntry;
   busy: boolean;
+  disabled: boolean;
   output?: string;
   detail?: TxDetail;
-  onRun: (input: Record<string, string>, value: number) => void;
+  onRun: (input: InputDraft, value: number) => void;
   onDebug?: (steps: DebugStep[], title: string) => void;
 }) {
-  const [vals, setVals] = useState<Record<string, string>>({});
+  const [vals, setVals] = useState<InputDraft>({});
   const [value, setValue] = useState("0");
   const accent = kind === "function" ? color.accent : color.secondary;
 
@@ -406,25 +466,15 @@ function CallRow({ kind, id, entry, busy, output, detail, onRun, onDebug }: {
         <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>#{id} · {kind === "function" ? "read" : "write"}</span>
         <button
           onClick={() => onRun(vals, Number(value) || 0)}
-          disabled={busy}
-          style={{ marginLeft: "auto", border: `2px solid ${color.ink}`, background: accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 12px", cursor: busy ? "default" : "pointer" }}
+          disabled={disabled}
+          aria-busy={busy}
+          style={{ marginLeft: "auto", minWidth: 64, border: `2px solid ${color.ink}`, background: accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 10px", cursor: disabled ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: disabled && !busy ? 0.55 : 1 }}
         >
-          {kind === "function" ? "Call" : "Run"}
+          {busy ? <><LoaderCircle className="pix-call-spinner" size={13} strokeWidth={2.5} /><span>{kind === "function" ? "Calling" : "Running"}</span></> : kind === "function" ? "Call" : "Run"}
         </button>
       </div>
 
-      {entry.inFields.map((f) => (
-        <div key={f.name} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk, minWidth: 64 }}>{f.name}</span>
-          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk, minWidth: 44 }}>{f.type}</span>
-          <input
-            value={vals[f.name] ?? ""}
-            onChange={(e) => setVals((p) => ({ ...p, [f.name]: e.target.value }))}
-            placeholder="0"
-            style={fieldInput()}
-          />
-        </div>
-      ))}
+      <InputFields fields={entry.inFields} draft={vals} onChange={setVals} />
 
       {kind === "procedure" && (
         <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -784,8 +834,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [result, setResult] = useState<CompileResult | null>(null);
   const [outputs, setOutputs] = useState<Record<string, string>>({});
   const [log, setLog] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [pendingCall, setPendingCall] = useState<string | null>(null);
   const [engineInfo, setEngineInfo] = useState<{ tick: number; epoch: number } | null>(null);
+  const [engineMemory, setEngineMemory] = useState<IdeMemoryUsage | null>(null);
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [caller, setCaller] = useState<string>("");
@@ -819,6 +870,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const qinitLibRef = useRef<{ dispose(): void } | null>(null); // the ./.qinit ambient types extralib (regenerated on deploy)
   const engineRef = useRef<IdeEngine | null>(null);
   const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
+  const engineGenerationRef = useRef(0); // invalidates an async start when StrictMode/HMR retires its worker
   const consoleRef = useRef<HTMLDivElement | null>(null);
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
@@ -994,10 +1046,22 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   }, [log]);
 
-  // Stop the engine's auto-ticker when leaving the IDE.
+  // Stop the engine worker and its auto-ticker when leaving the IDE.
   useEffect(() => {
+    // Fast Refresh preserves refs but runs the previous cleanup first. Retire any stale disposed instance before
+    // the later ensureEngine effect starts the replacement; otherwise calls reuse it and fail "virtual node disposed".
+    if (engineRef.current || engineInitRef.current) {
+      engineGenerationRef.current++;
+      engineRef.current?.dispose();
+      engineRef.current = null;
+      engineInitRef.current = null;
+    }
     return () => {
-      engineRef.current?.stop();
+      engineGenerationRef.current++;
+      const engine = engineRef.current;
+      engineRef.current = null;
+      engineInitRef.current = null;
+      engine?.dispose();
     };
   }, []);
 
@@ -1578,7 +1642,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const calls: CallStep[] = mine.map((h) => ({
       procId: h.procId,
       procName: h.entry.name,
-      input: Object.fromEntries(Object.entries(h.input).map(([k, v]) => [k, String(v)])),
+      input: inputToDraft(h.entry.inFields, h.input),
       callerSeed: h.caller.seed,
       callerLabel: acctLabel(h.caller.seed),
       value: h.caller.amount,
@@ -1613,7 +1677,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           slot: d.slot,
           procId: c.procId,
           entry,
-          input: coerce(entry, c.input),
+          input: buildInput(entry.inFields, c.input),
           key: `${d.name}:scenario:${c.procId}`,
           caller: { seed: c.callerSeed, amount: c.value },
           contract: { name: d.name, source: d.source },
@@ -1628,7 +1692,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           out.push({ ok: false, actual: "(no such function)" });
           continue;
         }
-        const res = await eng.callFunction(d.slot, a.fnId, entry, coerce(entry, a.input));
+        const res = await eng.callFunction(d.slot, a.fnId, entry, buildInput(entry.inFields, a.input));
         const actual = res && typeof res === "object" ? (res as Record<string, unknown>)[a.field] : res;
         out.push({ ok: compare(a.op, actual, a.expected), actual: actual === undefined ? "undefined" : String(actual) });
       }
@@ -2145,13 +2209,23 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     if (engineInitRef.current) {
       return engineInitRef.current; // a start is already in flight — share it
     }
-    engineInitRef.current = (async () => {
+    const generation = engineGenerationRef.current;
+    const pending = (async () => {
       const { IdeEngine } = await import("./engine");
+      if (generation !== engineGenerationRef.current) throw new Error("virtual node initialization superseded");
       const eng = new IdeEngine();
-      eng.onTick = (info) => setEngineInfo(info);
-      eng.onLog = (e) => setEngineLog((l) => [...l.slice(-999), e]); // buffer the engine's diagnostic stream for the popup
+      const active = () => generation === engineGenerationRef.current;
+      const requireActive = () => {
+        if (active()) return;
+        eng.dispose();
+        throw new Error("virtual node initialization superseded");
+      };
+      eng.onTick = (info) => { if (active()) setEngineInfo(info); };
+      eng.onMemory = (usage) => { if (active()) setEngineMemory(memorySnapshot(usage)); };
+      eng.onLog = (e) => { if (active()) setEngineLog((l) => [...l.slice(-999), e]); }; // buffer the engine's diagnostic stream for the popup
 
       eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
+        if (!active()) return;
         setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
         appendLog(`${name}() processed @ tick ${tick}`);
         setTxLog((l) => [{ key, name, tick, moneyFlew, contract: key.split(":")[0], detail }, ...l].slice(0, 300));
@@ -2168,20 +2242,30 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         setAssetsView(eng.assets());
       };
       eng.start();
+      requireActive();
       engineRef.current = eng;
       setEpochLen(eng.epochLength());
       const accs = await eng.ensureAccounts();
+      requireActive();
       setAccounts(accs);
       setCaller(accs[0]?.id ?? "");
       void refreshBalances(accs);
-      setEngineInfo(await eng.info());
+      const info = await eng.info();
+      requireActive();
+      setEngineInfo(info);
       // Re-seed the project's chosen system contracts onto the fresh node (compiled by the backend, cached).
       for (const name of projectRef.current?.systemContracts ?? []) {
+        requireActive();
         await deploySystem(eng, name).catch(() => false);
       }
+      requireActive();
       return eng;
     })();
-    return engineInitRef.current;
+    engineInitRef.current = pending;
+    void pending.catch(() => {
+      if (engineInitRef.current === pending) engineInitRef.current = null;
+    });
+    return pending;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters; intentionally stable
   }, []);
 
@@ -2356,57 +2440,59 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: "C++ gtest files aren't supported — the in-browser compiler can't build them (the backend clang path was removed). Write a .test.ts scenario test instead.", logs: [] }], running: false, title: ws.active });
   };
 
-  const coerce = (entry: IdlEntry, input: Record<string, string>): Record<string, unknown> => {
-    const json: Record<string, unknown> = {};
-    for (const f of entry.inFields) {
-      const raw = (input[f.name] ?? "").trim();
-      json[f.name] = raw === "" ? 0 : /^-?\d+$/.test(raw) ? Number(raw) : raw;
-    }
-    return json;
-  };
-
   const formatOut = (out: unknown): string =>
     JSON.stringify(out, (_k, v) => (typeof v === "bigint" ? v.toString() : v)) ?? String(out);
 
   const sel = selected ? deployed[selected] : null;
 
-  const runFunction = async (id: string, entry: IdlEntry, input: Record<string, string>) => {
+  const runFunction = async (id: string, entry: IdlEntry, input: InputDraft) => {
     const eng = engineRef.current;
-    if (!eng || !sel) {
+    if (!eng || !sel || pendingCall) {
       return;
     }
-    setBusy(true);
+    const key = `${sel.name}:f:${id}`;
+    setPendingCall(key);
     try {
-      const out = await eng.callFunction(sel.slot, id, entry, coerce(entry, input));
-      const text = formatOut(out);
-      setOutputs((p) => ({ ...p, [`${sel.name}:f:${id}`]: text }));
+      setTxDetail((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+      const result = await eng.callFunctionDetailed(sel.slot, id, entry, buildInput(entry.inFields, input));
+      const text = formatOut(result.output);
+      setOutputs((p) => ({ ...p, [key]: text }));
       appendLog(`${sel.name}.${entry.name}() → ${text}`);
+      if (result.detail) {
+        setTxDetail((current) => ({ ...current, [key]: result.detail! }));
+        result.detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
+        result.detail.logs.forEach((l) => appendLog(`  log ${l}`));
+      }
     } catch (e) {
       appendLog(`${entry.name} failed: ${(e as Error).message}`);
     } finally {
-      setBusy(false);
+      setPendingCall((current) => current === key ? null : current);
     }
   };
 
-  const runProcedure = async (id: string, entry: IdlEntry, input: Record<string, string>, value: number) => {
+  const runProcedure = async (id: string, entry: IdlEntry, input: InputDraft, value: number) => {
     const eng = engineRef.current;
-    if (!eng || !sel) {
+    if (!eng || !sel || pendingCall) {
       return;
     }
-    setBusy(true);
+    const key = `${sel.name}:p:${id}`;
+    setPendingCall(key);
     try {
-      const key = `${sel.name}:p:${id}`;
       setOutputs((o) => {
         const next = { ...o };
         delete next[key];
         return next;
       });
-      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, coerce(entry, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
+      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, buildInput(entry.inFields, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
       appendLog(`${sel.name}.${entry.name}() from acct ${shortId(caller)}${value ? ` · ${value} qus` : ""} → applied @ tick ${targetTick}`);
     } catch (e) {
       appendLog(`${entry.name} failed: ${(e as Error).message}`);
     } finally {
-      setBusy(false);
+      setPendingCall((current) => current === key ? null : current);
     }
   };
 
@@ -2539,7 +2625,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           {collab && <CollabBar status={collabApi.status} peers={collabApi.peers} mode={collab.mode} selfName={collab.displayName} selfColor={collab.color} />}
           {compiler && <CompilerStrip info={compiler} />}
-          <EngineStrip info={engineInfo} />
+          <EngineStrip info={engineInfo} memory={engineMemory} />
         </div>
       </div>
 
@@ -2731,7 +2817,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                             kind="procedure"
                             id={selectedProcedure[0]}
                             entry={selectedProcedure[1]}
-                            busy={busy}
+                            busy={pendingCall === `${sel.name}:p:${selectedProcedure[0]}`}
+                            disabled={pendingCall !== null}
                             output={outputs[`${sel.name}:p:${selectedProcedure[0]}`]}
                             detail={txDetail[`${sel.name}:p:${selectedProcedure[0]}`]}
                             onRun={(input, value) => runProcedure(selectedProcedure[0], selectedProcedure[1], input, value)}
@@ -2753,9 +2840,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                             kind="function"
                             id={selectedFunction[0]}
                             entry={selectedFunction[1]}
-                            busy={busy}
+                            busy={pendingCall === `${sel.name}:f:${selectedFunction[0]}`}
+                            disabled={pendingCall !== null}
                             output={outputs[`${sel.name}:f:${selectedFunction[0]}`]}
+                            detail={txDetail[`${sel.name}:f:${selectedFunction[0]}`]}
                             onRun={(input) => runFunction(selectedFunction[0], selectedFunction[1], input)}
+                            onDebug={(steps, title) => setDebug({ steps, title })}
                           />
                         </>
                       )}

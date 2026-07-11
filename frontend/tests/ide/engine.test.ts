@@ -62,6 +62,23 @@ test("IdeEngine: deploy constructs the contract — Get reads the INITIALIZE'd s
 
   const out = await e.callFunction(SLOT, "1", idl.functions["1"], {});
   expect(value(out)).toBe(0n);
+  const memory = e.memoryUsage();
+  expect(memory.contractCount).toBe(1);
+  expect(memory.stateBytes).toBe(8);
+  expect(memory.linearMemoryBytes).toBeGreaterThan(memory.stateBytes);
+});
+
+test("IdeEngine: detailed function calls return a decoded function trace", async () => {
+  const e = new IdeEngine();
+  await e.deploy(SLOT, await counterWasm(), idl);
+  e.registerSource(SLOT, SRC, "Counter");
+  e.start();
+  e.stop();
+
+  const result = await e.callFunctionDetailed(SLOT, "1", idl.functions["1"], {});
+  expect(value(result.output)).toBe(0n);
+  expect(result.detail?.steps.some((step) => step.kind === 0 && step.entry === 1)).toBe(true);
+  expect(result.detail?.logs).toEqual([]);
 });
 
 test("IdeEngine: a submitted procedure is included synchronously in the next tick", async () => {

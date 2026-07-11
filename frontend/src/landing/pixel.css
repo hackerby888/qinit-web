@@ -16,6 +16,8 @@
 .pixel-root svg { shape-rendering: crispEdges; }
 .pixel-root a { color: inherit; }
 
+.qinit-input-hint::placeholder { color: inherit; opacity: .32; }
+
 .nav-link { transition: color .15s ease; }
 .nav-link:hover { color: #19E0B4 !important; }
 
@@ -26,4 +28,20 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .pixel-root *, .pixel-root *::before, .pixel-root *::after { animation: none !important; }
+}
+.pix-info-popover {
+  display: none;
+}
+
+.pix-info-hover:hover > .pix-info-popover,
+.pix-info-hover:focus > .pix-info-popover,
+.pix-info-hover:focus-within > .pix-info-popover {
+  display: flex;
+}
+.pix-call-spinner {
+  animation: pixCallSpin 0.75s linear infinite;
+}
+
+@keyframes pixCallSpin {
+  to { transform: rotate(360deg); }
 }

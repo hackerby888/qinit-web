@@ -1,0 +1,61 @@
+import { expect, test } from "bun:test";
+import { compileContract } from "@qinit/compile/browser";
+import { STARTER } from "../../src/ide/examples";
+import { extractIdl } from "@qinit/build/idl";
+import { IdeEngine } from "../../src/ide/engine";
+
+test("Counter starter emits a native-shaped LOG_INFO after Inc", () => {
+  const source = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
+  expect(source).toContain("struct CounterLog");
+  expect(source).toContain("uint32 _contractIndex;");
+  expect(source).toContain("uint32 _type;");
+  expect(source).toContain("sint8 _terminator;");
+  expect(source).toContain("PUBLIC_PROCEDURE_WITH_LOCALS(Inc)");
+  expect(source).toContain("LOG_INFO(locals.log);");
+});
+
+test("Counter starter LOG_INFO compiles and is decoded after Inc", async () => {
+  const source = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
+  const compiled = await compileContract({ source, name: "Counter", slot: 28, arenaSz: 64 * 1024 });
+  expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+
+  const engine = new IdeEngine();
+  const idl = extractIdl(source, "Counter");
+  await engine.deploy(28, compiled.wasm, idl);
+  engine.registerSource(28, source, "Counter");
+  engine.start();
+  engine.stop();
+  const seen: string[] = [];
+  engine.onTxProcessed = (event) => seen.push(...(event.detail?.logs ?? []));
+  const [caller] = await engine.ensureAccounts();
+  await engine.submitProcedure(28, "1", idl.procedures["1"], {}, "Counter:p:1", { seed: caller.seed, amount: 0 }, { name: "Counter", source });
+
+  expect(seen).toHaveLength(1);
+  expect(seen[0]).toContain("INFO CounterLog");
+  expect(seen[0]).toContain("CounterIncremented");
+  expect(seen[0]).toContain('"value":"1"');
+});
+
+test("detailed function calls decode LOG_INFO for the Calls UI", async () => {
+  const starter = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
+  const source = starter
+    .replace("struct Get_output { uint64 value; };", "struct Get_output { uint64 value; };\n    struct Get_locals { CounterLog log; };")
+    .replace(
+      "PUBLIC_FUNCTION(Get)\n    {\n        output.value = state.get().counter;\n    }",
+      "PUBLIC_FUNCTION_WITH_LOCALS(Get)\n    {\n        output.value = state.get().counter;\n        locals.log._type = CounterIncremented;\n        locals.log.value = output.value;\n        LOG_INFO(locals.log);\n    }",
+    );
+  const compiled = await compileContract({ source, name: "Counter", slot: 28, arenaSz: 64 * 1024 });
+  expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+
+  const engine = new IdeEngine();
+  const idl = extractIdl(source, "Counter");
+  await engine.deploy(28, compiled.wasm, idl);
+  engine.registerSource(28, source, "Counter");
+  engine.start();
+  engine.stop();
+  const result = await engine.callFunctionDetailed(28, "1", idl.functions["1"], {});
+
+  expect(result.detail?.steps.some((step) => step.kind === 0)).toBe(true);
+  expect(result.detail?.logs).toHaveLength(1);
+  expect(result.detail?.logs[0]).toContain("INFO CounterLog");
+});

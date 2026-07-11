@@ -21,7 +21,11 @@ declare module "@qinit/engine" {
     constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint });
     // The chain-sim, exposed for epoch control (the tick path goes through advanceTick, which switches
     // epoch on a boundary via sim.advance).
-    readonly sim: { epochN: number; epochLength: number };
+    readonly sim: {
+      epochN: number;
+      epochLength: number;
+      contracts: Map<number, { mem: WebAssembly.Memory; stateSize: number }>;
+    };
     onLog?: ((e: EngineLogEvent) => void) | undefined;
     deploy(slot: number, wasm: Uint8Array, name?: string): unknown;
     querySmartContract(contractIndex: number, inputType: number, input: Uint8Array): Promise<Uint8Array>;
@@ -203,6 +207,8 @@ declare module "@qinit/build/idl" {
   export interface Field {
     name: string;
     type: string;
+    struct?: Field[];
+    array?: boolean;
   }
   export interface IdlEntry {
     name: string;

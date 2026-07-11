@@ -9,6 +9,8 @@
   "compilerOptions": {
     "paths": {
       "@qinit/engine": ["../../../Qinit/packages/engine/src/index.ts"],
+      "@qinit/compile/browser": ["../../../Qinit/packages/compile/src/browser.ts"],
+      "@qinit/compile": ["../../../Qinit/packages/compile/src/index.ts"],
       "@qinit/proto/qpi-layout": ["../../../Qinit/packages/proto/src/qpi-layout.ts"],
       "@qinit/proto": ["../../../Qinit/packages/proto/src/index.ts"],
       "@qinit/build/idl": ["../../../Qinit/packages/build/src/idl.ts"],

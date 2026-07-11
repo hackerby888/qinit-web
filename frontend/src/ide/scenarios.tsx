@@ -4,6 +4,8 @@
 import { useState, type CSSProperties } from "react";
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
 import { color, font } from "../landing/tokens";
+import { InputFields } from "./InputFields";
+import type { InputDraft } from "./input-values";
 
 export type Op = "==" | "!=" | ">" | "<" | ">=" | "<=";
 export const OPS: Op[] = ["==", "!=", ">", "<", ">=", "<="];
@@ -12,7 +14,7 @@ export const OPS: Op[] = ["==", "!=", ">", "<", ">=", "<="];
 export interface CallStep {
   procId: string;
   procName: string;
-  input: Record<string, string>;
+  input: InputDraft;
   callerSeed: string;
   callerLabel: string;
   value: number;
@@ -22,7 +24,7 @@ export interface CallStep {
 export interface AssertStep {
   fnId: string;
   fnName: string;
-  input: Record<string, string>;
+  input: InputDraft;
   field: string;
   op: Op;
   expected: string;
@@ -94,7 +96,7 @@ function AssertForm({ idl, onAdd }: { idl: ContractIdl; onAdd: (a: AssertStep) =
   };
 
   const [fnId, setFnId] = useState(fnIds[0] ?? "");
-  const [input, setInput] = useState<Record<string, string>>({});
+  const [input, setInput] = useState<InputDraft>({});
   const [field, setField] = useState("");
   const [op, setOp] = useState<Op>("==");
   const [expected, setExpected] = useState("");
@@ -122,12 +124,7 @@ function AssertForm({ idl, onAdd }: { idl: ContractIdl; onAdd: (a: AssertStep) =
         </select>
       </div>
 
-      {entry?.inFields.map((f) => (
-        <div key={f.name} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk, minWidth: 40 }}>{f.name}</span>
-          <input value={input[f.name] ?? ""} onChange={(e) => setInput((p) => ({ ...p, [f.name]: e.target.value }))} placeholder={f.type} style={tinyInput} />
-        </div>
-      ))}
+      {entry && <InputFields fields={entry.inFields} draft={input} onChange={setInput} compact />}
 
       <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
         <select value={fieldName} onChange={(e) => setField(e.target.value)} style={tinyInput} title="output field">
