@@ -2,8 +2,8 @@
 // against the in-page engine. A qinit test imports `{ test, expect, … }` from "bun:test" and the generated
 // typed clients `{ Counter, provider }` from "./.qinit"; here those imports are stripped and the same names
 // are injected as globals: the bun:test lifecycle fns, a `provider()`, and a class per deployed contract with
-// the same method shapes as `generateClient` (functions read, procedures submit + auto-confirm by advancing
-// ticks). The chain is reset once at the start (fresh-node equivalent), then tests run in order.
+// the same method shapes as `generateClient` (functions read, procedures synchronously include their signed
+// transaction in the next tick). The chain is reset once at the start, then tests run in order.
 import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
 import type { IdeEngine, Account, DeployImage } from "../engine";
 
@@ -153,8 +153,6 @@ function makeContractClass(c: TestContract, eng: IdeEngine, accounts: Account[])
       const caller = { seed: opts.seed ?? accounts[0]?.seed ?? "a".repeat(55), amount: Number(opts.amount) || 0 };
       const key = `test:${c.name}:${entry.name}:${Math.random().toString(36).slice(2)}`;
       const { targetTick } = await eng.submitProcedure(c.slot, procId, entry, input, key, caller, { name: c.name, source: c.source });
-      const cur = (await eng.info()).tick;
-      await eng.step(Math.max(1, targetTick - cur));
       return { ok: true, tick: targetTick, confirmed: true, included: true };
     };
   }

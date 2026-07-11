@@ -222,7 +222,7 @@ function TrafficLights() {
 
 // In-process engine clock — the single-authority dev testnet your contracts deploy to. Time is
 // explicit (advances on tick/invoke), so this reflects engine state, not a wall clock.
-function EngineStrip({ info, mempool = 0 }: { info: { tick: number; epoch: number } | null; mempool?: number }) {
+function EngineStrip({ info }: { info: { tick: number; epoch: number } | null }) {
   const live = !!info;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk }}>
@@ -232,9 +232,6 @@ function EngineStrip({ info, mempool = 0 }: { info: { tick: number; epoch: numbe
         <>
           <span><span style={{ color: color.textGhostDk }}>tick </span><span style={{ color: color.accent }}>{info.tick.toLocaleString("en-US")}</span></span>
           <span><span style={{ color: color.textGhostDk }}>epoch </span><span style={{ color: color.textMutedDk }}>{info.epoch}</span></span>
-          {mempool > 0 && (
-            <span><span style={{ color: color.textGhostDk }}>mempool </span><span style={{ color: color.yellow }}>{mempool}</span></span>
-          )}
         </>
       ) : (
         <span style={{ color: color.textGhostDk }}>idle · compile to start</span>
@@ -387,13 +384,12 @@ const fieldInput = (): CSSProperties => ({
   outline: "none",
 });
 
-function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun, onDebug }: {
+function CallRow({ kind, id, entry, busy, output, detail, onRun, onDebug }: {
   kind: "function" | "procedure";
   id: string;
   entry: IdlEntry;
   busy: boolean;
   output?: string;
-  pending?: boolean;
   detail?: TxDetail;
   onRun: (input: Record<string, string>, value: number) => void;
   onDebug?: (steps: DebugStep[], title: string) => void;
@@ -439,7 +435,7 @@ function CallRow({ kind, id, entry, busy, output, pending = false, detail, onRun
       )}
 
       {output !== undefined && (
-        <div style={{ fontFamily: font.mono, fontSize: 11.5, color: pending ? color.yellow : accent, wordBreak: "break-all" }}>{pending ? "⏳" : "→"} {output}</div>
+        <div style={{ fontFamily: font.mono, fontSize: 11.5, color: accent, wordBreak: "break-all" }}>→ {output}</div>
       )}
 
       {detail && (
@@ -791,12 +787,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [busy, setBusy] = useState(false);
   const [engineInfo, setEngineInfo] = useState<{ tick: number; epoch: number } | null>(null);
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
-  const [pending, setPending] = useState<Record<string, { name: string; targetTick: number }>>({});
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [caller, setCaller] = useState<string>("");
   const [balances, setBalances] = useState<Record<string, string>>({});
   const [deployed, setDeployed] = useState<Record<string, DeployedContract>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const [callSelection, setCallSelection] = useState<Record<string, { procedure?: string; function?: string }>>({});
   const [sysCatalog, setSysCatalog] = useState<SystemContractEntry[]>([]); // built-in system contracts (QX, …)
   const [sysSel, setSysSel] = useState<string[]>([]); // names the user chose to host on the in-browser node
   const [sysView, setSysView] = useState<{ name: string; index: number; source: string } | null>(null); // Ctrl+click source popup
@@ -1528,7 +1524,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
     await eng.reset(deployImages());
     setPaused(false);
-    setPending({});
     setTxLog([]);
     appendLog("chain reset to genesis — contracts re-deployed, INITIALIZE re-run");
     await refreshEngineViews();
@@ -1543,7 +1538,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setTxLog([]);
     await eng.replay(deployImages());
     setPaused(false);
-    setPending({});
     appendLog("replay complete");
     await refreshEngineViews();
   };
@@ -1663,13 +1657,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   const deleteAssert = (id: string, idx: number) => {
     setScenarios((xs) => xs.map((s) => (s.id === id ? { ...s, asserts: s.asserts.filter((_, i) => i !== idx) } : s)));
-  };
-
-  // Live label for a queued tx — counts down as the chain ticks toward its target.
-  const pendingLabel = (targetTick: number): string => {
-    const cur = engineInfo?.tick ?? 0;
-    const left = Math.max(0, targetTick - cur);
-    return left > 0 ? `pending · ${left} tick${left > 1 ? "s" : ""} left → tick ${targetTick}` : "pending · landing…";
   };
 
   // Feed Monaco the ./.qinit client types (built from the deployed IDLs) so `c.` completes in .ts tests. The
@@ -2165,11 +2152,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       eng.onLog = (e) => setEngineLog((l) => [...l.slice(-999), e]); // buffer the engine's diagnostic stream for the popup
 
       eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
-        setPending((p) => {
-          const next = { ...p };
-          delete next[key];
-          return next;
-        });
         setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
         appendLog(`${name}() processed @ tick ${tick}`);
         setTxLog((l) => [{ key, name, tick, moneyFlew, contract: key.split(":")[0], detail }, ...l].slice(0, 300));
@@ -2414,14 +2396,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setBusy(true);
     try {
       const key = `${sel.name}:p:${id}`;
-      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, coerce(entry, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
-      setPending((p) => ({ ...p, [key]: { name: entry.name, targetTick } }));
       setOutputs((o) => {
         const next = { ...o };
         delete next[key];
         return next;
       });
-      appendLog(`${sel.name}.${entry.name}() from acct ${shortId(caller)}${value ? ` · ${value} qus` : ""} → lands @ tick ${targetTick}`);
+      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, coerce(entry, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
+      appendLog(`${sel.name}.${entry.name}() from acct ${shortId(caller)}${value ? ` · ${value} qus` : ""} → applied @ tick ${targetTick}`);
     } catch (e) {
       appendLog(`${entry.name} failed: ${(e as Error).message}`);
     } finally {
@@ -2432,6 +2413,16 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const idl = sel?.idl ?? null;
   const procedures = idl ? Object.entries(idl.procedures) : [];
   const functions = idl ? Object.entries(idl.functions) : [];
+  const pickedCalls = sel ? callSelection[sel.name] : undefined;
+  const selectedProcedure = procedures.find(([id]) => id === pickedCalls?.procedure) ?? procedures[0] ?? null;
+  const selectedFunction = functions.find(([id]) => id === pickedCalls?.function) ?? functions[0] ?? null;
+  const selectCall = (kind: "procedure" | "function", id: string) => {
+    if (!sel) return;
+    setCallSelection((current) => ({
+      ...current,
+      [sel.name]: { ...current[sel.name], [kind]: id },
+    }));
+  };
 
   // The new-file action: prompt for a name, default-extend with `.h`.
   const promptNewFile = () => {
@@ -2548,7 +2539,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           {collab && <CollabBar status={collabApi.status} peers={collabApi.peers} mode={collab.mode} selfName={collab.displayName} selfColor={collab.color} />}
           {compiler && <CompilerStrip info={compiler} />}
-          <EngineStrip info={engineInfo} mempool={Object.keys(pending).length} />
+          <EngineStrip info={engineInfo} />
         </div>
       </div>
 
@@ -2724,40 +2715,50 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                   </Section>
                 )}
 
-                {Object.keys(pending).length > 0 && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", border: `1px solid ${color.yellow}`, background: `${color.yellow}14`, fontFamily: font.mono, fontSize: 11, color: color.yellow }}>
-                    <span style={{ width: 7, height: 7, flex: "none", background: color.yellow, animation: "nodePulse 1.4s ease-in-out infinite" }} />
-                    {Object.keys(pending).length} tx in mempool — waiting for its tick
-                  </div>
-                )}
-
                 {sel && (procedures.length > 0 || functions.length > 0) && (
                   <Section label="CALLS" accent={color.hair2} open={!collapsed.calls} onToggle={() => toggleSection("calls")}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                      {procedures.length > 0 && <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>PROCEDURES</div>}
-                      {procedures.map(([id, entry]) => {
-                        const key = `${sel.name}:p:${id}`;
-                        const pend = pending[key];
-                        return (
+                      {selectedProcedure && (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>PROCEDURE</span>
+                            <select value={selectedProcedure[0]} onChange={(e) => selectCall("procedure", e.target.value)} style={selectStyle()}>
+                              {procedures.map(([id, entry]) => <option key={id} value={id}>{entry.name} · #{id}</option>)}
+                            </select>
+                          </div>
                           <CallRow
-                            key={`p${id}`}
+                            key={`p${selectedProcedure[0]}`}
                             kind="procedure"
-                            id={id}
-                            entry={entry}
+                            id={selectedProcedure[0]}
+                            entry={selectedProcedure[1]}
                             busy={busy}
-                            pending={!!pend}
-                            output={pend ? pendingLabel(pend.targetTick) : outputs[key]}
-                            detail={txDetail[key]}
-                            onRun={(input, value) => runProcedure(id, entry, input, value)}
+                            output={outputs[`${sel.name}:p:${selectedProcedure[0]}`]}
+                            detail={txDetail[`${sel.name}:p:${selectedProcedure[0]}`]}
+                            onRun={(input, value) => runProcedure(selectedProcedure[0], selectedProcedure[1], input, value)}
                             onDebug={(steps, title) => setDebug({ steps, title })}
                           />
-                        );
-                      })}
+                        </>
+                      )}
 
-                      {functions.length > 0 && <div style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk, marginTop: 4 }}>FUNCTIONS</div>}
-                      {functions.map(([id, entry]) => (
-                        <CallRow key={`f${id}`} kind="function" id={id} entry={entry} busy={busy} output={outputs[`${sel.name}:f:${id}`]} onRun={(input) => runFunction(id, entry, input)} />
-                      ))}
+                      {selectedFunction && (
+                        <>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: selectedProcedure ? 4 : 0 }}>
+                            <span style={{ fontFamily: font.mono, fontSize: 10, letterSpacing: ".1em", color: color.textGhostDk }}>FUNCTION</span>
+                            <select value={selectedFunction[0]} onChange={(e) => selectCall("function", e.target.value)} style={selectStyle()}>
+                              {functions.map(([id, entry]) => <option key={id} value={id}>{entry.name} · #{id}</option>)}
+                            </select>
+                          </div>
+                          <CallRow
+                            key={`f${selectedFunction[0]}`}
+                            kind="function"
+                            id={selectedFunction[0]}
+                            entry={selectedFunction[1]}
+                            busy={busy}
+                            output={outputs[`${sel.name}:f:${selectedFunction[0]}`]}
+                            onRun={(input) => runFunction(selectedFunction[0], selectedFunction[1], input)}
+                          />
+                        </>
+                      )}
                     </div>
                   </Section>
                 )}

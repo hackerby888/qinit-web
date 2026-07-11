@@ -54,7 +54,7 @@ export function TxExplorer({ txs, onClose, onDebug }: { txs: TxRow[]; onClose: (
 
           <div style={{ overflowY: "auto", padding: "8px 0" }}>
             {txs.length === 0 && (
-              <div style={{ ...line, color: color.textGhostDk, padding: "10px 16px" }}>no transactions yet — run a procedure, then advance a tick.</div>
+              <div style={{ ...line, color: color.textGhostDk, padding: "10px 16px" }}>no transactions yet — run a procedure to include it in the next tick.</div>
             )}
 
             {ticks.map((tick) => (

@@ -25,7 +25,8 @@ declare module "@qinit/engine" {
     onLog?: ((e: EngineLogEvent) => void) | undefined;
     deploy(slot: number, wasm: Uint8Array, name?: string): unknown;
     querySmartContract(contractIndex: number, inputType: number, input: Uint8Array): Promise<Uint8Array>;
-    broadcastTx(txBytes: Uint8Array): Promise<{ moneyFlew?: boolean; [k: string]: unknown }>;
+    broadcastTx(txBytes: Uint8Array): Promise<{ ok: boolean; transactionId?: string; code?: number; message?: string; moneyFlew?: boolean; queued?: boolean }>;
+    txStatus(tick: number, txId: string): Promise<{ tick: number; currentTick: number; txId: string; found: boolean; moneyFlew: boolean; processed: boolean }>;
     advanceTick(n?: number): number;
     tickInfo(): Promise<{ tick: number; epoch: number }>;
     seedFaucet(amount?: bigint): Promise<void>;

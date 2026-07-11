@@ -1,5 +1,5 @@
-// IdeEngine is the in-browser virtual node: deploy a contract, query its functions, and submit procedures
-// that land on a future tick (like the live network). This drives the real @qinit engine + codecs (resolved
+// IdeEngine is the in-browser virtual node: deploy a contract, query its functions, and execute procedures
+// synchronously in the next tick. This drives the real @qinit engine + codecs (resolved
 // from the sibling monorepo via the bun-test alias shim) against the committed Counter fixture wasm.
 import { test, expect } from "bun:test";
 import { IdeEngine } from "../../src/ide/engine";
@@ -39,7 +39,6 @@ struct Counter : public ContractBase
 
 const idl = extractIdl(SRC, "Counter");
 const SLOT = 28;
-const TICKS_AHEAD = 3; // IdeEngine schedules a submitted procedure this many ticks ahead.
 
 async function counterWasm(): Promise<Uint8Array> {
   return new Uint8Array(await Bun.file(`${import.meta.dir}/fixtures/Counter.wasm`).arrayBuffer());
@@ -65,17 +64,16 @@ test("IdeEngine: deploy constructs the contract — Get reads the INITIALIZE'd s
   expect(value(out)).toBe(0n);
 });
 
-test("IdeEngine: a submitted procedure is deferred to its target tick, then mutates state", async () => {
+test("IdeEngine: a submitted procedure is included synchronously in the next tick", async () => {
   const e = new IdeEngine();
   await e.deploy(SLOT, await counterWasm(), idl);
 
   const [caller] = await e.ensureAccounts();
-  await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
+  const before = await e.info();
+  const { targetTick } = await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
 
-  // In the mempool, not yet applied — Get still reads the initial value.
-  expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(0n);
-
-  await e.step(TICKS_AHEAD + 1);
+  expect(targetTick).toBe(before.tick + 1);
+  expect((await e.info()).tick).toBe(targetTick);
   expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(1n);
 });
 
@@ -86,7 +84,6 @@ test("IdeEngine: reset rebuilds the chain from genesis — state returns to its 
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
-  await e.step(TICKS_AHEAD + 1);
   expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(1n);
 
   await e.reset([{ slot: SLOT, wasm, name: "Counter" }]);
@@ -114,7 +111,6 @@ test("IdeEngine: contracts at different slots keep independent state", async () 
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(28, "1", idl.procedures["1"], {}, "inc-28", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
-  await e.step(TICKS_AHEAD + 1);
 
   expect(value(await e.callFunction(28, "1", idl.functions["1"], {}))).toBe(1n);
   expect(value(await e.callFunction(29, "1", idl.functions["1"], {}))).toBe(0n);
@@ -139,7 +135,6 @@ test("IdeEngine: onTxProcessed fires with a decoded trace when a procedure lands
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
-  await e.step(TICKS_AHEAD + 1);
 
   expect(seen.length).toBe(1);
   expect(seen[0].key).toBe("inc-1");
@@ -158,17 +153,20 @@ test("IdeEngine: stateOf decodes the live StateData scalars before and after a m
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
-  await e.step(TICKS_AHEAD + 1);
 
   const after = await e.stateOf(SLOT, SRC, "Counter");
   expect(after.fields).toEqual([{ name: "counter", value: "1" }]);
 });
 
-test("IdeEngine: assets reports an empty universe for a contract that issues none", async () => {
+test("IdeEngine: assets reports the deployed contract's post-IPO shares", async () => {
   const e = new IdeEngine();
   await e.deploy(SLOT, await counterWasm(), idl);
 
-  expect(e.assets()).toEqual([]);
+  const assets = e.assets();
+  expect(assets.length).toBe(1);
+  expect(assets[0].name).toBe("COUNTER");
+  expect(assets[0].totalShares).toBe("676");
+  expect(assets[0].holdings.reduce((sum, holding) => sum + BigInt(holding.shares), 0n)).toBe(676n);
 });
 
 test("IdeEngine: replay re-drives the recorded history from genesis to the same state", async () => {
@@ -178,7 +176,6 @@ test("IdeEngine: replay re-drives the recorded history from genesis to the same 
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
-  await e.step(TICKS_AHEAD + 1);
   expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(1n);
   expect(e.exportHistory().length).toBe(1);
 

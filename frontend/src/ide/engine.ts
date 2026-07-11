@@ -1,6 +1,6 @@
 // Run compiled contracts in the page via @qinit/engine's VirtualNode — byte-identical to the node.
 //   function (read)  -> querySmartContract (no signing)
-//   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> broadcastTx -> advanceTick
+//   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> include in the next tick now
 // One IdeEngine instance backs an IDE session; deploy() (re)loads a contract into its slot.
 import { VirtualNode, initK12, runTests, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
 
@@ -13,9 +13,6 @@ import { readState, describeTrace, labelOff, fmtDiffVal, fmtLog, type StateDump 
 // Re-export the engine's asset-universe snapshot under the IDE's name (one inter-contract asset + its holdings).
 export type AssetView = AssetSnapshot;
 
-// A submitted tx lands a few ticks ahead — the auto-ticker processes it when the chain reaches it.
-const TICKS_AHEAD = 3;
-
 const randomSeed = (): string =>
   Array.from({ length: 55 }, () => String.fromCharCode(97 + Math.floor(Math.random() * 26))).join("");
 
@@ -24,9 +21,7 @@ export interface Account {
   id: string;
 }
 
-interface PendingTx {
-  targetTick: number;
-  bytes: Uint8Array;
+interface TxMeta {
   name: string;
   key: string;
   contractName: string;
@@ -105,19 +100,18 @@ export interface DeployImage {
   name: string;
 }
 
-// The IDE runs its own mempool (submitProcedure schedules to a future tick + the auto-ticker applies it) and an
-// instant, fee-free UX, so it opts out of the engine's realistic node defaults (mempool / sig-verify / fees).
+// The IDE keeps the engine's real tick-bound transaction path, but submitProcedure advances the inclusion tick
+// synchronously for instant UX. Signature verification and execution fees remain off in this browser sandbox.
 // liteTicking: skip the per-tick committee quorum (8 FourQ votes + leader signature) for EMPTY ticks. The IDE
 // never serves the peer protocol that reads those records, and it lets a full-epoch jump (~3000 ticks) run
 // without signing ~27k times on the main thread. State digests are unaffected (still computed every tick).
-const IDE_ENGINE_OPTS = { mempool: false, verifySigs: false, fees: "off", liteTicking: true } as const;
+const IDE_ENGINE_OPTS = { mempool: true, verifySigs: false, fees: "off", liteTicking: true } as const;
 
 export class IdeEngine {
   private engine = new VirtualNode(IDE_ENGINE_OPTS);
   private seed: string | null = null;
   private k12Ready = false;
   private ticker: ReturnType<typeof setInterval> | null = null;
-  private mempool: PendingTx[] = [];
   private accounts: Account[] = [];
   private speedMs = 1000;
   private history: ReplayStep[] = []; // every applied write this session, for replay
@@ -139,8 +133,8 @@ export class IdeEngine {
     return runTests(testWasm);
   }
 
-  // Emulate the live network: advance one tick per `speedMs`. Each tick runs the contracts' BEGIN/END_TICK
-  // hooks, then any mempool tx whose target tick has arrived is processed — its SC invocation runs now.
+  // Emulate the live network: advance one tick per `speedMs`. Procedure submissions also advance their own
+  // inclusion tick synchronously, so the timer is only responsible for otherwise-empty chain time.
   start(): void {
     if (this.ticker) {
       return;
@@ -236,14 +230,13 @@ export class IdeEngine {
   }
 
   // Wipe the chain back to genesis: a fresh engine, every contract re-deployed from its wasm (re-running
-  // INITIALIZE), the same dev accounts re-funded, tick/epoch back to 0, mempool + history cleared.
+  // INITIALIZE), the same dev accounts re-funded, tick/epoch back to 0, history cleared.
   async reset(images: DeployImage[]): Promise<void> {
     this.stop();
     await this.ensureK12();
     this.engine = new VirtualNode(IDE_ENGINE_OPTS);
     void this.engine.setDebug(true);
     this.engine.onLog = (e) => this.onLog?.(e);
-    this.mempool = [];
     this.history = [];
 
     for (const img of [...images].sort((a, b) => a.slot - b.slot)) {
@@ -253,8 +246,8 @@ export class IdeEngine {
     this.start();
   }
 
-  // Reset to genesis, then re-apply every write this session in order — each landed on its own ticks, so
-  // ordering is preserved. Reproduces the exact state from a clean chain.
+  // Reset to genesis, then re-apply every write this session in order. submitProcedure includes each write in
+  // its own next tick, preserving both ordering and tick-dependent behavior.
   async replay(images: DeployImage[]): Promise<void> {
     await this.runSteps(images, this.history.slice());
   }
@@ -266,7 +259,6 @@ export class IdeEngine {
     await this.reset(images);
     for (const s of steps) {
       await this.submitProcedure(s.slot, s.procId, s.entry, s.input, s.key, s.caller, s.contract);
-      await this.step(TICKS_AHEAD + 1); // tick until it lands
     }
   }
 
@@ -290,17 +282,6 @@ export class IdeEngine {
     this.engine.advanceTick(1);
     const info = await this.engine.tickInfo();
 
-    const due = this.mempool.filter((t) => info.tick >= t.targetTick);
-    if (due.length) {
-      this.mempool = this.mempool.filter((t) => info.tick < t.targetTick);
-      for (const t of due) {
-        const base = (await this.engine.debugTrace()).entries.length;
-        const r = await this.engine.broadcastTx(t.bytes);
-        const detail = await this.traceOf(base, t);
-        this.onTxProcessed?.({ key: t.key, name: t.name, tick: info.tick, moneyFlew: !!r.moneyFlew, detail });
-      }
-    }
-
     if (emit) {
       this.onTick?.(info);
     }
@@ -315,7 +296,7 @@ export class IdeEngine {
   // Decode the just-processed tx (debug entries added since `base`) into the step debugger's call sequence —
   // each invocation's decoded in/out, caller, named StateData diff, host-event timeline and logs. The
   // inline tx detail reuses the primary (user-procedure) step. Reuses the CLI's trace decoder; never throws.
-  private async traceOf(base: number, t: PendingTx): Promise<TxDetail | undefined> {
+  private async traceOf(base: number, t: TxMeta): Promise<TxDetail | undefined> {
     try {
       const entries = (await this.engine.debugTrace()).entries.slice(base);
       if (!entries.length) {
@@ -375,27 +356,48 @@ export class IdeEngine {
     return entry.out ? decodeOutput(out, entry.out) : null;
   }
 
-  // Submit a procedure call as a signed tx into the mempool. NOT applied now — the auto-ticker
-  // broadcasts it when the chain reaches its target tick, so the SC invocation runs during that tick
-  // (like the real network). Returns the tick it will land on.
+  // Submit a signed procedure transaction for the next tick and advance to that tick before returning. This
+  // keeps BEGIN_TICK -> transaction -> END_TICK / TickData ordering without a wall-clock mempool wait.
   async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }, contract: { name: string; source: string }): Promise<{ targetTick: number }> {
-    await this.ensureK12();
+    // Freeze the wall-clock ticker while signing so the chosen next tick cannot become stale. A manually
+    // paused engine stays paused; a running engine resumes after inclusion or rejection.
+    const resumeTicker = this.isRunning();
+    if (resumeTicker) this.pause();
+    try {
+      await this.ensureK12();
 
-    const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
-    const ti = await this.engine.tickInfo();
-    const targetTick = ti.tick + TICKS_AHEAD;
+      const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
+      const ti = await this.engine.tickInfo();
+      const targetTick = ti.tick + 1;
 
-    const tx = await buildSignedTx(caller.seed, {
-      destination: contractAddress(slot),
-      amount: caller.amount,
-      tick: targetTick,
-      inputType: Number(procId),
-      payload,
-    });
+      const tx = await buildSignedTx(caller.seed, {
+        destination: contractAddress(slot),
+        amount: caller.amount,
+        tick: targetTick,
+        inputType: Number(procId),
+        payload,
+      });
 
-    this.mempool.push({ targetTick, bytes: tx.bytes, name: entry.name, key, contractName: contract.name, contractSource: contract.source });
-    this.history.push({ slot, procId, entry, input, key, caller, contract });
-    return { targetTick };
+      const pending = { name: entry.name, key, contractName: contract.name, contractSource: contract.source };
+      const base = (await this.engine.debugTrace()).entries.length;
+      const result = await this.engine.broadcastTx(tx.bytes);
+      if (!result.ok) {
+        throw new Error(String(result.message ?? "transaction rejected"));
+      }
+
+      this.engine.advanceTick(1);
+      const included = await this.engine.tickInfo();
+      const detail = await this.traceOf(base, pending);
+      const status = result.transactionId ? await this.engine.txStatus(targetTick, result.transactionId) : null;
+      const moneyFlew = status?.moneyFlew ?? !!result.moneyFlew;
+
+      this.history.push({ slot, procId, entry, input, key, caller, contract });
+      this.onTxProcessed?.({ key, name: entry.name, tick: included.tick, moneyFlew, detail });
+      this.onTick?.(included);
+      return { targetTick: included.tick };
+    } finally {
+      if (resumeTicker) this.resume();
+    }
   }
 
   // Current in-process engine time (advances explicitly on invoke/advanceTick).
