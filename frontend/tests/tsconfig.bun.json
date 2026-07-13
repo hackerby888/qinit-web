@@ -16,6 +16,7 @@
       "@qinit/build/idl": ["../../../Qinit/packages/build/src/idl.ts"],
       "@qinit/build": ["../../../Qinit/packages/build/src/index.ts"],
       "@qinit/inspector": ["../../../Qinit/packages/cli/src/trace-format.ts"],
+      "@qinit/core/lite-abi-source": ["../../../Qinit/packages/core/src/lite-abi-source.ts"],
       "@qinit/core": ["../../../Qinit/packages/core/src/index.ts"]
     }
   }

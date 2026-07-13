@@ -26,9 +26,9 @@ jobs:
         working-directory: backend
         run: bun test
 
-  # Typechecks both packages + runs the frontend unit tests. These pull the sibling qinit monorepo (the dev
-  # path ../../Qinit). Required on every PR — override the defaults with repo vars QINIT_REPO / QINIT_REF and,
-  # if the sibling is private, a QINIT_PAT secret with read access.
+  # Typechecks both packages, builds the IDE from sibling Qinit source, and runs the frontend unit tests.
+  # Required on every PR — override the defaults with repo vars QINIT_REPO / QINIT_REF and, if the sibling is
+  # private, a QINIT_PAT secret with read access. No core-lite checkout is part of this browser boundary.
   typecheck:
     name: typecheck + web tests
     runs-on: ubuntu-latest
@@ -69,6 +69,18 @@ jobs:
       - name: typecheck frontend
         working-directory: Qinit-web/frontend
         run: bun run typecheck
+
+      - name: build frontend from sibling Qinit
+        working-directory: Qinit-web/frontend
+        run: bun run build
+
+      - name: reject live core-lite compiler dependencies
+        working-directory: Qinit-web/frontend
+        run: |
+          if grep -R -E 'QINIT_CORE|qubic-core-lite|not a core checkout|assembleQpiHeader|parseLiteAbiSource' dist; then
+            echo "browser bundle contains a live core-lite dependency" >&2
+            exit 1
+          fi
 
       - name: frontend unit tests
         working-directory: Qinit-web/frontend
