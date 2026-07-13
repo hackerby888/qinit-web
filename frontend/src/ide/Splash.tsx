@@ -1,7 +1,7 @@
-// A short branded splash shown when entering a project (New / Open) before the IDE route mounts. The 2s window
-// is deliberate — a hook to preload the workspace (engine, project, Monaco) in the future. The qinit pixel-Q
-// cascades + the accent "deploy node" pulses, with a progress bar that fills over the duration.
-import { useEffect, useRef, type CSSProperties } from "react";
+// Branded loading screen for real project/IDE startup work. Its parent owns readiness; there is no minimum
+// display time or completion timer, so a cached editor passes through immediately while a cold load stays
+// visible until the corresponding project, Monaco, compiler and engine tasks settle.
+import type { CSSProperties } from "react";
 import { color, font } from "../landing/tokens";
 
 // The qinit logo as a 5×7 pixel map (same mark as landing's PixelQMark). Value 2 = the accent deploy node.
@@ -18,7 +18,7 @@ const Q_MAP = [
 const CSS = `
 @keyframes splashPix { 0%{opacity:.12;transform:translateY(-3px)} 45%{opacity:1;transform:none} 100%{opacity:.12;transform:translateY(-3px)} }
 @keyframes splashSeed { 0%,100%{opacity:.35} 50%{opacity:1} }
-@keyframes splashBar { from{width:0%} to{width:100%} }
+@keyframes splashBar { from{transform:translateX(-120%)} to{transform:translateX(360%)} }
 @keyframes splashCaret { 0%,49%{opacity:1} 50%,100%{opacity:0} }
 `;
 
@@ -70,24 +70,18 @@ function AnimatedMark({ size = 88 }: { size?: number }) {
   );
 }
 
-export function SplashScreen({ label, onDone, duration = 2000 }: {
+export type SplashStepStatus = "pending" | "loading" | "done" | "error";
+
+export interface SplashStep {
   label: string;
-  onDone: () => void;
-  duration?: number;
+  status: SplashStepStatus;
+}
+
+export function SplashScreen({ label, steps }: {
+  label: string;
+  steps: SplashStep[];
 }) {
-  const doneRef = useRef(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => {
-      if (!doneRef.current) {
-        doneRef.current = true;
-        onDone();
-      }
-    }, duration);
-
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const active = steps.some((step) => step.status === "loading");
 
   return (
     <div style={overlay}>
@@ -102,8 +96,27 @@ export function SplashScreen({ label, onDone, duration = 2000 }: {
 
       <span style={{ fontFamily: font.mono, fontSize: 12, letterSpacing: ".12em", textTransform: "uppercase", color: color.textGhostDk }}>{label}</span>
 
+      <div role="log" aria-live="polite" style={{ width: 260, minHeight: 92, display: "flex", flexDirection: "column", gap: 7 }}>
+        {steps.map((step) => {
+          const marker = step.status === "done" ? "✓" : step.status === "error" ? "!" : step.status === "loading" ? "›" : "·";
+          const stepColor = step.status === "done"
+            ? color.accent
+            : step.status === "error"
+              ? "#f85149"
+              : step.status === "loading"
+                ? color.textLightHi
+                : color.textFaintDk;
+          return (
+            <div key={step.label} style={{ display: "grid", gridTemplateColumns: "18px 1fr", gap: 8, alignItems: "baseline", color: stepColor, fontFamily: font.mono, fontSize: 12 }}>
+              <span aria-hidden="true">{marker}</span>
+              <span>{step.label}</span>
+            </div>
+          );
+        })}
+      </div>
+
       <div style={{ width: 190, height: 4, background: color.hair2, overflow: "hidden" }}>
-        <div style={{ height: "100%", background: color.accent, animation: `splashBar ${duration}ms linear forwards` }} />
+        {active && <div style={{ width: "38%", height: "100%", background: color.accent, animation: "splashBar 1.1s ease-in-out infinite" }} />}
       </div>
     </div>
   );

@@ -47,6 +47,8 @@ import { useOverlays } from "./useOverlays";
 import { useTestRunner } from "./useTestRunner";
 import { genQinitDts } from "./tests/dts";
 import { setGtestIdls } from "./qpi/gtest";
+import { SplashScreen } from "./Splash";
+import { ideStartupPending, ideStartupSteps, type StartupTaskStatus } from "./startup";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
 import { ScenarioPanel, compare, uid, type Scenario, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
@@ -838,6 +840,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [engineInfo, setEngineInfo] = useState<{ tick: number; epoch: number } | null>(null);
   const [engineMemory, setEngineMemory] = useState<IdeMemoryUsage | null>(null);
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
+  const [compilerStartup, setCompilerStartup] = useState<StartupTaskStatus>("loading");
+  const [engineStartup, setEngineStartup] = useState<StartupTaskStatus>("loading");
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [caller, setCaller] = useState<string>("");
   const [balances, setBalances] = useState<Record<string, string>>({});
@@ -892,12 +896,21 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   useEffect(() => {
     let alive = true;
+    setCompilerStartup("loading");
 
-    void getCompilerInfo().then((info) => {
-      if (alive && info) {
-        setCompiler(info);
-      }
-    });
+    void getCompilerInfo()
+      .then((info) => {
+        if (!alive) return;
+        if (info) {
+          setCompiler(info);
+          setCompilerStartup("done");
+        } else {
+          setCompilerStartup("error");
+        }
+      })
+      .catch(() => {
+        if (alive) setCompilerStartup("error");
+      });
 
     return () => {
       alive = false;
@@ -2271,7 +2284,18 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   // Bring the testnet panel up on load — accounts funded, clock ticking, controls usable before any deploy.
   useEffect(() => {
-    void ensureEngine().catch(() => undefined);
+    let alive = true;
+    setEngineStartup("loading");
+    void ensureEngine()
+      .then(() => {
+        if (alive) setEngineStartup("done");
+      })
+      .catch(() => {
+        if (alive) setEngineStartup("error");
+      });
+    return () => {
+      alive = false;
+    };
   }, [ensureEngine]);
 
   // System-contract catalog for the picker (backend-served; [] if the backend/snapshot isn't available).
@@ -2569,16 +2593,15 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           ]
         : [];
 
-  if (!loaded) {
-    return (
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 13 }}>
-        loading project…
-      </div>
-    );
-  }
+  const startup = { projectReady: loaded, editorReady, compiler: compilerStartup, engine: engineStartup };
+  const startupSteps = ideStartupSteps(startup);
+  const showStartup = ideStartupPending(startup);
+
+  if (!loaded) return <SplashScreen label="Opening workspace" steps={startupSteps} />;
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
+      {showStartup && <SplashScreen label="Preparing editor" steps={startupSteps} />}
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-rail{transition:background .1s,color .1s}.pix-rail:hover{background:${color.panel};color:${color.textLight}}.pix-collapse{opacity:0;transition:opacity .1s}.pix-resizer:hover .pix-collapse{opacity:1}.pix-collapse:hover{color:${color.accent} !important;border-color:${color.accent} !important}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
       <Toasts />

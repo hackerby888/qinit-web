@@ -7,7 +7,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
 import { Card, NeoBtn } from "./ui";
-import { SplashScreen } from "./Splash";
+import { SplashScreen, type SplashStep } from "./Splash";
+import { isIdeModuleLoaded, loadIdeModule } from "./load";
 import { getStore, getLocalStore } from "./projects/store";
 import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./auth";
 import { exportProject, importProjectFile } from "./projects/io";
@@ -62,7 +63,7 @@ export default function Projects() {
   const [importPrompt, setImportPrompt] = useState<ProjectMeta[] | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [splash, setSplash] = useState<{ label: string; go: () => void } | null>(null);
+  const [splash, setSplash] = useState<{ label: string; steps: SplashStep[] } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const wasAuthed = useRef(false);
   const importUser = useRef<Me | null>(null);
@@ -177,11 +178,39 @@ export default function Projects() {
     void reload();
   };
 
-  // Both entries route through a short branded splash (a deliberate window to preload the workspace later).
+  // Fetch the heavy IDE/Monaco route while the selected project operation runs. There is no minimum splash
+  // duration: warm imports and fast storage proceed immediately; cold work remains visible until it is real.
+  const enterProject = async (label: string, projectTask: string, selectProject: () => Promise<string>) => {
+    const editorReady = isIdeModuleLoaded();
+    setSplash({
+      label,
+      steps: [
+        { label: projectTask, status: "loading" },
+        { label: "editor bundle", status: editorReady ? "done" : "loading" },
+      ],
+    });
+
+    try {
+      const editor = loadIdeModule();
+      const id = await selectProject();
+      setSplash((current) => current && {
+        ...current,
+        steps: current.steps.map((step) => step.label === projectTask ? { ...step, status: "done" } : step),
+      });
+      await editor;
+      navigate(`/ide/p/${id}`);
+    } catch (e) {
+      setSplash(null);
+      throw e;
+    }
+  };
+
   const open = async (id: string) => {
     try {
-      await getStore().setCurrentId(id);
-      setSplash({ label: "Opening workspace", go: () => navigate(`/ide/p/${id}`) });
+      await enterProject("Opening workspace", "selecting project", async () => {
+        await getStore().setCurrentId(id);
+        return id;
+      });
     } catch (e) {
       notify.error(errorMessage(e, "Couldn't open the project"));
     }
@@ -191,11 +220,13 @@ export default function Projects() {
   // bottom-right region) seeds the full example playground (all the starter contracts).
   const create = async (mode: "standard" | "dev" = "standard") => {
     try {
-      const n = (metas?.length ?? 0) + 1;
-      const seed = mode === "standard" ? STARTER.map((e) => ({ name: e.file, source: e.source })) : undefined;
-      const p = await getStore().create(`Project ${n}`, seed);
-      await getStore().setCurrentId(p.id);
-      setSplash({ label: "Creating workspace", go: () => navigate(`/ide/p/${p.id}`) });
+      await enterProject("Creating workspace", "creating project files", async () => {
+        const n = (metas?.length ?? 0) + 1;
+        const seed = mode === "standard" ? STARTER.map((e) => ({ name: e.file, source: e.source })) : undefined;
+        const p = await getStore().create(`Project ${n}`, seed);
+        await getStore().setCurrentId(p.id);
+        return p.id;
+      });
     } catch (e) {
       notify.error(errorMessage(e, "Couldn't create the project"));
     }
@@ -270,7 +301,7 @@ export default function Projects() {
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}` }} />
       <Toasts />
       <OfflineBanner />
-      {splash && <SplashScreen label={splash.label} onDone={splash.go} />}
+      {splash && <SplashScreen label={splash.label} steps={splash.steps} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
       {importPrompt && <ImportModal count={importPrompt.length} onImport={() => void runImport()} onSkip={skipImport} />}
       {expired && (
