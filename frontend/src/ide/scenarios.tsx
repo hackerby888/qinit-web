@@ -2,7 +2,7 @@
 // list of writes (captured from what you ran) plus assertions on function outputs. Running one resets the
 // chain to genesis, replays the writes, then checks each assertion → pass/fail. Persisted per browser.
 import { useState, type CSSProperties } from "react";
-import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import { color, font } from "../landing/tokens";
 import { InputFields } from "./InputFields";
 import type { InputDraft } from "./input-values";

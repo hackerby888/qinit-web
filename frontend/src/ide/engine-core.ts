@@ -3,12 +3,12 @@
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> include in the next tick now
 // Worker-owned engine implementation. The browser-facing IdeEngine proxy lives in ./engine.ts.
 import { VirtualNode, initK12, runCompiledGtest, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
-import type { GtestProgram } from "@qinit/compile/browser";
+import type { GtestProgram } from "@qinit/compiler/browser";
 
 export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
-import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import { readState, describeTrace, labelOff, fmtDiffVal, fmtLog, type StateDump } from "@qinit/inspector";
 
 // Re-export the engine's asset-universe snapshot under the IDE's name (one inter-contract asset + its holdings).
@@ -350,7 +350,7 @@ export class IdeEngineCore {
     }
   }
 
-  // Decode a deployed contract's CURRENT state (scalars + container columns) — the qinit `state` inspector.
+  // Decode a deployed contract's CURRENT state (scalars + containers) — the qinit `state` inspector.
   async stateOf(slot: number, source: string, name: string): Promise<StateDump> {
     return readState(this.engine, slot, source, name);
   }

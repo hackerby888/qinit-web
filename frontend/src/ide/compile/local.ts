@@ -1,8 +1,8 @@
 // IDE compile facade: run the in-browser compiler (worker) and normalize its response to the
 // CompileResult shape the IDE consumes. This is the only compile path — there is no backend
 // compiler; a crashed or wedged worker surfaces as an error and the next compile gets a fresh one.
-import type { CompilerInfo } from "@qinit/compile/browser";
-import type { GtestProgram } from "@qinit/compile/browser";
+import type { CompilerInfo } from "@qinit/compiler/browser";
+import type { GtestProgram } from "@qinit/compiler/browser";
 import type { CompileCallee, CompileResult } from "../api";
 import type { WorkerCompileResponse, WorkerGtestResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
 

@@ -3,21 +3,21 @@
 //   1. the parser survives every real system contract (Qx, Quottery, Qearn, …);
 //   2. our hand-written qpi tables (CONTAINERS / QPI_API) don't drift from what qpi.h actually declares.
 import { test, expect, describe } from "bun:test";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { loadQpiHeader } from "@qinit/compiler";
 import { collectStructs, enclosingEntry, maskComments, QPI_API, CONTAINERS } from "../../../src/ide/qpi/members";
 import { scanContext } from "../../../src/ide/qpi/contextlint";
 import { coreContractsDir, listContracts, readFile } from "./test-helpers";
 
 const DIR = coreContractsDir();
 // Mask comments/strings so a brace inside one can't throw off the class-body brace matching below.
-const QPI = DIR ? maskComments(readFileSync(join(DIR, "qpi.h"), "utf8")) : "";
+const QPI = DIR ? maskComments(loadQpiHeader(join(DIR, "..", ".."))) : "";
 
 const ENTRY = /\b((?:PUBLIC|PRIVATE)_(?:FUNCTION|PROCEDURE)(?:_WITH_LOCALS)?)\s*\(\s*(\w+)\s*\)/g;
 
 // The brace-delimited body of a `struct`/`class Name`, or null.
 function classBody(src: string, name: string): string | null {
-  const m = new RegExp(`\\b(?:struct|class)\\s+${name}\\b`).exec(src);
+  const m = new RegExp(`\\b(?:struct|class)\\s+${name}\\b[^;{]*\\{`).exec(src);
   if (!m) {
     return null;
   }

@@ -1,6 +1,6 @@
 // The QPI vocabulary, in one place — consumed by both the Monarch grammar (grammar.ts, for syntax
 // coloring) and the completion provider (snippets.ts, for the type suggestions). Verified against the
-// core-lite header snapshot (~/.cache/qinit/qinit-v0.0.32/core-headers/src/contracts/qpi.h).
+// core-lite header snapshot (~/.cache/qinit/qinit-v0.0.32/core-headers/src/qpi/qpi.h).
 
 // Scalar + container types a contract declares (StateData fields, _input/_output structs). Coloured as
 // `type.qpi`, distinct from the C++ built-in types.

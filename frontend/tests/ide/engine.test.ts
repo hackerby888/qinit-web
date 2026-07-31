@@ -1,11 +1,12 @@
 // IdeEngine is the in-browser virtual node: deploy a contract, query its functions, and execute procedures
 // synchronously in the next tick. This drives the real @qinit engine + codecs (resolved
-// from the sibling monorepo via the bun-test alias shim) against the committed Counter fixture wasm.
+// from the sibling monorepo via the bun-test alias shim) against a current compiler artifact.
 import { test, expect } from "bun:test";
+import { compileContract } from "@qinit/compiler/browser";
 import { IdeEngine } from "../../src/ide/engine";
-import { extractIdl } from "@qinit/build/idl";
+import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
 
-// Same shape as the fixture's contract: Inc procedure @1, Get function @1, Get_output { uint64 value }.
+// Inc procedure @1, Get function @1, Get_output { uint64 value }.
 const SRC = `using namespace QPI;
 
 struct Counter : public ContractBase
@@ -40,8 +41,18 @@ struct Counter : public ContractBase
 const idl = extractIdl(SRC, "Counter");
 const SLOT = 28;
 
-async function counterWasm(): Promise<Uint8Array> {
-  return new Uint8Array(await Bun.file(`${import.meta.dir}/fixtures/Counter.wasm`).arrayBuffer());
+async function counterWasm(slot = SLOT): Promise<Uint8Array> {
+  const result = await compileContract({
+    source: SRC,
+    contractName: "Counter",
+    slot,
+    arenaSizeBytes: 64 * 1024,
+  });
+  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length || result.wasm.byteLength === 0 || !result.idl) {
+    throw new Error(errors.map((diagnostic) => diagnostic.message).join("\n") || "Counter compilation failed");
+  }
+  return result.wasm;
 }
 
 // callFunction returns the decoded output (a single uint64 here); read it as a bigint regardless of shape.
@@ -122,9 +133,8 @@ test("IdeEngine: fundAccount credits the spectrum and balanceOf reads it back", 
 
 test("IdeEngine: contracts at different slots keep independent state", async () => {
   const e = new IdeEngine();
-  const wasm = await counterWasm();
-  await e.deploy(28, wasm, idl);
-  await e.deploy(29, wasm, idl);
+  await e.deploy(28, await counterWasm(28), idl);
+  await e.deploy(29, await counterWasm(29), idl);
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(28, "1", idl.procedures["1"], {}, "inc-28", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
@@ -166,7 +176,7 @@ test("IdeEngine: stateOf decodes the live StateData scalars before and after a m
 
   const before = await e.stateOf(SLOT, SRC, "Counter");
   expect(before.fields).toEqual([{ name: "counter", value: "0" }]);
-  expect(before.cols).toEqual([]); // Counter has no container columns
+  expect(before.containers).toEqual([]);
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });

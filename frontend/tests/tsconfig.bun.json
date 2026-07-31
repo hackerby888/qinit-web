@@ -9,12 +9,13 @@
   "compilerOptions": {
     "paths": {
       "@qinit/engine": ["../../../Qinit/packages/engine/src/index.ts"],
-      "@qinit/compile/browser": ["../../../Qinit/packages/compile/src/browser.ts"],
-      "@qinit/compile": ["../../../Qinit/packages/compile/src/index.ts"],
+      "@qinit/compiler/browser": ["../../../Qinit/packages/compiler/src/browser.ts"],
+      "@qinit/compiler/analyzer": ["../../../Qinit/packages/compiler/src/analyzer.ts"],
+      "@qinit/compiler": ["../../../Qinit/packages/compiler/src/index.ts"],
+      "@qinit/proto/contract-idl": ["../../../Qinit/packages/proto/src/contract-idl.ts"],
       "@qinit/proto/qpi-layout": ["../../../Qinit/packages/proto/src/qpi-layout.ts"],
       "@qinit/proto": ["../../../Qinit/packages/proto/src/index.ts"],
-      "@qinit/build/idl": ["../../../Qinit/packages/build/src/idl.ts"],
-      "@qinit/build": ["../../../Qinit/packages/build/src/index.ts"],
+      "@qinit/build": ["../../../Qinit/packages/build/src/idl.ts"],
       "@qinit/inspector": ["../../../Qinit/packages/cli/src/trace-format.ts"],
       "@qinit/core/lite-abi-source": ["../../../Qinit/packages/core/src/lite-abi-source.ts"],
       "@qinit/core": ["../../../Qinit/packages/core/src/index.ts"]

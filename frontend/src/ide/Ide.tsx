@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
-import type { IdlEntry, ContractIdl } from "@qinit/build/idl";
+import type { EntryView as IdlEntry, ContractIdlView as ContractIdl } from "./idl-view";
 import { bytesToIdentity } from "@qinit/core";
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
@@ -31,7 +31,7 @@ import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type CompileResult, type SystemContractEntry } from "./api";
 import { compileGtestInBrowser, compileInBrowser, getCompilerInfo } from "./compile/local";
-import type { CompilerInfo } from "@qinit/compile/browser";
+import type { CompilerInfo } from "@qinit/compiler/browser";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent, EngineMemoryUsage } from "./engine";
 import { Debugger } from "./Debugger";
 import { SystemSourceView } from "./SystemSourceView";
@@ -521,7 +521,7 @@ function StatePanel({ dump }: { dump?: StateDump }) {
             <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
           </div>
         ))}
-        {dump.cols.map((c) => (
+        {dump.containers.map((c) => (
           <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
             <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
             {c.entries.map((e, i) => (
@@ -535,7 +535,7 @@ function StatePanel({ dump }: { dump?: StateDump }) {
 
 // True when a state dump has anything worth showing (gates the STATE section).
 function hasState(dump?: StateDump): boolean {
-  return !!dump && (dump.fields.length > 0 || dump.cols.length > 0);
+  return !!dump && (dump.fields.length > 0 || dump.containers.length > 0);
 }
 
 // The asset universe — every issued asset (qpi.issueAsset) and its share holdings. Global, not per-contract:

@@ -1,9 +1,9 @@
 // Main-thread facade for the IDE virtual node. In browsers this is an RPC proxy: the real VirtualNode,
 // contract Wasm instances, linear memories, ticker, tracing and state decoding live in engine-worker.ts.
 // Bun tests use the same IdeEngineCore in-process because there is no browser UI thread to protect.
-import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import type { EngineLogEvent, TestResult } from "@qinit/engine";
-import type { GtestProgram } from "@qinit/compile/browser";
+import type { GtestProgram } from "@qinit/compiler/browser";
 import type { StateDump } from "@qinit/inspector";
 import type {
   Account,

@@ -62,7 +62,7 @@ app.get("/ready", (_req, res) => {
 });
 
 // Built-in system contracts for the IDE's in-browser virtual node: the catalog (picker) + source-by-name.
-// The browser compiles the source itself (@qinit/compile worker) and deploys the wasm in-page.
+// The browser compiles the source itself (@qinit/compiler worker) and deploys the wasm in-page.
 app.get("/api/system-contracts", (_req, res) => res.json({ contracts: systemCatalog() }));
 app.get("/api/system-contracts/sources", (_req, res) => {
   const r = systemSources();

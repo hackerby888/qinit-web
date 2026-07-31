@@ -4,7 +4,7 @@ import { test, expect, describe } from "bun:test";
 import { systemCatalog, systemSource, systemSources } from "../src/system";
 
 describe("system contracts API", () => {
-  test("catalog: array of {index,name,idl}; QX is index 1 when a snapshot is present", () => {
+  test("catalog: array of {index,name,stateType}; QX is index 1 when a snapshot is present", () => {
     const cat = systemCatalog();
     expect(Array.isArray(cat)).toBe(true);
     if (cat.length) {

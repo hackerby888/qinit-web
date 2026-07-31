@@ -1,4 +1,4 @@
-import type { Field } from "@qinit/build/idl";
+import type { FieldView as Field } from "./idl-view";
 
 export const ZERO_IDENTITY = "A".repeat(60);
 

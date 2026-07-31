@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import type { Field } from "@qinit/build/idl";
+import type { FieldView as Field } from "../../src/ide/idl-view";
 import {
   ZERO_IDENTITY,
   buildInput,

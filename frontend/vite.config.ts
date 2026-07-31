@@ -6,31 +6,24 @@ import react from "@vitejs/plugin-react";
 // packages are private/unpublished). @qinit/core's package index pulls node-only modules (fetch.ts), so
 // it's redirected to a browser-safe shim that re-exports only the browser-usable surface + an ESM K12.
 //
-// Compiler resolution (QINIT_SOURCE):
-//   local   (default) — @qinit/compile/browser resolves to ${QINIT_LOCAL}/packages/compile/src/browser.ts
-//             and consumes the generated snapshot committed in that Qinit checkout. No core-lite checkout
-//             is needed. A missing sibling Qinit checkout is a hard error, never a silent npm fallback.
-//   package — the compiler source aliases are disabled and @qinit/compile/browser resolves to the
-//             lockfile-pinned npm package (snapshot already embedded at release). Production builds set this.
-const QINIT_SOURCE = process.env.QINIT_SOURCE === "package" ? "package" : "local";
+// The browser compiler consumes the generated snapshot committed in the sibling Qinit checkout. No
+// core-lite checkout is needed. A missing sibling checkout is a hard error, never a silent npm fallback.
 const QINIT_LOCAL = process.env.QINIT_LOCAL ?? new URL("../../Qinit", import.meta.url).pathname;
 
 const qinit = (rel: string) => `${QINIT_LOCAL}/packages/${rel}`;
 const here = (rel: string) => new URL(rel, import.meta.url).pathname;
 
-if (QINIT_SOURCE === "local" && !existsSync(qinit("compile/src/browser.ts"))) {
-  throw new Error(`QINIT_SOURCE=local needs the sibling Qinit checkout at ${QINIT_LOCAL} (override with QINIT_LOCAL=<path>)`);
+if (!existsSync(qinit("compiler/src/browser.ts"))) {
+  throw new Error(`The browser compiler needs the sibling Qinit checkout at ${QINIT_LOCAL} (override with QINIT_LOCAL=<path>)`);
 }
 
 const aliases: Record<string, string> = {
   "@qinit/engine": qinit("engine/src/index.ts"),
-  // Subpath imports must precede the package root (first match wins). idl.ts pulls the shared QPI
-  // container layouts from @qinit/proto/qpi-layout.
+  // Subpath imports must precede the package root (first match wins).
+  "@qinit/proto/contract-idl": qinit("proto/src/contract-idl.ts"),
   "@qinit/proto/qpi-layout": qinit("proto/src/qpi-layout.ts"),
   "@qinit/proto": qinit("proto/src/index.ts"),
-  // `@qinit/build/idl` must precede `@qinit/build` (first match wins). The package root pulls node:fs,
-  // so it's redirected to the browser-safe idl module (which is all the inspector needs: extractIdl).
-  "@qinit/build/idl": qinit("build/src/idl.ts"),
+  // trace-format.ts imports the package root; keep that transitive edge on the browser-safe IDL module.
   "@qinit/build": qinit("build/src/idl.ts"),
   // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.
   "@qinit/inspector": qinit("cli/src/trace-format.ts"),
@@ -38,11 +31,10 @@ const aliases: Record<string, string> = {
   "@qinit/core/lite-abi-source": qinit("core/src/lite-abi-source.ts"),
   "@qinit/core": qinit("core/src/browser.ts"),
 };
-if (QINIT_SOURCE === "local") {
-  // Subpath before package root — first match wins.
-  aliases["@qinit/compile/browser"] = qinit("compile/src/browser.ts");
-  aliases["@qinit/compile"] = qinit("compile/src/index.ts");
-}
+// Subpaths before the package root — first match wins.
+aliases["@qinit/compiler/browser"] = qinit("compiler/src/browser.ts");
+aliases["@qinit/compiler/analyzer"] = qinit("compiler/src/analyzer.ts");
+aliases["@qinit/compiler"] = qinit("compiler/src/index.ts");
 
 export default defineConfig({
   plugins: [react()],
@@ -64,5 +56,5 @@ export default defineConfig({
       "/collab": { target: "http://127.0.0.1:8787", ws: true, changeOrigin: true },
     },
   },
-  optimizeDeps: { exclude: ["@qinit/engine", "@qinit/proto", "@qinit/build", "@qinit/core", "@qinit/compile"] },
+  optimizeDeps: { exclude: ["@qinit/engine", "@qinit/proto", "@qinit/build", "@qinit/core", "@qinit/compiler"] },
 });

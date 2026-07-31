@@ -1,8 +1,8 @@
 // Message contract between the IDE and the in-browser compile worker. Kept in one module so both
 // sides (worker.ts, local.ts) and tests share the exact shapes.
-import type { ContractIdl } from "@qinit/build/idl";
-import type { CompilerInfo } from "@qinit/compile/browser";
-import type { GtestProgram } from "@qinit/compile/browser";
+import type { ContractIdlView as ContractIdl } from "../idl-view";
+import type { CompilerInfo } from "@qinit/compiler/browser";
+import type { GtestProgram } from "@qinit/compiler/browser";
 import type { CompileDiagnostic } from "../api";
 
 export interface WorkerHelloRequest {

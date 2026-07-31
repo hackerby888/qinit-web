@@ -93,20 +93,20 @@ declare module "@qinit/inspector" {
     container?: Container;
     bad?: boolean;
   }
-  export interface ColView {
+  export interface ContainerView {
     name: string;
     entries: string[];
   }
   export interface StateDump {
     fields: { name: string; value: string }[];
-    cols: ColView[];
+    containers: ContainerView[];
   }
   export interface TraceView {
     inDecoded: string;
     outDecoded: string;
     caller: string;
     fields: StateField[];
-    cols: ColView[];
+    containers: ContainerView[];
     logs: unknown[];
   }
   export interface StateReader {
@@ -147,37 +147,88 @@ declare module "@qinit/core" {
   export function k12Sync(bytes: Uint8Array): Uint8Array;
 }
 
-declare module "@qinit/compile/browser" {
+declare module "@qinit/compiler/browser" {
   export interface CompileDiagnostic {
     severity: "error" | "warning";
     message: string;
-    span: { start: number; end: number; line: number; col: number };
-    category?: "fidelity";
+    span: { start: number; end: number; line: number; column: number };
+    category?: unknown;
   }
-  export interface MinimalIdlEntry {
+
+  export interface AbiTypeBase {
+    size: number;
+    align: number;
+    format: string;
+  }
+  export interface AbiScalar extends AbiTypeBase {
+    kind: "scalar";
+    scalar: string;
+  }
+  export interface AbiField {
+    name: string;
+    offset: number;
+    size: number;
+    type: AbiType;
+  }
+  export interface AbiStruct extends AbiTypeBase {
+    kind: "struct";
+    name?: string;
+    fields: AbiField[];
+  }
+  export interface AbiArray extends AbiTypeBase {
+    kind: "array";
+    count: number;
+    element: AbiType;
+  }
+  export interface AbiCollection extends AbiTypeBase {
+    kind: "collection";
+    capacity: number;
+    value: AbiType;
+  }
+  export interface AbiHashMap extends AbiTypeBase {
+    kind: "hash_map";
+    capacity: number;
+    key: AbiType;
+    value: AbiType;
+  }
+  export interface AbiHashSet extends AbiTypeBase {
+    kind: "hash_set";
+    capacity: number;
+    key: AbiType;
+  }
+  export type AbiType =
+    | AbiScalar
+    | AbiStruct
+    | AbiArray
+    | AbiCollection
+    | AbiHashMap
+    | AbiHashSet;
+
+  export interface ContractEntry {
     name: string;
     inputType: number;
     inSize: number;
     outSize: number;
+    input: AbiType;
+    output: AbiType;
   }
   export interface ContractIdl {
+    version: 3;
     name: string;
     slot: number;
-    functions: MinimalIdlEntry[];
-    procedures: MinimalIdlEntry[];
-    stateSize: number;
+    functions: ContractEntry[];
+    procedures: ContractEntry[];
+    state: AbiStruct;
     sysprocMask: number;
-  }
-  export interface CalleeIdl {
-    name: string;
-    index: number;
-    functions: Record<string, { inputType: number; inSize: number; outSize: number }>;
-    procedures: Record<string, { inputType: number; inSize: number; outSize: number }>;
+    enums: Array<{ name: string; underlying: string; members: Record<string, string> }>;
+    logs: Array<{ name: string; type: AbiStruct }>;
+    migration?: { oldState: AbiStruct };
+    dependencies: string[];
   }
   export interface CompileResult {
     wasm: Uint8Array;
     diagnostics: CompileDiagnostic[];
-    idl: ContractIdl;
+    idl?: ContractIdl;
     timings?: Record<string, number>;
   }
   export interface GtestProgram {
@@ -185,13 +236,14 @@ declare module "@qinit/compile/browser" {
     contract: string;
     mainSlot: number;
     runnerSlot: number;
+    mainConstructionEpoch: number;
     tests: Array<{ name: string; inputType: number }>;
   }
   export interface GtestCompileResult {
     wasm?: Uint8Array;
     program?: GtestProgram;
     diagnostics: CompileDiagnostic[];
-    idl: ContractIdl;
+    idl?: ContractIdl;
   }
   export interface CompilerInfo {
     qinitVersion: string;
@@ -205,11 +257,11 @@ declare module "@qinit/compile/browser" {
   export const qpiSnapshot: string;
   export function compileContract(opts: {
     source: string;
-    name: string;
+    contractName: string;
     slot: number;
-    arenaSz?: number;
-    callees?: CalleeIdl[];
-    calleeSources?: Array<{ name: string; source: string }>;
+    arenaSizeBytes?: number;
+    callees?: ContractIdl[];
+    calleeSources?: Array<{ name: string; source: string; slot?: number }>;
     qpiHeader?: string;
     strict?: boolean;
     onPhase?: (phase: string) => void | Promise<void>;
@@ -217,31 +269,22 @@ declare module "@qinit/compile/browser" {
   export function compileGtest(opts: {
     source: string;
     testSource: string;
-    name: string;
+    contractName: string;
     slot: number;
     qpiHeader?: string;
   }): Promise<GtestCompileResult>;
 }
 
-declare module "@qinit/build/idl" {
-  export interface Field {
-    name: string;
-    type: string;
-    struct?: Field[];
-    array?: boolean;
-  }
-  export interface IdlEntry {
-    name: string;
-    in: string;
-    out?: string;
-    inFields: Field[];
-    outFields?: Field[];
-  }
-  export interface ContractIdl {
-    name: string;
-    functions: Record<string, IdlEntry>;
-    procedures: Record<string, IdlEntry>;
-    state?: Field[];
-  }
-  export function extractIdl(source: string, name: string): ContractIdl;
+declare module "@qinit/compiler/analyzer" {
+  export function analyzeContract(options: {
+    source: string;
+    contractName?: string;
+    slot?: number;
+    qpiHeader?: string;
+    callees?: import("@qinit/compiler/browser").ContractIdl[];
+    calleeSources?: Array<{ name: string; source: string; slot?: number }>;
+  }): {
+    diagnostics: import("@qinit/compiler/browser").CompileDiagnostic[];
+    idl?: import("@qinit/compiler/browser").ContractIdl;
+  };
 }

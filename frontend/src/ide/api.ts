@@ -1,7 +1,7 @@
 // Backend API client for the IDE. Compilation happens in the browser (./compile/local.ts — the
-// @qinit/compile worker); the backend only serves the system-contract catalog + sources, which the
+// @qinit/compiler worker); the backend only serves the system-contract catalog + sources, which the
 // browser then compiles and runs in-page via ./engine.
-import type { ContractIdl } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl } from "./idl-view";
 
 export interface CompileDiagnostic {
   severity: "error" | "warning";
@@ -36,7 +36,6 @@ export interface SystemContractEntry {
   index: number;
   name: string;
   stateType?: string;
-  idl?: ContractIdl;
 }
 
 // The system-contract catalog (the picker list). [] on any error — the picker just shows nothing.

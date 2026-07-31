@@ -5,7 +5,7 @@
 //       after `<var>.`), and — from the deployed contracts' IDLs — the contract's <Name>::Entry_input /
 //       _output structs + StateData. The C++ analogue of how .ts tests get genQinitDts.
 import type * as Monaco from "monaco-editor";
-import type { ContractIdl } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl } from "../idl-view";
 
 // A gtest test model: its file is a .cpp/.cc/.cxx, or it includes the core harness / uses TEST().
 export function isGtestModel(model: Monaco.editor.ITextModel): boolean {

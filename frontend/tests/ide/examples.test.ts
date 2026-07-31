@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { compileContract, compileGtest } from "@qinit/compile/browser";
+import { compileContract, compileGtest } from "@qinit/compiler/browser";
 import { STARTER } from "../../src/ide/examples";
-import { extractIdl } from "@qinit/build/idl";
+import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
 import { IdeEngine } from "../../src/ide/engine";
 
 test("Counter starter emits a native-shaped LOG_INFO after Inc", () => {
@@ -16,7 +16,7 @@ test("Counter starter emits a native-shaped LOG_INFO after Inc", () => {
 
 test("Counter starter LOG_INFO compiles and is decoded after Inc", async () => {
   const source = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
-  const compiled = await compileContract({ source, name: "Counter", slot: 28, arenaSz: 64 * 1024 });
+  const compiled = await compileContract({ source, contractName: "Counter", slot: 28, arenaSizeBytes: 64 * 1024 });
   expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
 
   const engine = new IdeEngine();
@@ -39,8 +39,8 @@ test("Counter starter LOG_INFO compiles and is decoded after Inc", async () => {
 test("Counter core-lite gtest compiles and runs in-browser without clang", async () => {
   const source = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
   const testSource = STARTER.find((file) => file.file === "Counter.test.cpp")?.source ?? "";
-  const contract = await compileContract({ source, name: "Counter", slot: 28, arenaSz: 64 * 1024 });
-  const gtest = await compileGtest({ source, testSource, name: "Counter", slot: 28 });
+  const contract = await compileContract({ source, contractName: "Counter", slot: 28, arenaSizeBytes: 64 * 1024 });
+  const gtest = await compileGtest({ source, testSource, contractName: "Counter", slot: 28 });
   expect(gtest.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
   expect(gtest.program).toBeDefined();
 
@@ -61,7 +61,7 @@ test("detailed function calls decode LOG_INFO for the Calls UI", async () => {
       "PUBLIC_FUNCTION(Get)\n    {\n        output.value = state.get().counter;\n    }",
       "PUBLIC_FUNCTION_WITH_LOCALS(Get)\n    {\n        output.value = state.get().counter;\n        locals.log._type = CounterIncremented;\n        locals.log.value = output.value;\n        LOG_INFO(locals.log);\n    }",
     );
-  const compiled = await compileContract({ source, name: "Counter", slot: 28, arenaSz: 64 * 1024 });
+  const compiled = await compileContract({ source, contractName: "Counter", slot: 28, arenaSizeBytes: 64 * 1024 });
   expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
 
   const engine = new IdeEngine();

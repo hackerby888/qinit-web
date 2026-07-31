@@ -20,7 +20,7 @@ the **API** (Bun/Express), backed by **MongoDB** (durable storage) and optional 
 - The **core headers** for the system-contract catalog/source endpoints. Provision on the host with
   `qinit up` (populates `~/.cache/qinit`); compose mounts it read-only into the API. Without them the API
   serves fine but the system-contract catalog is empty. Contract compilation itself happens in the browser
-  (`@qinit/compile` worker) — the API has no compile endpoint.
+  (`@qinit/compiler` worker) — the API has no compile endpoint.
 
 ## Quick start
 

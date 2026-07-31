@@ -4,7 +4,7 @@
 // are injected as globals: the bun:test lifecycle fns, a `provider()`, and a class per deployed contract with
 // the same method shapes as `generateClient` (functions read, procedures synchronously include their signed
 // transaction in the next tick). The chain is reset once at the start, then tests run in order.
-import type { ContractIdl, IdlEntry } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "../idl-view";
 import type { IdeEngine, Account, DeployImage } from "../engine";
 
 export interface TestResult {

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import type { Field } from "@qinit/build/idl";
+import type { FieldView as Field } from "./idl-view";
 import { color, font } from "../landing/tokens";
 import { arrayType, inputHint, type InputDraft } from "./input-values";
 

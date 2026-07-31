@@ -22,16 +22,16 @@ function corePath(): string | null {
   return null;
 }
 
-export interface SystemCatalogEntry { index: number; name: string; stateType: string; idl: unknown }
+export interface SystemCatalogEntry { index: number; name: string; stateType: string }
 
-// The pick-list: index + name + state-struct type (what the compiler compiles by) + IDL (drives the
-// call forms), no source — that comes from systemSource.
+// The pick-list: index + name + state-struct type (what the compiler compiles by), no source — that
+// comes from systemSource.
 export function systemCatalog(): SystemCatalogEntry[] {
   const core = corePath();
   if (!core) {
     return [];
   }
-  return systemContracts(core).map((c) => ({ index: c.index, name: c.name, stateType: c.stateType, idl: c.idl }));
+  return systemContracts(core).map((c) => ({ index: c.index, name: c.name, stateType: c.stateType }));
 }
 
 export type SystemSourceResult =

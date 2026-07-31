@@ -1,7 +1,7 @@
 // Generate the ambient ".qinit" client types for the Monaco editor, from the deployed contracts' IDLs — so a
 // test's `import { Counter, provider } from "./.qinit"` resolves to typed classes and `c.` completes. This is
 // the editor-only mirror of the qinit CLI's `generateClient` (types, no runtime).
-import type { ContractIdl } from "@qinit/build/idl";
+import type { ContractIdlView as ContractIdl } from "../idl-view";
 
 interface Field {
   name: string;
