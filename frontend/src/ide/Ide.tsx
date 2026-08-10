@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
+import type * as Monaco from "monaco-editor";
 import type { EntryView as IdlEntry, ContractIdlView as ContractIdl } from "./idl-view";
 import { bytesToIdentity } from "@qinit/core";
 import { color, font, themeFlags } from "../landing/tokens";
@@ -47,6 +48,7 @@ import { useOverlays } from "./useOverlays";
 import { useTestRunner } from "./useTestRunner";
 import { genQinitDts } from "./tests/dts";
 import { setGtestIdls } from "./qpi/gtest";
+import { crossContractDefinitionAt, setQpiWorkspaceFiles } from "./qpi/cross-contract";
 import { SplashScreen } from "./Splash";
 import { ideStartupPending, ideStartupSteps, type StartupTaskStatus } from "./startup";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
@@ -872,6 +874,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const editorRef = useRef<EditorRef | null>(null);
   const monacoRef = useRef<MonacoNS | null>(null);
   const pendingJumpRef = useRef<{ file: string; offset: number } | null>(null); // goto-source target awaiting its file's model swap
+  const editorOpenerRef = useRef<{ dispose(): void } | null>(null);
+  const definitionActionRef = useRef<{ dispose(): void } | null>(null);
   const qinitLibRef = useRef<{ dispose(): void } | null>(null); // the ./.qinit ambient types extralib (regenerated on deploy)
   const engineRef = useRef<IdeEngine | null>(null);
   const engineInitRef = useRef<Promise<IdeEngine> | null>(null); // dedupe concurrent starts (StrictMode / fast compile)
@@ -929,6 +933,16 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   const activeIsTest = /\.tsx?$/.test(ws.active); // a .ts test file -> run-tests, not compile
   const activeIsGtest = /\.(cpp|cc|cxx)$/.test(ws.active); // a C++ gtest file -> run-gtest (compile into the contract wasm)
+
+  useEffect(() => {
+    setQpiWorkspaceFiles(ws.files);
+  }, [ws.files]);
+
+  useEffect(() => () => {
+    editorOpenerRef.current?.dispose();
+    definitionActionRef.current?.dispose();
+    setQpiWorkspaceFiles([]);
+  }, []);
 
   // Collab identity for the awareness name (the signed-in user, else "You").
   useEffect(() => {
@@ -1755,6 +1769,58 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     monacoRef.current = monaco;
     setupQpi(monaco, editor);
     import("./qpi/hover").then((m) => m.registerQpiHover(monaco)).catch(() => undefined);
+    editorOpenerRef.current?.dispose();
+    definitionActionRef.current?.dispose();
+    const workspaceOpener = {
+      openCodeEditor(_source: Monaco.editor.ICodeEditor, resource: Monaco.Uri, selection?: Monaco.IRange | Monaco.IPosition) {
+        const fileName = resource.path.replace(/^\/+/, "");
+        const file = filesRef.current.find((candidate) => candidate.name === fileName);
+        if (!file) {
+          return false;
+        }
+        const line = selection && "startLineNumber" in selection ? selection.startLineNumber : selection?.lineNumber ?? 1;
+        const column = selection && "startColumn" in selection ? selection.startColumn : selection?.column ?? 1;
+        const lines = file.source.split("\n");
+        let offset = 0;
+        for (let index = 0; index < line - 1 && index < lines.length; index++) {
+          offset += lines[index].length + 1;
+        }
+        offset += column - 1;
+        if (activeNameRef.current === file.name) {
+          requestAnimationFrame(() => applyJump(offset));
+        } else {
+          pendingJumpRef.current = { file: file.name, offset };
+          selectFile(file.name);
+        }
+        return true;
+      },
+    };
+    editorOpenerRef.current = monaco.editor.registerEditorOpener(workspaceOpener);
+    definitionActionRef.current = editor.addAction({
+      id: "qinit.goToCrossContractDefinition",
+      label: "Go to cross-contract definition",
+      keybindings: [monaco.KeyCode.F12],
+      precondition: "editorLangId == cpp",
+      contextMenuGroupId: "navigation",
+      contextMenuOrder: 1.1,
+      run(current) {
+        const model = current.getModel();
+        const position = current.getPosition();
+        if (!model || !position) {
+          return;
+        }
+        const target = crossContractDefinitionAt(model.getValue(), model.getOffsetAt(position));
+        if (!target) {
+          return;
+        }
+        const before = target.source.slice(0, target.offset).split("\n");
+        workspaceOpener.openCodeEditor(
+          current,
+          monaco.Uri.from({ scheme: "file", path: `/${target.file}` }),
+          { lineNumber: before.length, column: before[before.length - 1].length + 1 },
+        );
+      },
+    });
 
     // Type the bun:test surface for .ts test files (the same module the qinit CLI tests import). The
     // per-project "./.qinit" client module can't be typed here — its module-not-found is ignored below.

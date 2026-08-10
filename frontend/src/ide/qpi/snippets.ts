@@ -5,6 +5,7 @@ import type * as Monaco from "monaco-editor";
 import { isGtestModel } from "./gtest";
 import { QPI_TYPES, QPI_BUILTINS, QPI_MACROS } from "./vocab";
 import { enclosingEntry, collectStructs, isUserEntry } from "./members";
+import { isCrossContractCompletionAt } from "./cross-contract";
 
 // The framework builtins (qpi / state / input / output / locals) that are in scope at `offset` — pure, no
 // Monaco. All require being inside an entry body (out of scope in StateData / the REGISTER block / top
@@ -43,6 +44,10 @@ const HOOK_MACROS = new Set([
 const CALL_MACROS: Record<string, string> = {
   REGISTER_USER_PROCEDURE: "REGISTER_USER_PROCEDURE(${1:Name}, ${2:1});",
   REGISTER_USER_FUNCTION: "REGISTER_USER_FUNCTION(${1:Name}, ${2:1});",
+  CALL_OTHER_CONTRACT_FUNCTION: "CALL_OTHER_CONTRACT_FUNCTION(${1:Contract}, ${2:Function}, ${3:input}, ${4:output});",
+  CALL_OTHER_CONTRACT_FUNCTION_E: "CALL_OTHER_CONTRACT_FUNCTION_E(${1:Contract}, ${2:Function}, ${3:input}, ${4:output}, ${5:error});",
+  INVOKE_OTHER_CONTRACT_PROCEDURE: "INVOKE_OTHER_CONTRACT_PROCEDURE(${1:Contract}, ${2:Procedure}, ${3:input}, ${4:output}, ${5:reward});",
+  INVOKE_OTHER_CONTRACT_PROCEDURE_E: "INVOKE_OTHER_CONTRACT_PROCEDURE_E(${1:Contract}, ${2:Procedure}, ${3:input}, ${4:output}, ${5:reward}, ${6:error});",
   LOG_INFO: "LOG_INFO(${1:message});",
   LOG_DEBUG: "LOG_DEBUG(${1:message});",
   LOG_WARNING: "LOG_WARNING(${1:message});",
@@ -90,10 +95,11 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         return { suggestions: [] }; // a gtest test gets the gtest provider, not the contract snippets
       }
       const word = model.getWordUntilPosition(position);
+      const offset = model.getOffsetAt(position);
 
-      // After a `.` the member-completion provider owns the list — don't flood it with snippets/types.
-      const before = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: Math.max(1, word.startColumn - 1), endLineNumber: position.lineNumber, endColumn: word.startColumn });
-      if (before === ".") {
+      // Member and cross-contract providers own these positions; don't flood them with top-level QPI items.
+      const before = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: Math.max(1, word.startColumn - 2), endLineNumber: position.lineNumber, endColumn: word.startColumn });
+      if (before.endsWith(".") || before.endsWith("::") || isCrossContractCompletionAt(model.getValue(), offset)) {
         return { suggestions: [] };
       }
 
@@ -124,7 +130,7 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
         range,
       }));
 
-      const builtins: Monaco.languages.CompletionItem[] = allowedBuiltinsAt(model.getValue(), model.getOffsetAt(position)).map((b) => ({
+      const builtins: Monaco.languages.CompletionItem[] = allowedBuiltinsAt(model.getValue(), offset).map((b) => ({
         label: b,
         kind: monaco.languages.CompletionItemKind.Variable,
         insertText: b,
