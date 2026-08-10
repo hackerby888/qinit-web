@@ -13,6 +13,7 @@ engine.onTick = (value) => {
   sendMemory();
 };
 engine.onLog = (value) => send({ kind: "event", event: "log", value });
+engine.onFault = (value) => send({ kind: "event", event: "fault", value });
 engine.onTxProcessed = (value) => send({ kind: "event", event: "transaction", value, assets: engine.assets() });
 
 async function handle(request: EngineRequest): Promise<void> {

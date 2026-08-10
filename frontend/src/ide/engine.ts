@@ -3,6 +3,7 @@
 // Bun tests use the same IdeEngineCore in-process because there is no browser UI thread to protect.
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import type { EngineLogEvent, TestResult } from "@qinit/engine";
+import type { EngineFaultInfo } from "@qinit/core";
 import type { GtestProgram } from "@qinit/compiler/browser";
 import type { DecodedState as StateDump } from "@qinit/inspector";
 import type {
@@ -10,6 +11,7 @@ import type {
   AssetView,
   DeployImage,
   EngineMemoryUsage,
+  EngineTickInfo,
   IdeEngineCore,
   ReplayStep,
   TxProcessed,
@@ -18,7 +20,8 @@ import type {
 import type { EngineEvent, EngineMethod, EngineRequest, EngineWorkerMessage } from "./engine-protocol";
 
 export type { EngineLogEvent } from "@qinit/engine";
-export type { Account, AssetView, DebugStep, DeployImage, EngineMemoryUsage, FunctionCallResult, ReplayStep, TxDetail, TxProcessed } from "./engine-core";
+export type { EngineFaultInfo } from "@qinit/core";
+export type { Account, AssetView, DebugStep, DeployImage, EngineMemoryUsage, EngineTickInfo, FunctionCallResult, ReplayStep, TxDetail, TxProcessed } from "./engine-core";
 
 interface PendingCall {
   resolve: (value: unknown) => void;
@@ -34,10 +37,11 @@ export interface IdeEngineOptions {
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 export class IdeEngine {
-  onTick: ((info: { tick: number; epoch: number }) => void) | null = null;
+  onTick: ((info: EngineTickInfo) => void) | null = null;
   onTxProcessed: ((event: TxProcessed) => void) | null = null;
   onLog: ((event: EngineLogEvent) => void) | null = null;
   onMemory: ((usage: EngineMemoryUsage) => void) | null = null;
+  onFault: ((fault: EngineFaultInfo) => void) | null = null;
 
   private readonly workerFactory?: () => Worker;
   private readonly timeoutMs: number;
@@ -50,6 +54,7 @@ export class IdeEngine {
   private recovery: Promise<void> | null = null;
   private recoveringNow = false;
   private disposed = false;
+  private faultValue: EngineFaultInfo | null = null;
 
   private running = false;
   private speedMs = 1000;
@@ -88,6 +93,7 @@ export class IdeEngine {
       syncMemory();
     };
     core.onLog = (value) => this.onLog?.(value);
+    core.onFault = (value) => this.latchFault(value);
     core.onTxProcessed = (value) => {
       this.assetsValue = core.assets();
       this.onTxProcessed?.(value);
@@ -127,9 +133,20 @@ export class IdeEngine {
     } else if (message.event === "memory") {
       this.memoryValue = message.value;
       if (!this.recoveringNow) this.onMemory?.(message.value);
+    } else if (message.event === "fault") {
+      this.latchFault(message.value);
     } else if (!this.recoveringNow) {
       this.onLog?.(message.value);
     }
+  }
+
+  private latchFault(fault: EngineFaultInfo): void {
+    if (this.faultValue) {
+      return;
+    }
+    this.faultValue = { ...fault };
+    this.running = false;
+    this.onFault?.(this.faultValue);
   }
 
   private failWorker(error: Error): void {
@@ -141,7 +158,7 @@ export class IdeEngine {
       clearTimeout(pending.timer);
       pending.reject(error);
     }
-    if (!this.disposed && !this.recoveringNow && !this.recovery) {
+    if (!this.disposed && !this.faultValue && !this.recoveringNow && !this.recovery) {
       this.recovery = this.restoreWorker()
         .catch((recoveryError) => {
           this.onLog?.({ level: "error", tick: 0, cat: "worker", msg: `virtual node recovery failed: ${(recoveryError as Error).message}` });
@@ -211,7 +228,14 @@ export class IdeEngine {
     void this.call(method, args).catch((error) => this.onLog?.({ level: "error", tick: 0, cat: "worker", msg: error.message }));
   }
 
+  private assertOperational(): void {
+    if (this.faultValue) {
+      throw new Error(`virtual node faulted: ${this.faultValue.message}`);
+    }
+  }
+
   async deploy(slot: number, wasm: Uint8Array, idl: ContractIdl): Promise<void> {
+    this.assertOperational();
     this.deployments.set(slot, { slot, wasm: wasm.slice(), name: idl.name, idl });
     await this.call("deploy", [slot, wasm.slice(), idl]);
     this.assetsValue = await this.call<AssetView[]>("assets", []);
@@ -221,24 +245,48 @@ export class IdeEngine {
     return this.call("runGtest", [program, runnerWasm.slice(), Object.fromEntries(Object.entries(contracts).map(([slot, wasm]) => [slot, wasm.slice()]))]);
   }
 
-  start(): void { this.running = true; this.fire("start", []); }
+  start(): void {
+    if (!this.faultValue) {
+      this.running = true;
+      this.fire("start", []);
+    }
+  }
   stop(): void { this.running = false; this.fire("stop", []); }
   isRunning(): boolean { return this.running; }
   pause(): void { this.running = false; this.fire("pause", []); }
-  resume(): void { this.running = true; this.fire("resume", []); }
+  resume(): void {
+    if (!this.faultValue) {
+      this.running = true;
+      this.fire("resume", []);
+    }
+  }
   setSpeed(ms: number): void { this.speedMs = Math.max(50, ms); this.fire("setSpeed", [this.speedMs]); }
   speed(): number { return this.speedMs; }
 
-  async step(n = 1): Promise<void> { await this.call("step", [n]); }
+  async step(n = 1): Promise<void> {
+    this.assertOperational();
+    await this.call("step", [n]);
+  }
   epochLength(): number { return this.epochLengthValue; }
-  async advanceEpoch(): Promise<{ tick: number; epoch: number }> { return this.call("advanceEpoch", []); }
+  async advanceEpoch(): Promise<{ tick: number; epoch: number }> {
+    this.assertOperational();
+    return this.call("advanceEpoch", []);
+  }
 
   fundAccount(id: string, amount: bigint): void {
+    this.assertOperational();
     this.extraFunds.set(id, (this.extraFunds.get(id) ?? 0n) + amount);
     this.fire("fundAccount", [id, amount]);
   }
 
   async reset(images: DeployImage[]): Promise<void> {
+    this.faultValue = null;
+    this.running = false;
+    if (this.workerMode && !this.worker) {
+      this.spawnWorker();
+      if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
+      for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
+    }
     const slots = new Set(images.map((image) => image.slot));
     for (const slot of this.deployments.keys()) if (!slots.has(slot)) this.deployments.delete(slot);
     this.historyValue = [];
@@ -249,12 +297,14 @@ export class IdeEngine {
   }
 
   async replay(images: DeployImage[]): Promise<void> {
+    this.assertOperational();
     this.extraFunds.clear();
     await this.call("replay", [images.map((image) => ({ ...image, wasm: image.wasm.slice() }))]);
     this.running = true;
   }
 
   async runSteps(images: DeployImage[], steps: ReplayStep[]): Promise<void> {
+    this.assertOperational();
     this.extraFunds.clear();
     await this.call("runSteps", [images.map((image) => ({ ...image, wasm: image.wasm.slice() })), steps]);
     this.historyValue = steps.map((step) => ({ ...step }));
@@ -276,22 +326,30 @@ export class IdeEngine {
   memoryUsage(): EngineMemoryUsage { return { ...(this.local?.memoryUsage() ?? this.memoryValue) }; }
 
   async callFunction(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<unknown> {
+    this.assertOperational();
     return this.call("callFunction", [slot, fnId, entry, input]);
   }
 
   async callFunctionDetailed(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<FunctionCallResult> {
+    this.assertOperational();
     return this.call("callFunctionDetailed", [slot, fnId, entry, input]);
   }
 
   async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }, contract: { name: string; source: string }): Promise<{ targetTick: number }> {
+    this.assertOperational();
     const result = await this.call<{ targetTick: number }>("submitProcedure", [slot, procId, entry, input, key, caller, contract]);
     this.historyValue.push({ slot, procId, entry, input, key, caller, contract });
     return result;
   }
 
-  async info(): Promise<{ tick: number; epoch: number }> { return this.call("info", []); }
+  async info(): Promise<EngineTickInfo> { return this.call("info", []); }
+
+  async faultInfo(): Promise<EngineFaultInfo | null> {
+    return this.faultValue ?? this.call("faultInfo", []);
+  }
 
   async ensureAccounts(): Promise<Account[]> {
+    this.assertOperational();
     const accounts = await this.call<Account[]>("ensureAccounts", []);
     this.accountsValue = accounts;
     return accounts;

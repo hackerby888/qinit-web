@@ -7,7 +7,7 @@ import type { GtestProgram } from "@qinit/compiler/browser";
 
 export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
-import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
+import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity, type EngineFaultInfo } from "@qinit/core";
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import { readState, describeTrace, jstr } from "@qinit/inspector";
 import type { DecodedState as StateDump } from "@qinit/inspector";
@@ -19,6 +19,12 @@ export interface EngineMemoryUsage {
   linearMemoryBytes: number;
   stateBytes: number;
   contractCount: number;
+}
+
+export interface EngineTickInfo {
+  tick: number;
+  epoch: number;
+  fault?: EngineFaultInfo;
 }
 
 const randomSeed = (): string =>
@@ -136,15 +142,42 @@ export class IdeEngineCore {
   private speedMs = 1000;
   private history: ReplayStep[] = []; // every applied write this session, for replay
   private contractSources = new Map<number, { source: string; name: string }>(); // slot -> source, for per-step trace decoding
+  private faultValue: EngineFaultInfo | null = null;
 
-  onTick: ((info: { tick: number; epoch: number }) => void) | null = null;
+  onTick: ((info: EngineTickInfo) => void) | null = null;
   onTxProcessed: ((e: TxProcessed) => void) | null = null;
   onLog: ((e: EngineLogEvent) => void) | null = null; // engine diagnostic-log stream -> the IDE's engine-log popup
+  onFault: ((fault: EngineFaultInfo) => void) | null = null;
+
+  private latchFault(fault: EngineFaultInfo): EngineFaultInfo {
+    if (this.faultValue) {
+      return this.faultValue;
+    }
+    const firstFault = { ...fault };
+    this.faultValue = firstFault;
+    this.stop();
+    this.onFault?.(firstFault);
+    return firstFault;
+  }
+
+  private async captureFault(): Promise<EngineFaultInfo | null> {
+    const fault = await this.engine.faultInfo();
+    return fault ? this.latchFault(fault) : null;
+  }
+
+  private async runEngineOperation<T>(operation: () => T | Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      await this.captureFault();
+      throw error;
+    }
+  }
 
   // Deploy constructs the contract (INITIALIZE) and digests its state, so K12 must be ready first.
   async deploy(slot: number, wasm: Uint8Array, idl: ContractIdl): Promise<void> {
     await this.ensureK12();
-    this.engine.deploy(slot, wasm, idl.name);
+    await this.runEngineOperation(() => this.engine.deploy(slot, wasm, idl.name));
   }
 
   // Execute a TS-compiled core-lite-style gtest program on a throwaway virtual node.
@@ -155,7 +188,7 @@ export class IdeEngineCore {
   // Emulate the live network: advance one tick per `speedMs`. Procedure submissions also advance their own
   // inclusion tick synchronously, so the timer is only responsible for otherwise-empty chain time.
   start(): void {
-    if (this.ticker) {
+    if (this.faultValue || this.ticker) {
       return;
     }
     void this.engine.setDebug(true); // capture per-tx debug traces for the inspector
@@ -171,8 +204,11 @@ export class IdeEngineCore {
   }
 
   private schedule(): void {
+    if (this.faultValue) {
+      return;
+    }
     this.ticker = setInterval(() => {
-      void this.tickOnce();
+      void this.tickOnce().catch(() => undefined);
     }, this.speedMs);
   }
 
@@ -191,7 +227,7 @@ export class IdeEngineCore {
   }
 
   resume(): void {
-    if (this.ticker) {
+    if (this.faultValue || this.ticker) {
       return;
     }
     this.schedule();
@@ -254,15 +290,18 @@ export class IdeEngineCore {
     this.stop();
     await this.ensureK12();
     this.engine = new VirtualNode(IDE_ENGINE_OPTS);
+    this.faultValue = null;
     void this.engine.setDebug(true);
     this.engine.onLog = (e) => this.onLog?.(e);
     this.history = [];
 
-    for (const img of [...images].sort((a, b) => a.slot - b.slot)) {
-      this.engine.deploy(img.slot, img.wasm, img.name);
-    }
-    await this.reseedAccounts();
-    this.start();
+    await this.runEngineOperation(async () => {
+      for (const img of [...images].sort((a, b) => a.slot - b.slot)) {
+        this.engine.deploy(img.slot, img.wasm, img.name);
+      }
+      await this.reseedAccounts();
+      this.start();
+    });
   }
 
   // Reset to genesis, then re-apply every write this session in order. submitProcedure includes each write in
@@ -298,12 +337,17 @@ export class IdeEngineCore {
   }
 
   private async tickOnce(emit = true): Promise<void> {
-    this.engine.advanceTick(1);
-    const info = await this.engine.tickInfo();
+    await this.runEngineOperation(async () => {
+      this.engine.advanceTick(1);
+      const info = await this.engine.tickInfo();
 
-    if (emit) {
-      this.onTick?.(info);
-    }
+      if (info.fault) {
+        this.latchFault(info.fault);
+      }
+      if (emit) {
+        this.onTick?.(info);
+      }
+    });
   }
 
   // Tell the decoder which source backs a slot, so inter-contract / system-procedure steps decode their
@@ -386,7 +430,7 @@ export class IdeEngineCore {
   // Read a function's output. No crypto — a direct query against the deployed wasm.
   async callFunction(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<unknown> {
     const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
-    const out = await this.engine.querySmartContract(slot, Number(fnId), bytes);
+    const out = await this.runEngineOperation(() => this.engine.querySmartContract(slot, Number(fnId), bytes));
     return entry.out ? decodeOutput(out, entry.out) : null;
   }
 
@@ -395,7 +439,7 @@ export class IdeEngineCore {
   async callFunctionDetailed(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<FunctionCallResult> {
     const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
     const base = (await this.engine.debugTrace()).entries.length;
-    const out = await this.engine.querySmartContract(slot, Number(fnId), bytes);
+    const out = await this.runEngineOperation(() => this.engine.querySmartContract(slot, Number(fnId), bytes));
     const src = this.contractSources.get(slot) ?? { name: `Contract ${slot}`, source: "" };
     const detail = await this.traceOf(base, { name: entry.name, key: "", contractName: src.name, contractSource: src.source });
     return { output: entry.out ? await decodeOutput(out, entry.out) : null, detail };
@@ -409,45 +453,55 @@ export class IdeEngineCore {
     const resumeTicker = this.isRunning();
     if (resumeTicker) this.pause();
     try {
-      await this.ensureK12();
+      return await this.runEngineOperation(async () => {
+        await this.ensureK12();
 
-      const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
-      const ti = await this.engine.tickInfo();
-      const targetTick = ti.tick + 1;
+        const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
+        const ti = await this.engine.tickInfo();
+        const targetTick = ti.tick + 1;
 
-      const tx = await buildSignedTx(caller.seed, {
-        destination: contractAddress(slot),
-        amount: caller.amount,
-        tick: targetTick,
-        inputType: Number(procId),
-        payload,
+        const tx = await buildSignedTx(caller.seed, {
+          destination: contractAddress(slot),
+          amount: caller.amount,
+          tick: targetTick,
+          inputType: Number(procId),
+          payload,
+        });
+
+        const pending = { name: entry.name, key, contractName: contract.name, contractSource: contract.source };
+        const base = (await this.engine.debugTrace()).entries.length;
+        const result = await this.engine.broadcastTx(tx.bytes);
+        if (!result.ok) {
+          throw new Error(String(result.message ?? "transaction rejected"));
+        }
+
+        this.engine.advanceTick(1);
+        const included = await this.engine.tickInfo();
+        const detail = await this.traceOf(base, pending);
+        const status = result.transactionId ? await this.engine.txStatus(targetTick, result.transactionId) : null;
+        const moneyFlew = status?.moneyFlew ?? !!result.moneyFlew;
+
+        this.history.push({ slot, procId, entry, input, key, caller, contract });
+        this.onTxProcessed?.({ key, name: entry.name, tick: included.tick, moneyFlew, detail });
+        this.onTick?.(included);
+        return { targetTick: included.tick };
       });
-
-      const pending = { name: entry.name, key, contractName: contract.name, contractSource: contract.source };
-      const base = (await this.engine.debugTrace()).entries.length;
-      const result = await this.engine.broadcastTx(tx.bytes);
-      if (!result.ok) {
-        throw new Error(String(result.message ?? "transaction rejected"));
-      }
-
-      this.engine.advanceTick(1);
-      const included = await this.engine.tickInfo();
-      const detail = await this.traceOf(base, pending);
-      const status = result.transactionId ? await this.engine.txStatus(targetTick, result.transactionId) : null;
-      const moneyFlew = status?.moneyFlew ?? !!result.moneyFlew;
-
-      this.history.push({ slot, procId, entry, input, key, caller, contract });
-      this.onTxProcessed?.({ key, name: entry.name, tick: included.tick, moneyFlew, detail });
-      this.onTick?.(included);
-      return { targetTick: included.tick };
     } finally {
-      if (resumeTicker) this.resume();
+      if (resumeTicker && !this.faultValue) this.resume();
     }
   }
 
   // Current in-process engine time (advances explicitly on invoke/advanceTick).
-  async info(): Promise<{ tick: number; epoch: number }> {
-    return this.engine.tickInfo();
+  async info(): Promise<EngineTickInfo> {
+    const info = await this.engine.tickInfo();
+    if (info.fault) {
+      this.latchFault(info.fault);
+    }
+    return info;
+  }
+
+  async faultInfo(): Promise<EngineFaultInfo | null> {
+    return this.faultValue ?? this.captureFault();
   }
 
   // Dev accounts: the faucet seed + a couple of funded random seeds. A procedure's caller is one of

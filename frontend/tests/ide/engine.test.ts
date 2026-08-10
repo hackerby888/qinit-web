@@ -41,6 +41,80 @@ struct Counter : public ContractBase
 const idl = extractIdl(SRC, "Counter");
 const SLOT = 28;
 
+const TRAP_SRC = `using namespace QPI;
+
+struct Trap : public ContractBase
+{
+    struct StateData { uint64 counter; };
+    struct Bump_input {}; struct Bump_output {};
+    struct Div_input { uint64 a; uint64 b; }; struct Div_output {};
+
+    PUBLIC_PROCEDURE(Bump) { state.mut().counter += 1; }
+    PUBLIC_PROCEDURE(Div) { state.mut().counter = input.a / input.b; }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Bump, 1);
+        REGISTER_USER_PROCEDURE(Div, 2);
+    }
+};`;
+
+const trapIdl = extractIdl(TRAP_SRC, "Trap");
+
+const NESTED_CALLEE_SRC = `using namespace QPI;
+
+struct NestedCallee : public ContractBase
+{
+    struct StateData { uint64 calls; };
+    struct Fail_input { uint64 a; uint64 b; }; struct Fail_output { uint64 value; };
+
+    PUBLIC_PROCEDURE(Fail)
+    {
+        state.mut().calls++;
+        output.value = input.a / input.b;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Fail, 1);
+    }
+};`;
+
+const NESTED_CALLER_SRC = `using namespace QPI;
+
+struct NestedCaller : public ContractBase
+{
+    struct StateData { uint64 completed; };
+    struct CalleeFail_input { uint64 a; uint64 b; };
+    struct CalleeFail_output { uint64 value; };
+    struct Run_input {}; struct Run_output {};
+    struct Run_locals
+    {
+        CalleeFail_input failInput;
+        CalleeFail_output failOutput;
+    };
+
+    PUBLIC_PROCEDURE_WITH_LOCALS(Run)
+    {
+        locals.failInput.a = 7;
+        locals.failInput.b = 0;
+        INVOKE_OTHER_CONTRACT_PROCEDURE(
+            NestedCallee,
+            Fail,
+            locals.failInput,
+            locals.failOutput,
+            0);
+        state.mut().completed++;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Run, 1);
+    }
+};`;
+
+const nestedCallerIdl = extractIdl(NESTED_CALLER_SRC, "NestedCaller");
+
 async function counterWasm(slot = SLOT): Promise<Uint8Array> {
   const result = await compileContract({
     source: SRC,
@@ -53,6 +127,48 @@ async function counterWasm(slot = SLOT): Promise<Uint8Array> {
     throw new Error(errors.map((diagnostic) => diagnostic.message).join("\n") || "Counter compilation failed");
   }
   return result.wasm;
+}
+
+async function trapWasm(): Promise<Uint8Array> {
+  const result = await compileContract({
+    source: TRAP_SRC,
+    contractName: "Trap",
+    slot: SLOT,
+    arenaSizeBytes: 64 * 1024,
+  });
+  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (errors.length || result.wasm.byteLength === 0 || !result.idl) {
+    throw new Error(errors.map((diagnostic) => diagnostic.message).join("\n") || "Trap compilation failed");
+  }
+  return result.wasm;
+}
+
+async function nestedTrapWasm(): Promise<{ callee: Uint8Array; caller: Uint8Array }> {
+  const callee = await compileContract({
+    source: NESTED_CALLEE_SRC,
+    contractName: "NestedCallee",
+    slot: SLOT,
+    arenaSizeBytes: 64 * 1024,
+  });
+  const calleeErrors = callee.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (calleeErrors.length || callee.wasm.byteLength === 0 || !callee.idl) {
+    throw new Error(calleeErrors.map((diagnostic) => diagnostic.message).join("\n") || "NestedCallee compilation failed");
+  }
+
+  const caller = await compileContract({
+    source: NESTED_CALLER_SRC,
+    contractName: "NestedCaller",
+    slot: SLOT + 1,
+    arenaSizeBytes: 64 * 1024,
+    callees: [{ ...callee.idl, name: "NestedCallee", slot: SLOT }],
+    calleeSources: [{ name: "NestedCallee", source: NESTED_CALLEE_SRC, slot: SLOT }],
+  });
+  const callerErrors = caller.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
+  if (callerErrors.length || caller.wasm.byteLength === 0) {
+    throw new Error(callerErrors.map((diagnostic) => diagnostic.message).join("\n") || "NestedCaller compilation failed");
+  }
+
+  return { callee: callee.wasm, caller: caller.wasm };
 }
 
 // callFunction returns the decoded output (a single uint64 here); read it as a bigint regardless of shape.
@@ -242,4 +358,85 @@ test("IdeEngine: replay re-drives the recorded history from genesis to the same 
   await e.replay([{ slot: SLOT, wasm, name: "Counter" }]);
   e.stop();
   expect(value(await e.callFunction(SLOT, "1", idl.functions["1"], {}))).toBe(1n);
+});
+
+test("IdeEngine: a contract trap stops the session until an explicit reset", async () => {
+  const e = new IdeEngine();
+  const wasm = await trapWasm();
+  await e.deploy(SLOT, wasm, trapIdl);
+  const [caller] = await e.ensureAccounts();
+  const faults: Array<{ message: string; slot?: number; entry?: number }> = [];
+  e.onFault = (fault) => faults.push(fault);
+  e.start();
+
+  await expect(
+    e.submitProcedure(
+      SLOT,
+      "2",
+      trapIdl.procedures["2"],
+      { a: "7", b: "0" },
+      "div-zero",
+      { seed: caller.seed, amount: 0 },
+      { name: "Trap", source: TRAP_SRC },
+    ),
+  ).rejects.toThrow();
+
+  expect(e.isRunning()).toBe(false);
+  expect(faults).toHaveLength(1);
+  expect(faults[0].slot).toBe(SLOT);
+  expect(faults[0].entry).toBe(2);
+  expect(await e.faultInfo()).toEqual(expect.objectContaining({ slot: SLOT, entry: 2 }));
+  await expect(
+    e.submitProcedure(
+      SLOT,
+      "1",
+      trapIdl.procedures["1"],
+      {},
+      "bump-after-fault",
+      { seed: caller.seed, amount: 0 },
+      { name: "Trap", source: TRAP_SRC },
+    ),
+  ).rejects.toThrow("virtual node faulted");
+
+  await e.reset([{ slot: SLOT, wasm, name: "Trap" }]);
+  e.stop();
+  expect(await e.faultInfo()).toBeNull();
+});
+
+test("IdeEngine: a nested callee trap keeps the session ticking", async () => {
+  const e = new IdeEngine();
+  const wasm = await nestedTrapWasm();
+  await e.deploy(SLOT, wasm.callee, extractIdl(NESTED_CALLEE_SRC, "NestedCallee"));
+  await e.deploy(SLOT + 1, wasm.caller, nestedCallerIdl);
+  e.registerSource(SLOT, NESTED_CALLEE_SRC, "NestedCallee");
+  e.registerSource(SLOT + 1, NESTED_CALLER_SRC, "NestedCaller");
+  const [caller] = await e.ensureAccounts();
+  let trapped = false;
+  e.onTxProcessed = (event) => {
+    trapped = event.detail?.steps.some((step) => step.slot === SLOT && !step.ok) ?? false;
+  };
+  e.setSpeed(60_000);
+  e.start();
+
+  try {
+    const before = await e.info();
+    await e.submitProcedure(
+      SLOT + 1,
+      "1",
+      nestedCallerIdl.procedures["1"],
+      {},
+      "nested-trap",
+      { seed: caller.seed, amount: 0 },
+      { name: "NestedCaller", source: NESTED_CALLER_SRC },
+    );
+
+    expect(e.isRunning()).toBe(true);
+    expect(trapped).toBe(true);
+    expect(await e.faultInfo()).toBeNull();
+    expect((await e.info()).tick).toBe(before.tick + 1);
+    await e.step();
+    expect((await e.info()).tick).toBe(before.tick + 2);
+  } finally {
+    e.stop();
+  }
 });

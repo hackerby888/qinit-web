@@ -18,6 +18,7 @@ class FakeWorker {
         : message.method === "callFunctionDetailed" ? { output: 42n, detail: { in: "(none)", out: "42", caller: "(none)", diff: [], hostCalls: [], logs: ["INFO CounterLog { value=42 }"], steps: [] } }
         : message.method === "runGtest" ? [{ name: "Counter.Expression", passed: true, message: "" }]
         : message.method === "info" ? { tick: 7, epoch: 1 }
+          : message.method === "faultInfo" ? null
           : message.method === "assets" ? []
             : undefined;
       this.emit({ id: message.id, kind: "result", ok: true, value });
@@ -94,6 +95,42 @@ test("worker events update tick, transaction, log, and synchronous asset mirrors
   expect(memories).toEqual([67_305_472]);
   expect(engine.assets()[0].name).toBe("COUNTER");
   expect(engine.memoryUsage()).toEqual({ linearMemoryBytes: 67_305_472, stateBytes: 8, contractCount: 1 });
+});
+
+test("a semantic fault stops the session without restarting its worker", async () => {
+  const worker = new FakeWorker(true);
+  const engine = new IdeEngine({ workerFactory: () => workerAsBrowser(worker) });
+  const fault = {
+    message: "integer divide by zero",
+    phase: "transaction",
+    failedTick: 9,
+    failedEpoch: 1,
+    lastFinalizedTick: 8,
+    lastFinalizedEpoch: 1,
+    slot: 28,
+    kind: 1,
+    entry: 2,
+    txId: "deadbeef",
+  };
+  const faults: typeof fault[] = [];
+  engine.onFault = (value) => faults.push(value as typeof fault);
+  engine.start();
+
+  worker.emit({ kind: "event", event: "fault", value: fault });
+  worker.emit({ kind: "event", event: "fault", value: { ...fault, message: "later fault" } });
+  engine.resume();
+
+  expect(engine.isRunning()).toBe(false);
+  expect(faults).toEqual([fault]);
+  expect(await engine.faultInfo()).toEqual(fault);
+  expect(worker.calls.some((call) => call.method === "resume")).toBe(false);
+  expect(() => engine.fundAccount("A".repeat(60), 1n)).toThrow("virtual node faulted");
+  await expect(engine.replay([])).rejects.toThrow("virtual node faulted");
+  expect(worker.terminated).toBe(false);
+
+  await engine.reset([]);
+  expect(engine.isRunning()).toBe(true);
+  expect(await engine.faultInfo()).toBeNull();
 });
 
 test("a timed-out call terminates the wedged worker and restores a fresh one", async () => {

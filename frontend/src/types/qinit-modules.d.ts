@@ -18,7 +18,7 @@ declare module "@qinit/engine" {
     msg: string;
   }
   export class VirtualNode {
-    constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint });
+    constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint; liteTicking?: boolean });
     // The chain-sim, exposed for epoch control (the tick path goes through advanceTick, which switches
     // epoch on a boundary via sim.advance).
     readonly sim: {
@@ -32,7 +32,8 @@ declare module "@qinit/engine" {
     broadcastTx(txBytes: Uint8Array): Promise<{ ok: boolean; transactionId?: string; code?: number; message?: string; moneyFlew?: boolean; queued?: boolean }>;
     txStatus(tick: number, txId: string): Promise<{ tick: number; currentTick: number; txId: string; found: boolean; moneyFlew: boolean; processed: boolean }>;
     advanceTick(n?: number): number;
-    tickInfo(): Promise<{ tick: number; epoch: number }>;
+    tickInfo(): Promise<{ tick: number; epoch: number; fault?: import("@qinit/core").EngineFaultInfo }>;
+    faultInfo(): Promise<import("@qinit/core").EngineFaultInfo | null>;
     seedFaucet(amount?: bigint): Promise<void>;
     fundedSeed(): Promise<string | undefined>;
     balance(id: string): Promise<{ balance: string; [k: string]: unknown }>;
@@ -136,6 +137,18 @@ declare module "@qinit/proto" {
 }
 
 declare module "@qinit/core" {
+  export interface EngineFaultInfo {
+    message: string;
+    phase: string;
+    failedTick: number;
+    failedEpoch: number;
+    lastFinalizedTick: number;
+    lastFinalizedEpoch: number;
+    slot?: number;
+    kind?: number;
+    entry?: number;
+    txId?: string;
+  }
   export interface TxInput {
     destination?: string | Uint8Array;
     amount?: number;
