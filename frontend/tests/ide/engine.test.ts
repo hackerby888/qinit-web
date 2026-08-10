@@ -87,7 +87,7 @@ test("IdeEngine: detailed function calls return a decoded function trace", async
   e.stop();
 
   const result = await e.callFunctionDetailed(SLOT, "1", idl.functions["1"], {});
-  expect(value(result.output)).toBe(0n);
+  expect(result.output).toBe(0n);
   expect(result.detail?.steps.some((step) => step.kind === 0 && step.entry === 1)).toBe(true);
   expect(result.detail?.logs).toEqual([]);
 });

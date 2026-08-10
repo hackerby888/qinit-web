@@ -398,7 +398,7 @@ export class IdeEngineCore {
     const out = await this.engine.querySmartContract(slot, Number(fnId), bytes);
     const src = this.contractSources.get(slot) ?? { name: `Contract ${slot}`, source: "" };
     const detail = await this.traceOf(base, { name: entry.name, key: "", contractName: src.name, contractSource: src.source });
-    return { output: entry.out ? decodeOutput(out, entry.out) : null, detail };
+    return { output: entry.out ? await decodeOutput(out, entry.out) : null, detail };
   }
 
   // Submit a signed procedure transaction for the next tick and advance to that tick before returning. This
