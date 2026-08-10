@@ -1,0 +1,32 @@
+// Second typecheck pass that resolves `@qinit/*` to the sibling monorepo's real source instead of the
+// ambient declarations in src/types/qinit-modules.d.ts. Those declarations are hand-written, so the
+// primary `tsc -b` cannot notice when an upstream export changes shape — it stays green and the IDE
+// breaks at runtime. This program catches that.
+//
+// The paths below mirror vite.config.ts (same targets, including the browser shim for @qinit/core);
+// keep the two in sync. Needs the sibling checkout at ../../Qinit, which `vite build` already requires.
+//
+// qinit-modules.d.ts is excluded because an ambient `declare module` wins over path resolution — with it
+// in the program the real source gets checked against the fake declarations and reports nonsense. The
+// monaco declaration it also carries is duplicated under types-crosscheck/ for this run only.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@qinit/engine": ["../../Qinit/packages/engine/src/index.ts"],
+      "@qinit/proto/contract-idl": ["../../Qinit/packages/proto/src/contract-idl.ts"],
+      "@qinit/proto/qpi-layout": ["../../Qinit/packages/proto/src/qpi-layout.ts"],
+      "@qinit/proto": ["../../Qinit/packages/proto/src/index.ts"],
+      "@qinit/build": ["../../Qinit/packages/build/src/idl.ts"],
+      "@qinit/inspector": ["../../Qinit/packages/cli/src/trace/format.ts"],
+      "@qinit/core/lite-abi-source": ["../../Qinit/packages/core/src/wasm/abi-source.ts"],
+      "@qinit/core": ["../../Qinit/packages/core/src/browser.ts"],
+      "@qinit/compiler/browser": ["../../Qinit/packages/compiler/src/browser.ts"],
+      "@qinit/compiler/analyzer": ["../../Qinit/packages/compiler/src/analyzer/index.ts"],
+      "@qinit/compiler": ["../../Qinit/packages/compiler/src/index.ts"]
+    }
+  },
+  "references": [],
+  "include": ["src", "types-crosscheck"],
+  "exclude": ["src/types/qinit-modules.d.ts"]
+}
