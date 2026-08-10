@@ -1,8 +1,7 @@
 // QPI-aware syntax highlighting. Monaco's built-in `cpp` Monarch grammar colours C++ keywords but treats
 // the QPI vocabulary (uint64, HashMap, PUBLIC_PROCEDURE, LOG_INFO, qpi, state, …) as undifferentiated
-// identifiers. We clone the cpp grammar and inject three QPI categories into its identifier rule's `cases`,
-// then re-register it for the SAME language id (`cpp`) — so every existing provider (snippets, hover,
-// code-actions, markers, all registered against "cpp") keeps working untouched.
+// identifiers. We clone the cpp grammar, inject the QPI categories plus qualified contract IO types, then
+// re-register it for the SAME language id (`cpp`) — so every existing provider keeps working untouched.
 import type * as Monaco from "monaco-editor";
 // eslint-disable-next-line import/no-unresolved -- deep ESM entry, typed via qinit-modules.d.ts
 import { language as cppLanguage } from "monaco-editor/esm/vs/basic-languages/cpp/cpp.js";
@@ -50,9 +49,13 @@ export function applyQpiGrammar(monaco: typeof Monaco): void {
       },
     },
   ];
+  const qualifiedIoRule = [
+    /([a-zA-Z_]\w*)(\s*)(::)(\s*)([a-zA-Z_]\w*_(?:input|output))\b/,
+    ["type.qpi", "white", "delimiter", "white", "type.qpi"],
+  ];
 
   const newRoot = root.slice();
-  newRoot[idIdx] = newRule;
+  newRoot.splice(idIdx, 1, qualifiedIoRule, newRule);
 
   // A fresh language object — never mutate the shared module export. The injected arrays are what the
   // `@qpiTypes`/`@qpiMacros`/`@qpiBuiltins` case references resolve against.

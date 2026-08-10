@@ -6,8 +6,11 @@ import {
   crossContractSignatureAt,
   isCrossContractCompletionAt,
   qpiWorkspaceContracts,
+  resolveCrossContractType,
   setQpiWorkspaceFiles,
 } from "../../../src/ide/qpi/cross-contract";
+import { applyQpiGrammar } from "../../../src/ide/qpi/grammar";
+import { memberCompletionAt } from "../../../src/ide/qpi/members";
 import { QPI_MACROS } from "../../../src/ide/qpi/vocab";
 import { at } from "./test-helpers";
 
@@ -18,8 +21,20 @@ struct CONTRACT_STATE_TYPE : public ContractBase
     struct StateData { uint64 counter; };
     struct Get_input {};
     struct Get_output { uint64 value; };
-    struct Inc_input {};
-    struct Inc_output {};
+    struct Payload { uint64 amount; };
+    struct Inc_input
+    {
+        uint64 a;
+        Payload payload;
+        Array<Payload, 4> items;
+        Array<Array<Payload, 4>, 4> matrix;
+        SlowAnySizeArray<Payload, 3> slowItems;
+        HashMap<Payload, Payload, 4> map;
+        HashSet<Payload, 4> set;
+        Collection<Payload, 4> collection;
+        LinkedList<Payload, 4> list;
+    };
+    struct Inc_output { Payload result; };
     struct Ignored_input {};
     struct Ignored_output {};
     struct Hidden_input {};
@@ -58,6 +73,24 @@ const labelsAt = (fixture: string, file = "/Proxy.h"): string[] => {
   const { src, offset } = at(fixture);
   return crossContractCompletionAt(src, offset, file).map((item) => item.label);
 };
+
+function inBump(receiver: string, localType = "Counter::Inc_input"): string {
+  return [
+    "struct S : public ContractBase {",
+    "  struct StateData {};",
+    "  struct Bump_input {};",
+    "  struct Bump_output {};",
+    `  struct Bump_locals { ${localType} ii; };`,
+    `  PUBLIC_PROCEDURE_WITH_LOCALS(Bump) { ${receiver}| }`,
+    "};",
+  ].join("\n");
+}
+
+function memberLabels(receiver: string, localType?: string): string[] | null {
+  const { src, offset, line } = at(inBump(receiver, localType));
+  const items = memberCompletionAt(src, line, offset, resolveCrossContractType);
+  return items?.map((item) => item.label) ?? null;
+}
 
 describe("workspace index", () => {
   test("indexes contract headers by basename and only exposes public registered entries", () => {
@@ -98,6 +131,64 @@ describe("cross-contract completion", () => {
     expect(QPI_MACROS).toContain("CALL_OTHER_CONTRACT_FUNCTION_E");
     expect(QPI_MACROS).toContain("INVOKE_OTHER_CONTRACT_PROCEDURE");
     expect(QPI_MACROS).toContain("INVOKE_OTHER_CONTRACT_PROCEDURE_E");
+  });
+
+  test("qualified entry IO declarations use the QPI type token", () => {
+    let grammar: { tokenizer?: { root?: unknown[] } } | undefined;
+    applyQpiGrammar({
+      languages: {
+        setMonarchTokensProvider(_id: string, value: unknown) {
+          grammar = value as typeof grammar;
+        },
+      },
+    } as never);
+    const rule = grammar?.tokenizer?.root?.find(
+      (item) => Array.isArray(item) && Array.isArray(item[1]) && item[1][0] === "type.qpi",
+    ) as [RegExp, string[]];
+    expect("Counter :: Inc_input".match(rule[0])?.slice(1)).toEqual(["Counter", " ", "::", " ", "Inc_input"]);
+    expect(rule[1]).toEqual(["type.qpi", "white", "delimiter", "white", "type.qpi"]);
+  });
+
+  test("resolves direct and nested fields from a qualified locals type", () => {
+    expect(memberLabels("locals.ii.")).toEqual([
+      "a", "payload", "items", "matrix", "slowItems", "map", "set", "collection", "list",
+    ]);
+    expect(memberLabels("locals.ii.payload.")).toEqual(["amount"]);
+  });
+
+  test("offers the existing QPI API for cross-contract container fields", () => {
+    expect(memberLabels("locals.ii.items.")).toContain("get");
+    expect(memberLabels("locals.ii.items.")).toContain("set");
+    expect(memberLabels("locals.ii.map.")).toContain("value");
+  });
+
+  test("follows modeled container return types through balanced calls", () => {
+    const receivers = [
+      "locals.ii.items.get(indexFor(foo(1))).",
+      "locals.ii.matrix.get(0).get(0).",
+      "locals.ii.slowItems.get(0).",
+      "locals.ii.map.key(0).",
+      "locals.ii.map.value(0).",
+      "locals.ii.set.key(0).",
+      "locals.ii.collection.element(0).",
+      "locals.ii.list.element(0).",
+    ];
+    for (const receiver of receivers) {
+      expect(memberLabels(receiver)).toEqual(["amount"]);
+    }
+  });
+
+  test("does not invent members for scalars, unmodeled returns, or private entry types", () => {
+    expect(memberLabels("locals.ii.a.")).toEqual([]);
+    expect(memberLabels("locals.ii.items.capacity().")).toEqual([]);
+    expect(memberLabels("locals.ii.map.get(key, value).")).toEqual([]);
+    expect(memberLabels("locals.ii.", "Counter::Hidden_input")).toEqual([]);
+  });
+
+  test("refreshes cross-contract field completion after a workspace edit", () => {
+    setQpiWorkspaceFiles([{ name: "Counter.h", source: COUNTER.replace("uint64 a;", "uint64 changed;") }]);
+    expect(memberLabels("locals.ii.")).toContain("changed");
+    expect(memberLabels("locals.ii.")).not.toContain("a");
   });
 });
 

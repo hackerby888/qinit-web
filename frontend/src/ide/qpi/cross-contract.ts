@@ -4,7 +4,7 @@ import type * as Monaco from "monaco-editor";
 import { baseName } from "../workspace";
 import { definitionOffset } from "./definition";
 import { isGtestModel } from "./gtest";
-import { maskComments } from "./members";
+import { collectStructs, maskComments, type Field, type TypeScope } from "./members";
 
 type EntryKind = "function" | "procedure";
 
@@ -19,6 +19,7 @@ export interface CrossContractSymbol {
   source: string;
   functions: CrossContractEntry[];
   procedures: CrossContractEntry[];
+  structs: Map<string, Field[]>;
 }
 
 export interface CrossCompletion {
@@ -125,6 +126,7 @@ export function setQpiWorkspaceFiles(files: { name: string; source: string }[]):
       source: file.source,
       functions: registeredEntries(file.source, "function"),
       procedures: registeredEntries(file.source, "procedure"),
+      structs: collectStructs(file.source),
     });
   }
   contracts = next;
@@ -294,6 +296,18 @@ function wordAt(source: string, offset: number): { word: string; start: number; 
 function entryTypes(contract: CrossContractSymbol): string[] {
   return [...contract.functions, ...contract.procedures]
     .flatMap((entry) => [`${entry.name}_input`, `${entry.name}_output`]);
+}
+
+export function resolveCrossContractType(type: string): TypeScope | null {
+  const match = type.match(/^(\w+)::(\w+_(?:input|output))$/);
+  if (!match) {
+    return null;
+  }
+  const contract = contracts.get(match[1]);
+  if (!contract || !entryTypes(contract).includes(match[2]) || !contract.structs.has(match[2])) {
+    return null;
+  }
+  return { type: match[2], structs: contract.structs };
 }
 
 function qualifiedTarget(source: string, word: { word: string; start: number; end: number }): SymbolTarget | null {

@@ -60,6 +60,18 @@ describe("state.mut()/get(). fields", () => {
     expect(got).toContain("removeByKey");
     expect(got).not.toContain("counter");
   });
+
+  test("a container accessor carries its element type into the next member lookup", () => {
+    const fixture = [
+      "struct S : public ContractBase {",
+      "  struct Payload { uint64 amount; };",
+      "  struct StateData { Array<Payload, 4> items; };",
+      "  PUBLIC_FUNCTION(Read) { state.get().items.get(indexFor(foo(1))).| }",
+      "};",
+    ].join("\n");
+    const { src, offset, line } = at(fixture);
+    expect(memberCompletionAt(src, line, offset)?.map((item) => item.label)).toEqual(["amount"]);
+  });
 });
 
 describe("input / output gating", () => {

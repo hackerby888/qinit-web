@@ -7,12 +7,12 @@ import { registerQpiSignatureHelp } from "./signature";
 import { registerQpiDefinition } from "./definition";
 import { registerQpiCodeActions } from "./codeactions";
 import { registerQpiGtest } from "./gtest";
-import { registerQpiCrossContracts } from "./cross-contract";
+import { registerQpiCrossContracts, resolveCrossContractType } from "./cross-contract";
 import { attachQpiDiagnostics } from "./markers";
 
 export function setupQpi(monaco: typeof Monaco, editor: Monaco.editor.IStandaloneCodeEditor): Monaco.IDisposable {
   registerQpiSnippets(monaco);
-  registerQpiMembers(monaco);
+  registerQpiMembers(monaco, resolveCrossContractType);
   registerQpiSignatureHelp(monaco);
   registerQpiDefinition(monaco);
   registerQpiCodeActions(monaco);

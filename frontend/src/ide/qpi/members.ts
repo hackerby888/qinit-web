@@ -14,6 +14,13 @@ export interface Field {
   type: string;
 }
 
+export interface TypeScope {
+  type: string;
+  structs: Map<string, Field[]>;
+}
+
+export type QualifiedTypeResolver = (type: string) => TypeScope | null;
+
 // Replace the *contents* of comments and string/char literals with spaces, preserving every offset and
 // newline. So a commented-out `INITIALIZE()` or a brace inside a string can't be mistaken for real code
 // (a real bug found in qRWA.h: a `// INITIALIZE() …` comment hijacked the next entry's body).
@@ -236,11 +243,12 @@ export interface Method {
   insert: string;
   detail: string;
   proc?: boolean; // a mutating qpi method (QpiContextProcedureCall) — not available in a const function
+  returnTypeArg?: number; // template argument returned by a container accessor (for chained completion)
 }
 
 export const CONTAINERS: Record<string, Method[]> = {
   Array: [
-    { label: "get", insert: "get(${1:index})", detail: "const T& — element at index" },
+    { label: "get", insert: "get(${1:index})", detail: "const T& — element at index", returnTypeArg: 0 },
     { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void — write element at index" },
     { label: "setAll", insert: "setAll(${1:value})", detail: "void — fill every element" },
     { label: "setRange", insert: "setRange(${1:indexBegin}, ${2:indexEnd}, ${3:value})", detail: "void — fill [begin, end)" },
@@ -261,8 +269,8 @@ export const CONTAINERS: Record<string, Method[]> = {
     { label: "removeByKey", insert: "removeByKey(${1:key})", detail: "sint64 — removed element index, or -1" },
     { label: "replace", insert: "replace(${1:key}, ${2:newValue})", detail: "bool — true if the key existed" },
     { label: "getElementIndex", insert: "getElementIndex(${1:key})", detail: "sint64 — index of key, or -1" },
-    { label: "key", insert: "key(${1:elementIndex})", detail: "const KeyT& — key at element index" },
-    { label: "value", insert: "value(${1:elementIndex})", detail: "const ValueT& — value at element index" },
+    { label: "key", insert: "key(${1:elementIndex})", detail: "const KeyT& — key at element index", returnTypeArg: 0 },
+    { label: "value", insert: "value(${1:elementIndex})", detail: "const ValueT& — value at element index", returnTypeArg: 1 },
     { label: "nextElementIndex", insert: "nextElementIndex(${1:elementIndex})", detail: "sint64 — next occupied index, or -1 (iteration)" },
     { label: "population", insert: "population()", detail: "uint64 — number of entries" },
     { label: "capacity", insert: "capacity()", detail: "uint64" },
@@ -273,7 +281,7 @@ export const CONTAINERS: Record<string, Method[]> = {
     { label: "contains", insert: "contains(${1:key})", detail: "bool" },
     { label: "remove", insert: "remove(${1:key})", detail: "sint64 — removed element index, or -1" },
     { label: "getElementIndex", insert: "getElementIndex(${1:key})", detail: "sint64 — index of key, or -1" },
-    { label: "key", insert: "key(${1:elementIndex})", detail: "KeyT — key at element index" },
+    { label: "key", insert: "key(${1:elementIndex})", detail: "KeyT — key at element index", returnTypeArg: 0 },
     { label: "nextElementIndex", insert: "nextElementIndex(${1:elementIndex})", detail: "sint64 — next occupied index, or -1 (iteration)" },
     { label: "population", insert: "population()", detail: "uint64" },
     { label: "capacity", insert: "capacity()", detail: "uint64" },
@@ -281,7 +289,7 @@ export const CONTAINERS: Record<string, Method[]> = {
   ],
   Collection: [
     { label: "add", insert: "add(${1:pov}, ${2:element}, ${3:priority})", detail: "sint64 — new element index, or -1 if full" },
-    { label: "element", insert: "element(${1:elementIndex})", detail: "T — element at index" },
+    { label: "element", insert: "element(${1:elementIndex})", detail: "T — element at index", returnTypeArg: 0 },
     { label: "pov", insert: "pov(${1:elementIndex})", detail: "id — point of view of an element" },
     { label: "priority", insert: "priority(${1:elementIndex})", detail: "sint64 — priority of an element" },
     { label: "headIndex", insert: "headIndex(${1:pov})", detail: "sint64 — highest-priority element index for a pov" },
@@ -295,14 +303,14 @@ export const CONTAINERS: Record<string, Method[]> = {
   ],
   // Like Array, but allows any capacity L (not restricted to a power of two) — slower; use only when needed.
   SlowAnySizeArray: [
-    { label: "get", insert: "get(${1:index})", detail: "const T& — element at index" },
+    { label: "get", insert: "get(${1:index})", detail: "const T& — element at index", returnTypeArg: 0 },
     { label: "set", insert: "set(${1:index}, ${2:value})", detail: "void — write element at index" },
     { label: "setAll", insert: "setAll(${1:value})", detail: "void — fill every element" },
     { label: "capacity", insert: "capacity()", detail: "uint64 — any L (not restricted to 2^N)" },
   ],
   // Doubly-linked list with O(1) removal by element index and a recycling free list.
   LinkedList: [
-    { label: "element", insert: "element(${1:elementIndex})", detail: "const T& — value at an element index" },
+    { label: "element", insert: "element(${1:elementIndex})", detail: "const T& — value at an element index", returnTypeArg: 0 },
     { label: "addHead", insert: "addHead(${1:value})", detail: "sint64 — new element index, or -1 if full" },
     { label: "addTail", insert: "addTail(${1:value})", detail: "sint64 — new element index, or -1 if full" },
     { label: "insertBefore", insert: "insertBefore(${1:elementIndex}, ${2:value})", detail: "sint64 — new element index, or -1" },
@@ -322,10 +330,41 @@ export const CONTAINERS: Record<string, Method[]> = {
   // direct-call container. It stays a known type (vocab/template hints) but offers no `.method()` set.
 };
 
-// The container kind of a field type, if any — `HashMap<id, sint64>` -> "HashMap".
+export interface ContainerType {
+  kind: string;
+  args: string[];
+}
+
+function splitTemplateArgs(source: string): string[] {
+  const args: string[] = [];
+  let start = 0;
+  let depth = 0;
+  for (let index = 0; index < source.length; index++) {
+    if (source[index] === "<") {
+      depth++;
+    } else if (source[index] === ">") {
+      depth = Math.max(0, depth - 1);
+    } else if (source[index] === "," && depth === 0) {
+      args.push(source.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  args.push(source.slice(start).trim());
+  return args;
+}
+
+// `HashMap<id, Payload, 16>` -> its kind and top-level template arguments, including nested templates.
+export function containerType(type: string): ContainerType | null {
+  const match = type.trim().match(/^(\w+)\s*<([\s\S]*)>$/);
+  if (!match || !(match[1] in CONTAINERS)) {
+    return null;
+  }
+  return { kind: match[1], args: splitTemplateArgs(match[2]) };
+}
+
+// The container kind of a field type, if any — `HashMap<id, sint64, 16>` -> "HashMap".
 export function containerKind(type: string): string | null {
-  const m = type.match(/^(Array|BitArray|SlowAnySizeArray|HashMap|HashSet|Collection|LinkedList)\s*</);
-  return m ? m[1] : null;
+  return containerType(type)?.kind ?? null;
 }
 
 // The members offered for a resolved type: a container's method table, else a user struct's fields,
@@ -353,10 +392,94 @@ export function walkPath(rootType: string, path: string[], structs: Map<string, 
   return cur;
 }
 
-// `state.mut()`/`state.get()` then any `.field.field…` chain, then the trailing partial word.
-const CHAIN = /\b(state\s*\.\s*(?:mut|get)\s*\(\s*\)|input|output|locals)((?:\s*\.\s*\w+)*)\s*\.\s*(\w*)$/;
 const STATE_BARE = /\bstate\s*\.\s*(\w*)$/;
 const QPI_ACCESS = /\bqpi\s*\.\s*(\w*)$/;
+
+interface AccessSegment {
+  name: string;
+  call: boolean;
+}
+
+interface MemberChain {
+  root: "state" | "input" | "output" | "locals";
+  segments: AccessSegment[];
+}
+
+function parseSegments(source: string): AccessSegment[] | null {
+  const segments: AccessSegment[] = [];
+  let index = 0;
+  const skipSpace = () => {
+    while (/\s/.test(source[index] ?? "")) {
+      index++;
+    }
+  };
+
+  while (index < source.length) {
+    skipSpace();
+    if (source[index] !== ".") {
+      return null;
+    }
+    index++;
+    skipSpace();
+    const name = source.slice(index).match(/^[A-Za-z_]\w*/)?.[0];
+    if (!name) {
+      return null;
+    }
+    index += name.length;
+    skipSpace();
+
+    let call = false;
+    if (source[index] === "(") {
+      call = true;
+      let depth = 0;
+      while (index < source.length) {
+        const char = source[index++];
+        if (char === "(") {
+          depth++;
+        } else if (char === ")" && --depth === 0) {
+          break;
+        }
+      }
+      if (depth !== 0) {
+        return null;
+      }
+    }
+    segments.push({ name, call });
+  }
+  return segments;
+}
+
+// Parse the receiver to the left of the final completion dot. Calls are kept as segments so container
+// accessors such as `items.get(0).` can carry their template return type into the next lookup.
+function memberChainAt(line: string): MemberChain | null {
+  let depth = 0;
+  let finalDot = -1;
+  for (let index = 0; index < line.length; index++) {
+    if (line[index] === "(") {
+      depth++;
+    } else if (line[index] === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (line[index] === "." && depth === 0) {
+      finalDot = index;
+    }
+  }
+  if (finalDot < 0 || !/^\s*\w*$/.test(line.slice(finalDot + 1))) {
+    return null;
+  }
+
+  const receiver = line.slice(0, finalDot).trimEnd();
+  const roots = /\b(state\s*\.\s*(?:mut|get)\s*\(\s*\)|input\b|output\b|locals\b)/g;
+  let parsed: MemberChain | null = null;
+  for (const match of receiver.matchAll(roots)) {
+    const segments = parseSegments(receiver.slice(match.index + match[0].length));
+    if (!segments) {
+      continue;
+    }
+    const root = match[1].startsWith("state") ? "state" : match[1].trim() as MemberChain["root"];
+    parsed = { root, segments };
+  }
+  return parsed;
+}
 
 // A resolved completion entry, decoupled from Monaco. `method` picks the kind (Method vs Field); an insert
 // containing `${…}` is a snippet.
@@ -375,11 +498,55 @@ function methodMember(m: Method): MemberItem {
   return { label: m.label, insert: m.insert, detail: m.detail, method: true };
 }
 
-// The member completion for a `.`-triggered position — the whole QPI_ACCESS / CHAIN / STATE_BARE logic +
+function resolveType(type: string, structs: Map<string, Field[]>, resolveQualified?: QualifiedTypeResolver): TypeScope {
+  const normalized = type
+    .trim()
+    .replace(/^const\s+/, "")
+    .replace(/\s*(?:const\s*)?[&*]+\s*$/, "")
+    .replace(/\s*::\s*/g, "::")
+    .trim();
+  return /^\w+::\w+$/.test(normalized) && resolveQualified
+    ? resolveQualified(normalized) ?? { type: normalized, structs }
+    : { type: normalized, structs };
+}
+
+function resolveMemberChain(
+  start: TypeScope,
+  segments: AccessSegment[],
+  resolveQualified?: QualifiedTypeResolver,
+): TypeScope | null {
+  let current = start;
+  for (const segment of segments) {
+    if (segment.call) {
+      const container = containerType(current.type);
+      const method = container && CONTAINERS[container.kind].find((candidate) => candidate.label === segment.name);
+      const returned = method?.returnTypeArg === undefined ? undefined : container?.args[method.returnTypeArg];
+      if (!returned) {
+        return null;
+      }
+      current = resolveType(returned, current.structs, resolveQualified);
+      continue;
+    }
+
+    const field = current.structs.get(current.type)?.find((candidate) => candidate.name === segment.name);
+    if (!field) {
+      return null;
+    }
+    current = resolveType(field.type, current.structs, resolveQualified);
+  }
+  return current;
+}
+
+// The member completion for a `.`-triggered position — the QPI access / member-chain / state-bare logic +
 // every gating rule, pure (no Monaco). `line` is the line text up to the cursor; `offset` is the cursor's
 // source offset. Returns null when this isn't a member-access position; an array (possibly empty when the
 // context gates everything out) otherwise.
-export function memberCompletionAt(src: string, line: string, offset: number): MemberItem[] | null {
+export function memberCompletionAt(
+  src: string,
+  line: string,
+  offset: number,
+  resolveQualified?: QualifiedTypeResolver,
+): MemberItem[] | null {
   // qpi.<api> — only inside an entry body; a const function sees only the read-only host API.
   if (QPI_ACCESS.test(line)) {
     const entry = enclosingEntry(src, offset);
@@ -390,9 +557,9 @@ export function memberCompletionAt(src: string, line: string, offset: number): M
     return api.map(methodMember);
   }
 
-  // state.mut()/get().<path>. | input/output/locals.<path>.  -> resolve the chain to a type, then offer
-  // that type's members (a user struct's fields or a container's method table).
-  const chain = line.match(CHAIN);
+  // state.mut()/get().<path>. | input/output/locals.<path>. -> resolve fields and modeled container calls,
+  // crossing into another project contract when a field uses a qualified public IO type.
+  const chain = memberChainAt(line);
   if (chain) {
     const structs = collectStructs(src);
     const entry = enclosingEntry(src, offset);
@@ -401,26 +568,26 @@ export function memberCompletionAt(src: string, line: string, offset: number): M
     }
 
     let rootType: string;
-    if (chain[1].startsWith("state")) {
+    if (chain.root === "state") {
       rootType = "StateData";
     } else {
-      const suffix = chain[1] === "input" ? "_input" : chain[1] === "output" ? "_output" : "_locals";
+      const suffix = chain.root === "input" ? "_input" : chain.root === "output" ? "_output" : "_locals";
       // input/output are author-authored only in a user fn/proc; system hooks carry NoData / qpi.h IO.
-      if ((chain[1] === "input" || chain[1] === "output") && !isUserEntry(entry.macro)) {
+      if ((chain.root === "input" || chain.root === "output") && !isUserEntry(entry.macro)) {
         return [];
       }
       // `locals` only exists in a _WITH_LOCALS entry that actually declares a <Name>_locals struct.
-      if (chain[1] === "locals" && !(entry.macro.endsWith("_WITH_LOCALS") && structs.has(entry.base + "_locals"))) {
+      if (chain.root === "locals" && !(entry.macro.endsWith("_WITH_LOCALS") && structs.has(entry.base + "_locals"))) {
         return [];
       }
       rootType = entry.base + suffix;
     }
 
-    const type = walkPath(rootType, chain[2].match(/\w+/g) ?? [], structs);
-    if (!type) {
+    const resolved = resolveMemberChain({ type: rootType, structs }, chain.segments, resolveQualified);
+    if (!resolved) {
       return [];
     }
-    const { fields, methods } = membersOfType(type, structs);
+    const { fields, methods } = membersOfType(resolved.type, resolved.structs);
     return [...fields.map(fieldMember), ...methods.map(methodMember)];
   }
 
@@ -443,7 +610,7 @@ export function memberCompletionAt(src: string, line: string, offset: number): M
 
 let registered = false;
 
-export function registerQpiMembers(monaco: typeof Monaco): void {
+export function registerQpiMembers(monaco: typeof Monaco, resolveQualified?: QualifiedTypeResolver): void {
   if (registered) {
     return;
   }
@@ -456,7 +623,7 @@ export function registerQpiMembers(monaco: typeof Monaco): void {
         return { suggestions: [] }; // members like state./qpi. don't exist in a gtest test
       }
       const line = model.getValueInRange({ startLineNumber: position.lineNumber, startColumn: 1, endLineNumber: position.lineNumber, endColumn: position.column });
-      const items = memberCompletionAt(model.getValue(), line, model.getOffsetAt(position));
+      const items = memberCompletionAt(model.getValue(), line, model.getOffsetAt(position), resolveQualified);
       if (!items) {
         return { suggestions: [] };
       }
