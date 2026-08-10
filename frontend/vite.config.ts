@@ -23,17 +23,17 @@ const aliases: Record<string, string> = {
   "@qinit/proto/contract-idl": qinit("proto/src/contract-idl.ts"),
   "@qinit/proto/qpi-layout": qinit("proto/src/qpi-layout.ts"),
   "@qinit/proto": qinit("proto/src/index.ts"),
-  // trace-format.ts imports the package root; keep that transitive edge on the browser-safe IDL module.
+  // trace/format.ts imports the package root; keep that transitive edge on the browser-safe IDL module.
   "@qinit/build": qinit("build/src/idl.ts"),
   // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.
-  "@qinit/inspector": qinit("cli/src/trace-format.ts"),
+  "@qinit/inspector": qinit("cli/src/trace/format.ts"),
   // The compiler's source-only ABI parser is browser-safe. Keep the subpath before the root alias.
-  "@qinit/core/lite-abi-source": qinit("core/src/lite-abi-source.ts"),
+  "@qinit/core/lite-abi-source": qinit("core/src/wasm/abi-source.ts"),
   "@qinit/core": qinit("core/src/browser.ts"),
 };
 // Subpaths before the package root — first match wins.
 aliases["@qinit/compiler/browser"] = qinit("compiler/src/browser.ts");
-aliases["@qinit/compiler/analyzer"] = qinit("compiler/src/analyzer.ts");
+aliases["@qinit/compiler/analyzer"] = qinit("compiler/src/analyzer/index.ts");
 aliases["@qinit/compiler"] = qinit("compiler/src/index.ts");
 
 export default defineConfig({

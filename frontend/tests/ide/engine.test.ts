@@ -185,6 +185,39 @@ test("IdeEngine: stateOf decodes the live StateData scalars before and after a m
   expect(after.fields).toEqual([{ name: "counter", value: "1" }]);
 });
 
+test("IdeEngine: stateOf exposes the current container line model", async () => {
+  const source = `using namespace QPI;
+
+struct ArrayState : public ContractBase
+{
+    struct StateData { uint64 values[2]; };
+    struct Get_input {};
+    struct Get_output {};
+
+    PUBLIC_FUNCTION(Get) {}
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_FUNCTION(Get, 1);
+    }
+};`;
+  const contractIdl = extractIdl(source, "ArrayState");
+  const compiled = await compileContract({ source, contractName: "ArrayState", slot: SLOT, arenaSizeBytes: 64 * 1024 });
+  expect(compiled.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+
+  const engine = new IdeEngine();
+  await engine.deploy(SLOT, compiled.wasm, contractIdl);
+  const state = await engine.stateOf(SLOT, source, "ArrayState");
+
+  expect(state.containers).toMatchObject([{
+    name: "values",
+    kind: "array",
+    status: "loaded",
+    totalEntries: 0,
+    lines: [{ label: "[0..1]", text: "=0 ×2 (skipped)", filled: false }],
+  }]);
+});
+
 test("IdeEngine: assets reports the deployed contract's post-IPO shares", async () => {
   const e = new IdeEngine();
   await e.deploy(SLOT, await counterWasm(), idl);

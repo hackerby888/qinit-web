@@ -79,45 +79,53 @@ declare module "@qinit/engine" {
 }
 
 declare module "@qinit/inspector" {
-  export interface Container {
-    kind: "hashmap" | "hashset" | "collection";
-    keyFmt: string;
-    valFmt?: string;
-    capacity: number;
+  export interface StateLine {
+    label: string;
+    text: string;
+    filled: boolean;
   }
-  export interface StateField {
+  export interface StateContainer {
+    index: number;
     name: string;
-    off: number;
+    kind: "array" | "bitarray" | "hashmap" | "hashset" | "collection" | "linkedlist";
     size: number;
-    type: string;
-    container?: Container;
-    bad?: boolean;
+    status: "collapsed" | "loading" | "loaded" | "error";
+    capacity: number;
+    occupiedSlots: number;
+    totalEntries: number;
+    lines: StateLine[];
+    error?: string;
   }
-  export interface ContainerView {
-    name: string;
-    entries: string[];
-  }
-  export interface StateDump {
+  export interface DecodedState {
     fields: { name: string; value: string }[];
-    containers: ContainerView[];
+    containers: StateContainer[];
+    complete: boolean;
   }
-  export interface TraceView {
+  export interface StateDiffLine extends StateLine {
+    detail: string;
+    internal: boolean;
+  }
+  export interface DecodedLog {
+    severity: string;
+    size: number;
+    name?: string;
+    typeName?: string;
+    fields?: Record<string, unknown>;
+    hex: string;
+  }
+  export interface DecodedTrace {
     inDecoded: string;
     outDecoded: string;
     caller: string;
-    fields: StateField[];
-    containers: ContainerView[];
-    logs: unknown[];
+    stateDiff: StateDiffLine[];
+    logs: DecodedLog[];
   }
   export interface StateReader {
     stateRead(slot: number, off: number, len: number): Promise<{ hex: string }>;
   }
-  export function readState(rpc: StateReader, idx: number, source: string, name: string, full?: boolean): Promise<StateDump>;
-  export function describeTrace(e: unknown, source: string | undefined, name: string, rpc: StateReader): Promise<TraceView>;
-  export function stateFieldsOf(idl: unknown): StateField[];
-  export function labelOff(fields: StateField[], off: number): string;
-  export function fmtDiffVal(fields: StateField[], off: number, hex: string): string;
-  export function fmtLog(l: unknown): string;
+  export function readState(rpc: StateReader, idx: number, source: string, name: string, qpiHeader?: string): Promise<DecodedState>;
+  export function describeTrace(e: unknown, source: string | undefined, name: string, qpiHeader?: string): Promise<DecodedTrace>;
+  export function jstr(value: unknown): string;
 }
 
 declare module "@qinit/proto" {

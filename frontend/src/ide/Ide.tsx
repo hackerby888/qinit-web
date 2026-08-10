@@ -56,7 +56,7 @@ import { InputFields } from "./InputFields";
 import { buildInput, inputToDraft, type InputDraft } from "./input-values";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
-import type { StateDump } from "@qinit/inspector";
+import type { DecodedState as StateDump } from "@qinit/inspector";
 import "../landing/pixel.css";
 
 // Structural borders, read live at render so a theme swap (neo 3px ↔ flat 1px) takes effect without a
@@ -498,7 +498,7 @@ function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDeb
           {detail.caller && detail.caller !== "(none)" && <div>caller <span style={{ color: color.textMutedDk }}>{shortId(detail.caller)}</span></div>}
           {detail.in && detail.in !== "(none)" && <div>in <span style={{ color: color.textMutedDk }}>{detail.in}</span></div>}
           {detail.out && detail.out !== "(none)" && <div>out <span style={{ color: color.textMutedDk }}>{detail.out}</span></div>}
-          {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.before} → {d.after}</div>)}
+          {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.text}</div>)}
           {detail.hostCalls.map((h, i) => <div key={`h${i}`} style={{ color: color.textMutedDk }}>host {h}</div>)}
           {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
         </div>
@@ -523,10 +523,11 @@ function StatePanel({ dump }: { dump?: StateDump }) {
         ))}
         {dump.containers.map((c) => (
           <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
-            <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.entries.length})</span></div>
-            {c.entries.map((e, i) => (
-              <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{e}</div>
+            <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.totalEntries})</span></div>
+            {c.lines.map((line, i) => (
+              <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{line.label} {line.text}</div>
             ))}
+            {c.error && <div style={{ color: "#f85149", paddingLeft: 10 }}>{c.error}</div>}
           </div>
         ))}
     </div>
@@ -2246,7 +2247,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           setTxDetail((t) => ({ ...t, [key]: detail }));
           if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
           if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
-          detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.before} → ${d.after}`));
+          detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.text}`));
           detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
           detail.logs.forEach((l) => appendLog(`  log ${l}`));
         }

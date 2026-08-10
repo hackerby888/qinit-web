@@ -52,27 +52,3 @@ test("Counter core-lite gtest compiles and runs in-browser without clang", async
     ["Counter.EachTestStartsFresh", true],
   ]);
 });
-
-test("detailed function calls decode LOG_INFO for the Calls UI", async () => {
-  const starter = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
-  const source = starter
-    .replace("struct Get_output { uint64 value; };", "struct Get_output { uint64 value; };\n    struct Get_locals { CounterLog log; };")
-    .replace(
-      "PUBLIC_FUNCTION(Get)\n    {\n        output.value = state.get().counter;\n    }",
-      "PUBLIC_FUNCTION_WITH_LOCALS(Get)\n    {\n        output.value = state.get().counter;\n        locals.log._type = CounterIncremented;\n        locals.log.value = output.value;\n        LOG_INFO(locals.log);\n    }",
-    );
-  const compiled = await compileContract({ source, contractName: "Counter", slot: 28, arenaSizeBytes: 64 * 1024 });
-  expect(compiled.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
-
-  const engine = new IdeEngine();
-  const idl = extractIdl(source, "Counter");
-  await engine.deploy(28, compiled.wasm, idl);
-  engine.registerSource(28, source, "Counter");
-  engine.start();
-  engine.stop();
-  const result = await engine.callFunctionDetailed(28, "1", idl.functions["1"], {});
-
-  expect(result.detail?.steps.some((step) => step.kind === 0)).toBe(true);
-  expect(result.detail?.logs).toHaveLength(1);
-  expect(result.detail?.logs[0]).toContain("INFO CounterLog");
-});

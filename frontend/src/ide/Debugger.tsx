@@ -130,7 +130,7 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
               <Group title="STATE DIFF" accent={color.secondary} empty={cur.diff.length === 0}>
                 {cur.diff.map((d, k) => (
                   <div key={k} style={line}>
-                    <span style={{ color: color.secondary }}>{d.label}</span> <span style={{ color: color.textGhostDk }}>{d.before}</span> <span style={{ color: color.textGhostDk }}>→</span> <span style={{ color: color.accent }}>{d.after}</span>
+                    <span style={{ color: color.secondary }}>{d.label}</span> <span style={{ color: color.accent }}>{d.text}</span>
                   </div>
                 ))}
               </Group>

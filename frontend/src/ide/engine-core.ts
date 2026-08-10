@@ -9,7 +9,8 @@ export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity } from "@qinit/core";
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
-import { readState, describeTrace, labelOff, fmtDiffVal, fmtLog, type StateDump } from "@qinit/inspector";
+import { readState, describeTrace, jstr } from "@qinit/inspector";
+import type { DecodedState as StateDump } from "@qinit/inspector";
 
 // Re-export the engine's asset-universe snapshot under the IDE's name (one inter-contract asset + its holdings).
 export type AssetView = AssetSnapshot;
@@ -48,7 +49,7 @@ export interface DebugStep {
   caller: string;
   in: string;
   out: string;
-  diff: { label: string; before: string; after: string }[];
+  diff: { label: string; text: string }[];
   hostCalls: string[];
   logs: string[];
 }
@@ -57,7 +58,7 @@ export interface TxDetail {
   in: string;
   out: string;
   caller: string;
-  diff: { label: string; before: string; after: string }[];
+  diff: { label: string; text: string }[];
   hostCalls: string[];
   logs: string[];
   steps: DebugStep[]; // the whole call sequence, for the step debugger
@@ -84,6 +85,13 @@ function stepLabel(kind: number, entry: number): string {
   }
   return `procedure #${entry}`;
 }
+
+const formatLog = (log: Awaited<ReturnType<typeof describeTrace>>["logs"][number]) => {
+  const detail = log.name
+    ? `${log.name}${log.typeName ? `·${log.typeName}` : ""} ${jstr(log.fields)}`
+    : `${log.size}B ${log.hex.slice(0, 34)}…`;
+  return `${log.severity} ${detail}`;
+};
 
 export interface TxProcessed {
   key: string;
@@ -317,7 +325,7 @@ export class IdeEngineCore {
       const steps: DebugStep[] = [];
       for (const e of entries) {
         const src = this.contractSources.get(e.index) ?? { source: t.contractSource, name: t.contractName };
-        const tv = await describeTrace(e, src.source, src.name, this.engine);
+        const tv = await describeTrace(e, src.source, src.name);
         steps.push({
           seq: e.seq,
           slot: e.index,
@@ -329,9 +337,9 @@ export class IdeEngineCore {
           caller: tv.caller,
           in: tv.inDecoded,
           out: tv.outDecoded,
-          diff: e.stateDiff.map((d) => ({ label: labelOff(tv.fields, d.off), before: fmtDiffVal(tv.fields, d.off, d.before), after: fmtDiffVal(tv.fields, d.off, d.after) })),
+          diff: tv.stateDiff.filter((line) => !line.internal).map(({ label, text }) => ({ label, text })),
           hostCalls: e.hostCalls.map((h) => `${h.name} ${h.detail}`),
-          logs: tv.logs.map((l) => fmtLog(l)),
+          logs: tv.logs.map(formatLog),
         });
       }
 
