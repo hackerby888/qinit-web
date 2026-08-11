@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts",
-    "build": "tsc -b && vite build --config vite.config.ts",
+    "build": "tsc -b && NODE_OPTIONS=--max-old-space-size=6144 vite build --config vite.config.ts",
     "typecheck": "tsc -b && tsc -p tsconfig.crosscheck.json",
     "preview": "vite preview --config vite.config.ts",
     "test": "bun test --tsconfig-override ./tests/tsconfig.bun.json tests"
