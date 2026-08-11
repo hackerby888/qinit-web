@@ -1,6 +1,7 @@
 // Collab load + convergence test. Spins up N y-websocket-style clients into one room, each inserts a unique
 // marker line into the shared file, then asserts every client's CRDT doc converges to the same content (all N
-// markers) and the server stays up. Run against a booted backend (QINIT_DEV_AUTH=1):
+// markers) and the server stays up. Run against a booted backend (QINIT_DEV_AUTH=1), from backend/ — it
+// imports the backend's own deps, and bun resolves those upwards from here, not from the repo root:
 //   bun scripts/collab-load.ts [clients] [base]
 // e.g. bun scripts/collab-load.ts 16 http://127.0.0.1:8787
 import * as Y from "yjs";

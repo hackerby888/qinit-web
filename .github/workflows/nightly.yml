@@ -63,7 +63,7 @@ jobs:
 
       - name: collab load test
         working-directory: Qinit-web/backend
-        run: bun ../scripts/collab-load.ts 16 http://127.0.0.1:8787
+        run: bun scripts/collab-load.ts 16 http://127.0.0.1:8787
 
       - name: serve frontend + e2e smoke
         working-directory: Qinit-web/frontend
