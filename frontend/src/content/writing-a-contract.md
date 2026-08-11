@@ -4,43 +4,96 @@ group: Guides
 order: 1
 ---
 
-## The file
-
-A contract is one `.h` file. Here's the counter:
+A Qinit contract is one QPI C++ header. `qinit new counter` creates `contracts/Counter.h`:
 
 ```cpp
-struct CONTRACT_STATE_TYPE : public ContractBase {
-  struct StateData { uint64 counter; };
+using namespace QPI;
 
-  struct Inc_input {};  struct Inc_output {};
-  struct Get_input {};  struct Get_output { uint64 value; };
+struct CONTRACT_STATE2_TYPE {};
 
-  PUBLIC_PROCEDURE(Inc) { state.mut().counter += 1; }
-  PUBLIC_FUNCTION(Get)  { output.value = state.get().counter; }
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        uint64 counter;
+    };
 
-  REGISTER_USER_FUNCTIONS_AND_PROCEDURES() {
-    REGISTER_USER_PROCEDURE(Inc, 1);
-    REGISTER_USER_FUNCTION(Get, 1);
-  }
-  INITIALIZE() { state.mut().counter = 0; }
+    struct Inc_input {};
+    struct Inc_output {};
+    struct Get_input {};
+    struct Get_output { uint64 value; };
+
+    PUBLIC_PROCEDURE(Inc)
+    {
+        state.mut().counter += 1;
+    }
+
+    PUBLIC_FUNCTION(Get)
+    {
+        output.value = state.get().counter;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Inc, 1);
+        REGISTER_USER_FUNCTION(Get, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().counter = 0;
+    }
 };
 ```
 
-## State
+The project root also has `qinit.json`, so commands need no repeated flags:
 
-`state.get()` reads. `state.mut()` writes. Your data lives in `StateData`.
+```json
+{
+  "contractName": "Counter",
+  "contract": "contracts/Counter.h",
+  "rpc": "http://127.0.0.1:41841"
+}
+```
 
-## Functions vs procedures
+## What each part does
 
-- `PUBLIC_FUNCTION` — read only, returns data, free.
-- `PUBLIC_PROCEDURE` — writes state, sent as a transaction.
+- `StateData` is persistent contract state.
+- `<Name>_input` and `<Name>_output` define the public ABI.
+- `PUBLIC_FUNCTION` reads with `state.get()`.
+- `PUBLIC_PROCEDURE` may write with `state.mut()`.
+- Registration assigns a numeric ID. Function and procedure IDs are separate, so both can use `1`.
+- `INITIALIZE` sets state on the first deployment.
+- The empty `CONTRACT_STATE2_TYPE` is part of the Core contract shape; keep it in the file.
 
-Give each one an id in `REGISTER_USER_FUNCTIONS_AND_PROCEDURES`.
+Use QPI fixed-width types and containers: `uint64`, `sint32`, `id`, `bit`, `Array`, `HashMap`, and friends.
 
-## Rules
+## Start from another template
 
-- No native types — use `uint64`, `sint32`, `id`.
-- No `[]` arrays — use `Array<>`, `HashMap<>`.
-- No `%` or `/` — use `mod`, `div`.
+```bash
+qinit new balances --template hashmap
+qinit new token --template asset
+qinit new reader --template intercontract
+```
 
-> **Warn** — These are Qubic's QPI rules. Break them and the build fails (qinit shows the error).
+These add a map-backed balance contract, an asset workflow, or a ready-to-build caller and callee. The generated files are normal contract code; edit them directly.
+
+## Try a typed input
+
+Make `Inc` accept an amount:
+
+```cpp
+struct Inc_input { uint64 amount; };
+
+PUBLIC_PROCEDURE(Inc)
+{
+    state.mut().counter += input.amount;
+}
+```
+
+Then check and build it:
+
+```bash
+qinit verify
+qinit build
+```

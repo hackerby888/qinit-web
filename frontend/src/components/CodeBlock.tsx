@@ -2,6 +2,9 @@ import { useState } from "react";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import cpp from "highlight.js/lib/languages/cpp";
+import json from "highlight.js/lib/languages/json";
+import powershell from "highlight.js/lib/languages/powershell";
+import typescript from "highlight.js/lib/languages/typescript";
 
 // Only the languages the docs use (keeps the bundle small).
 hljs.registerLanguage("bash", bash);
@@ -9,6 +12,10 @@ hljs.registerLanguage("sh", bash);
 hljs.registerLanguage("zsh", bash);
 hljs.registerLanguage("shell", bash);
 hljs.registerLanguage("cpp", cpp);
+hljs.registerLanguage("json", json);
+hljs.registerLanguage("powershell", powershell);
+hljs.registerLanguage("typescript", typescript);
+hljs.registerLanguage("ts", typescript);
 
 function escapeHtml(s: string) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

@@ -1,25 +1,70 @@
 ---
 title: Call another contract
 group: Guides
-order: 5
+order: 7
 ---
 
-## Call another contract
-
-Your contract can call another one (a built-in like QX, or your own). Use the normal Qubic macros:
-
-```cpp
-Counter::Get_input gi; Counter::Get_output go;
-CALL_OTHER_CONTRACT_FUNCTION(Counter, Get, gi, go);
-
-Counter::Inc_input ii; Counter::Inc_output io;
-INVOKE_OTHER_CONTRACT_PROCEDURE(Counter, Inc, ii, io, 0);
-```
-
-For your own deployed contract, tell qinit where it lives when you deploy:
+## Start from the example
 
 ```bash
-qinit deploy --callee Counter=/abs/path/Counter.h@28
+qinit new reader --template intercontract
+cd reader
+qinit node run
+qinit deploy
 ```
 
-> **Note** — Rule: you can only call a contract at a **lower slot** than yours.
+This creates both `Reader.h` and its `Counter.h` dependency. Qinit discovers the call, builds both contracts, and deploys the callee first.
+
+## Make the call
+
+Input, output, and locals use the callee's types:
+
+```cpp
+struct ReadCounter_locals {
+  Counter::Get_input input;
+  Counter::Get_output output;
+};
+
+PUBLIC_FUNCTION_WITH_LOCALS(ReadCounter)
+{
+  CALL_OTHER_CONTRACT_FUNCTION(
+    Counter,
+    Get,
+    locals.input,
+    locals.output
+  );
+  output.value = locals.output.value;
+}
+```
+
+For a procedure, use `INVOKE_OTHER_CONTRACT_PROCEDURE` and pass the invocation reward as the last argument:
+
+```cpp
+struct BumpCounter_locals {
+  Counter::Inc_input input;
+  Counter::Inc_output output;
+};
+
+PUBLIC_PROCEDURE_WITH_LOCALS(BumpCounter)
+{
+  INVOKE_OTHER_CONTRACT_PROCEDURE(
+    Counter,
+    Inc,
+    locals.input,
+    locals.output,
+    0
+  );
+}
+```
+
+## Bring your own dependency
+
+Put custom contract headers under `contracts/` and Qinit finds them by state type. A header elsewhere can be mapped explicitly:
+
+```bash
+qinit deploy --callee Counter=../shared/Counter.h
+```
+
+The current dynamic window is slots **29–32**. Let Qinit assign them: every custom callee must have a lower slot than its caller, and dependency cycles are rejected.
+
+System contracts are different. Their slots are fixed by Qubic Core, so Qinit uses those canonical indexes instead of the dynamic planner.

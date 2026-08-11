@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link, useParams, Navigate } from "react-router-dom";
+import { useEffect, type ReactNode } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
@@ -7,6 +7,10 @@ import { CodeBlock } from "./components/CodeBlock";
 import { ThemeToggle } from "./components/ThemeToggle";
 
 const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
+const DOC_ALIASES = new Map([
+  ["installation", "overview"],
+  ["templates", "writing-a-contract"],
+]);
 
 // Load every doc as raw markdown at build time (Vite glob).
 const files = import.meta.glob("./content/*.md", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -26,6 +30,7 @@ const DOCS: Doc[] = Object.entries(files)
     const { meta, body } = parseFm(raw);
     return { slug, title: meta.title ?? slug, group: meta.group ?? "Docs", order: Number(meta.order ?? 99), body };
   })
+  .filter((doc) => !DOC_ALIASES.has(doc.slug))
   .sort((a, b) => GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group) || a.order - b.order);
 const bySlug = Object.fromEntries(DOCS.map((d) => [d.slug, d]));
 
@@ -60,16 +65,23 @@ function Shell({ children }: { children: ReactNode }) {
       <div className="bg-fx" />
       <div className="bg-grid" />
       <header className="sticky top-0 z-20 border-b border-ink/[.08] bg-paper/80 backdrop-blur-xl">
-        <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3.5">
-          <Link to="/" className="flex items-center gap-2.5">
+        <nav aria-label="Primary" className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6">
+          <Link to="/" className="flex shrink-0 items-center gap-2.5">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-ink font-mono text-sm font-black text-paper">q</span>
             <span className="font-display text-lg font-bold tracking-tight text-ink">qinit</span>
-            <span className="ml-1 rounded bg-ink/[.06] px-2 py-0.5 font-mono text-xs text-slate">docs</span>
+            <span className="ml-1 hidden rounded bg-ink/[.06] px-2 py-0.5 font-mono text-xs text-slate sm:inline">docs</span>
           </Link>
-          <div className="flex items-center gap-4 text-sm text-slate">
-            <Link to="/" className="transition hover:text-ink">Home</Link>
+          <div className="flex shrink-0 items-center gap-2 text-sm text-slate sm:gap-4">
+            <Link to="/" className="hidden transition hover:text-ink sm:inline">Home</Link>
             <ThemeToggle />
-            <a href="https://github.com/hackerby888/qinit" className="btn-ghost px-4 py-2 text-sm">GitHub ↗</a>
+            <a
+              href="https://github.com/hackerby888/qinit"
+              aria-label="Qinit on GitHub"
+              className="btn-ghost px-3 py-2 text-sm sm:px-4"
+            >
+              <span className="hidden sm:inline">GitHub</span>
+              <span aria-hidden="true">↗</span>
+            </a>
           </div>
         </nav>
       </header>
@@ -80,17 +92,43 @@ function Shell({ children }: { children: ReactNode }) {
 
 export function Docs() {
   const { slug } = useParams();
-  const active = slug ?? DOCS[0]?.slug ?? "overview";
-  if (slug && !bySlug[slug]) return <Navigate to={`/docs/${DOCS[0]?.slug ?? "overview"}`} replace />;
+  const navigate = useNavigate();
+  const fallback = DOCS[0]?.slug ?? "overview";
+  const requested = slug ?? fallback;
+  const active = DOC_ALIASES.get(requested) ?? requested;
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [slug]);
+
+  if (slug && active !== slug) return <Navigate to={`/docs/${active}`} replace />;
+  if (!bySlug[active]) return <Navigate to={`/docs/${fallback}`} replace />;
   const page = bySlug[active];
   const idx = DOCS.findIndex((d) => d.slug === active);
   const prev = DOCS[idx - 1], next = DOCS[idx + 1];
 
   return (
     <Shell>
-      <div className="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-10 md:flex-row">
-        <aside className="md:w-60 md:shrink-0">
-          <div className="space-y-6 md:sticky md:top-24">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 md:flex-row md:gap-10 md:py-10">
+        <label className="md:hidden">
+          <span className="mb-2 block font-mono text-xs font-semibold uppercase tracking-[0.18em] text-faint">Page</span>
+          <select
+            value={active}
+            onChange={(event) => navigate(`/docs/${event.target.value}`)}
+            className="w-full rounded-lg border border-ink/15 bg-card px-3 py-2.5 text-sm text-ink"
+          >
+            {GROUPS.filter((group) => DOCS.some((doc) => doc.group === group)).map((group) => (
+              <optgroup key={group} label={group}>
+                {DOCS.filter((doc) => doc.group === group).map((doc) => (
+                  <option key={doc.slug} value={doc.slug}>{doc.title}</option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+
+        <aside className="hidden md:block md:w-60 md:shrink-0">
+          <nav aria-label="Documentation" className="space-y-6 md:sticky md:top-24">
             {GROUPS.filter((g) => DOCS.some((d) => d.group === g)).map((g) => (
               <div key={g}>
                 <div className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-faint">{g}</div>
@@ -106,7 +144,7 @@ export function Docs() {
                 </ul>
               </div>
             ))}
-          </div>
+          </nav>
         </aside>
 
         <main className="min-w-0 max-w-3xl flex-1">

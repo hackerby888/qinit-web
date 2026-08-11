@@ -1,45 +1,70 @@
 ---
 title: Quickstart
 group: Getting Started
-order: 3
+order: 2
 ---
 
-## Zero to live
+Deploy a counter, increment it, and read its state.
 
-From a blank folder to a running contract.
-
-### 1. Install
+## 1. Create the project
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hackerby888/qinit/main/install.sh | sh
+qinit new counter
+cd counter
 ```
 
-### 2. New project
+Qinit creates:
+
+```text
+counter/
+├── contracts/Counter.h
+├── tests/Counter.test.cpp
+├── qinit.json
+└── README.md
+```
+
+## 2. Start the fast local runtime
 
 ```bash
-qinit new my-sc --template counter && cd my-sc
+qinit runtime simulator
+qinit compiler typescript
+qinit node run
 ```
 
-### 3. Start a node
+Qinit remembers the runtime and compiler choices. `node run` starts the simulator in the background and prepares any missing tools.
+
+## 3. Deploy
 
 ```bash
-qinit up
+qinit deploy
 ```
 
-`up` downloads a test node, runs it, and gets headers ready. If a node is already ticking, it reuses it.
+`deploy` builds the Wasm, picks a dynamic slot, uploads it, and verifies the live code hash.
 
-### 4. Edit + auto-deploy
+## 4. Call it
 
 ```bash
-qinit dev
+qinit call --proc Counter Inc
+qinit call --fn Counter Get
+qinit state Counter
 ```
 
-Open `contracts/My_sc.h`, change something, save. qinit builds and deploys it for you.
+After `Inc` is processed, the last two commands show:
 
-### 5. Call it
+```text
+✓ Counter.Get
+  out 1
+
+• Counter state
+  counter 1
+```
+
+`Inc` is a procedure, so Qinit waits for its target tick. `Get` is a read-only function and returns immediately.
+
+Run `qinit call` with no flags to choose the contract and entry from an interactive picker.
+
+When you are done:
 
 ```bash
-qinit call
+qinit node stop
 ```
-
-> **Tip** — That's the whole loop. Edit, save, call — repeat.
