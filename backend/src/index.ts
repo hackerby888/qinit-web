@@ -63,23 +63,23 @@ app.get("/ready", (_req, res) => {
 
 // Built-in system contracts for the IDE's in-browser virtual node: the catalog (picker) + source-by-name.
 // The browser compiles the source itself (@qinit/compiler worker) and deploys the wasm in-page.
-app.get("/api/system-contracts", (_req, res) => res.json({ contracts: systemCatalog() }));
-app.get("/api/system-contracts/sources", (_req, res) => {
-  const r = systemSources();
+app.get("/api/system-contracts", wrap(async (_req, res) => res.json({ contracts: await systemCatalog() })));
+app.get("/api/system-contracts/sources", wrap(async (_req, res) => {
+  const r = await systemSources();
   if (!r.ok) {
     res.status(r.status).json({ error: r.error });
     return;
   }
   res.json({ contracts: r.contracts });
-});
-app.get("/api/system-contracts/:name/source", (req, res) => {
-  const r = systemSource(req.params.name);
+}));
+app.get("/api/system-contracts/:name/source", wrap(async (req, res) => {
+  const r = await systemSource(req.params.name);
   if (!r.ok) {
     res.status(r.status).json({ error: r.error });
     return;
   }
   res.json({ name: r.name, stateType: r.stateType, index: r.index, source: r.source });
-});
+}));
 
 // Auth (Google / GitHub OAuth) + the authed user. The dev mint must precede the :provider route.
 app.get("/api/auth/dev", wrap(devToken)); // dev-only token mint (QINIT_DEV_AUTH=1)

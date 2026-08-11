@@ -3,7 +3,16 @@
 // wasm itself. The CLI reads the same contracts through @qinit/build's catalog, so the indices/sources match.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { systemContracts } from "@qinit/build";
+import type { systemContracts as SystemContracts } from "@qinit/build";
+
+// Imported on first use rather than at module load: the backend unit tests run without the sibling
+// monorepo checked out, and every entry point below returns early when no core headers are configured,
+// so nothing here should make an absent sibling a startup failure.
+let contracts: typeof SystemContracts | undefined;
+async function loadContracts(): Promise<typeof SystemContracts> {
+  contracts ??= (await import("@qinit/build")).systemContracts;
+  return contracts;
+}
 
 // QINIT_CORE, else the snapshot `qinit up` synced (~/.cache/qinit/current.json).
 function corePath(): string | null {
@@ -26,11 +35,12 @@ export interface SystemCatalogEntry { index: number; name: string; stateType: st
 
 // The pick-list: index + name + state-struct type (what the compiler compiles by), no source — that
 // comes from systemSource.
-export function systemCatalog(): SystemCatalogEntry[] {
+export async function systemCatalog(): Promise<SystemCatalogEntry[]> {
   const core = corePath();
   if (!core) {
     return [];
   }
+  const systemContracts = await loadContracts();
   return systemContracts(core).map((c) => ({ index: c.index, name: c.name, stateType: c.stateType }));
 }
 
@@ -39,12 +49,13 @@ export type SystemSourceResult =
   | { ok: false; status: number; error: string };
 
 // The source of a named system contract, for the browser to compile at its canonical slot index.
-export function systemSource(name: string): SystemSourceResult {
+export async function systemSource(name: string): Promise<SystemSourceResult> {
   const core = corePath();
   if (!core) {
     return { ok: false, status: 503, error: "core headers not found — set QINIT_CORE or run `qinit node run`." };
   }
 
+  const systemContracts = await loadContracts();
   const c = systemContracts(core).find((x) => x.name.toLowerCase() === name.toLowerCase());
   if (!c) {
     return { ok: false, status: 404, error: `unknown system contract '${name}'` };
@@ -55,10 +66,11 @@ export function systemSource(name: string): SystemSourceResult {
 
 // Every system contract's source, for the browser's callee retry: an inter-contract call needs the
 // lower-index callees compiled alongside the target.
-export function systemSources(): { ok: true; contracts: Array<{ name: string; stateType: string; index: number; source: string }> } | { ok: false; status: number; error: string } {
+export async function systemSources(): Promise<{ ok: true; contracts: Array<{ name: string; stateType: string; index: number; source: string }> } | { ok: false; status: number; error: string }> {
   const core = corePath();
   if (!core) {
     return { ok: false, status: 503, error: "core headers not found — set QINIT_CORE or run `qinit node run`." };
   }
+  const systemContracts = await loadContracts();
   return { ok: true, contracts: systemContracts(core).map((c) => ({ name: c.name, stateType: c.stateType, index: c.index, source: c.source })) };
 }

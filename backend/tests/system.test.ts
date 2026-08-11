@@ -4,8 +4,8 @@ import { test, expect, describe } from "bun:test";
 import { systemCatalog, systemSource, systemSources } from "../src/system";
 
 describe("system contracts API", () => {
-  test("catalog: array of {index,name,stateType}; QX is index 1 when a snapshot is present", () => {
-    const cat = systemCatalog();
+  test("catalog: array of {index,name,stateType}; QX is index 1 when a snapshot is present", async () => {
+    const cat = await systemCatalog();
     expect(Array.isArray(cat)).toBe(true);
     if (cat.length) {
       expect(cat.every((c) => typeof c.index === "number" && typeof c.name === "string" && c.name.length > 0)).toBe(true);
@@ -13,8 +13,8 @@ describe("system contracts API", () => {
     }
   });
 
-  test("systemSource: unknown name -> ok:false with a 404", () => {
-    const r = systemSource("NOTACONTRACT");
+  test("systemSource: unknown name -> ok:false with a 404", async () => {
+    const r = await systemSource("NOTACONTRACT");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.error).toBeTruthy();
@@ -22,12 +22,12 @@ describe("system contracts API", () => {
     }
   });
 
-  test("systemSource: a catalog entry serves its source at its canonical index", () => {
-    const cat = systemCatalog();
+  test("systemSource: a catalog entry serves its source at its canonical index", async () => {
+    const cat = await systemCatalog();
     if (!cat.length) {
       return;
     }
-    const r = systemSource("QX");
+    const r = await systemSource("QX");
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.index).toBe(1);
@@ -36,9 +36,9 @@ describe("system contracts API", () => {
     }
   });
 
-  test("systemSources: one entry per catalog contract, stateType kept distinct from the ticker", () => {
-    const cat = systemCatalog();
-    const r = systemSources();
+  test("systemSources: one entry per catalog contract, stateType kept distinct from the ticker", async () => {
+    const cat = await systemCatalog();
+    const r = await systemSources();
     if (!cat.length) {
       return;
     }
