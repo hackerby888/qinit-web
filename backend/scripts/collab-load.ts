@@ -34,7 +34,12 @@ function makeClient(room: string, token: string, id: number): { doc: Y.Doc; read
 
   const ORIGIN = `c${id}`;
   let resolveReady: () => void;
-  const ready = new Promise<void>((res) => { resolveReady = res; });
+  let rejectReady: (e: Error) => void;
+  // A dropped socket has to reject, not hang: without this the run waits forever for a sync step 2 that is
+  // never coming, and CI reports a timeout with nothing to read.
+  const ready = new Promise<void>((res, rej) => { resolveReady = res; rejectReady = rej; });
+  ws.onerror = () => rejectReady(new Error(`client ${id}: socket error`));
+  ws.onclose = (e) => rejectReady(new Error(`client ${id}: socket closed before sync (code ${e.code})`));
 
   ws.onopen = () => {
     const enc = encoding.createEncoder();
@@ -88,7 +93,13 @@ async function main(): Promise<void> {
   await api(`/api/projects/${pid}`, { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify(project) });
 
   const clients = Array.from({ length: N }, (_, i) => makeClient(pid, token, i));
-  await Promise.all(clients.map((c) => c.ready));
+  const SYNC_TIMEOUT_MS = 30_000;
+  await Promise.race([
+    Promise.all(clients.map((c) => c.ready)),
+    sleep(SYNC_TIMEOUT_MS).then(() => {
+      throw new Error(`clients did not sync within ${SYNC_TIMEOUT_MS}ms`);
+    }),
+  ]);
   console.log("all clients synced");
 
   // Each client appends its own marker line into the shared file.

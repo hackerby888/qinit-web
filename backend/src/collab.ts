@@ -46,6 +46,7 @@ interface Room {
 }
 
 const rooms = new Map<string, Room>();
+const roomInit = new Map<string, Promise<Room>>();
 
 // Live collab footprint for the admin dashboard: open rooms and the total connected sockets across them.
 export function collabMetrics(): { rooms: number; connections: number } {
@@ -201,12 +202,26 @@ async function writeBack(room: Room): Promise<void> {
 
 // ---- room lifecycle ----
 
+// Callers share one initialization per room. Registering the room before its async seed completed let the
+// other sockets of a burst join an empty doc — the seed lands with no update handler attached yet, so it is
+// never broadcast and those clients stay blank. Only a real store is slow enough for the burst to land inside
+// that window.
 async function getOrCreateRoom(info: ConnInfo): Promise<Room> {
   const existing = rooms.get(info.roomId);
   if (existing) {
     return existing;
   }
+  const inFlight = roomInit.get(info.roomId);
+  if (inFlight) {
+    return inFlight;
+  }
 
+  const init = createRoom(info).finally(() => roomInit.delete(info.roomId));
+  roomInit.set(info.roomId, init);
+  return init;
+}
+
+async function createRoom(info: ConnInfo): Promise<Room> {
   const doc = new Y.Doc();
   const awareness = new awarenessProtocol.Awareness(doc);
   const room: Room = {
@@ -221,8 +236,6 @@ async function getOrCreateRoom(info: ConnInfo): Promise<Room> {
     saveTimer: null,
     evictTimer: null,
   };
-  rooms.set(info.roomId, room);
-
   // Seed from a warm Redis state cache if present, else from the owner's saved project. A failure here must
   // not reject room creation — fall back to an empty doc so the socket still works.
   try {
@@ -273,6 +286,7 @@ async function getOrCreateRoom(info: ConnInfo): Promise<Room> {
   });
 
   subscribeRedis(room.roomId);
+  rooms.set(info.roomId, room);
   return room;
 }
 
@@ -342,12 +356,37 @@ function onMessage(room: Room, ws: WebSocket, data: Uint8Array, write: boolean):
 }
 
 function onConnection(ws: WebSocket, info: ConnInfo): void {
+  // Room init awaits Redis/Mongo, and a client sends sync step 1 the moment its socket opens — so frames
+  // land before the room exists. Listen from here and hold them, or they are dropped and the client waits
+  // forever for a step 2 that never comes (only visible against a real store; in-memory resolves too fast).
+  let ready: Room | null = null;
+  let closed = false;
+  const pending: Uint8Array[] = [];
+
+  ws.on("message", (raw) => {
+    const data = toU8(raw);
+    if (ready) {
+      onMessage(ready, ws, data, info.write);
+    } else {
+      pending.push(data);
+    }
+  });
+
+  const shutdown = (): void => {
+    closed = true;
+    if (ready) {
+      onClose(ready, ws);
+    }
+  };
+  ws.on("close", shutdown);
+  ws.on("error", shutdown);
+
   void getOrCreateRoom(info).catch((e) => {
     log.error("collab room init failed", { error: (e as Error).message });
     ws.close();
     return null;
   }).then((room) => {
-    if (!room) {
+    if (!room || closed) {
       return;
     }
     if (room.evictTimer) {
@@ -371,9 +410,11 @@ function onConnection(ws: WebSocket, info: ConnInfo): void {
       ws.send(encoding.toUint8Array(awEnc));
     }
 
-    ws.on("message", (raw) => onMessage(room, ws, toU8(raw), info.write));
-    ws.on("close", () => onClose(room, ws));
-    ws.on("error", () => onClose(room, ws));
+    ready = room;
+    for (const data of pending) {
+      onMessage(room, ws, data, info.write);
+    }
+    pending.length = 0;
   });
 }
 
