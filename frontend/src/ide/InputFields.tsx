@@ -77,7 +77,6 @@ function FieldControl({ field, path, draft, onChange, compact, depth }: {
       <span style={{ fontFamily: font.mono, fontSize: compact ? 10 : 11, color: color.textMutedDk, minWidth: labelWidth }}>{field.name}</span>
       <span style={{ fontFamily: font.mono, fontSize: compact ? 9.5 : 10, color: unsupported ? "#f85149" : color.textGhostDk, minWidth: compact ? 48 : 58 }}>{field.type}</span>
       <input
-        className="qinit-input-hint"
         value={draft[key] ?? ""}
         onChange={(event) => onChange({ ...draft, [key]: event.target.value })}
         placeholder={placeholder}

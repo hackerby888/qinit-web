@@ -460,7 +460,7 @@ function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDeb
   onDebug?: (steps: DebugStep[], title: string) => void;
 }) {
   const [vals, setVals] = useState<InputDraft>({});
-  const [value, setValue] = useState("0");
+  const [value, setValue] = useState(""); // empty, so the "0" placeholder shows as a hint
   const accent = kind === "function" ? color.accent : color.secondary;
 
   return (

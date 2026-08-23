@@ -16,7 +16,6 @@
 .pixel-root svg { shape-rendering: crispEdges; }
 .pixel-root a { color: inherit; }
 
-.qinit-input-hint::placeholder { color: inherit; opacity: .32; }
 
 .nav-link { transition: color .15s ease; }
 .nav-link:hover { color: #19E0B4 !important; }
