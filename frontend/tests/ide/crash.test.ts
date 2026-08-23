@@ -343,9 +343,9 @@ describe("dialog render", () => {
     expect(dialog).not.toContain(color.textBody);
     expect(dialog).not.toContain(color.textMutedLt);
 
-    const b = new CrashBoundary({ children: null });
-    b.state = { dead: true };
-    const fallback = renderToStaticMarkup(b.render() as ReactElement);
+    const boundary = new CrashBoundary({ children: null });
+    boundary.state = { dead: true };
+    const fallback = renderToStaticMarkup(boundary.render() as ReactElement);
     expect(fallback).not.toContain(color.textBody);
     expect(fallback).not.toContain(color.textMutedLt);
   });
@@ -365,8 +365,8 @@ describe("boundary", () => {
   });
 
   test("a caught render error becomes a report on the react channel", () => {
-    const b = new CrashBoundary({ children: null });
-    b.componentDidCatch(new Error("render boom"), { componentStack: "\n    at Editor" });
+    const boundary = new CrashBoundary({ children: null });
+    boundary.componentDidCatch(new Error("render boom"), { componentStack: "\n    at Editor" });
     expect(seen()?.detail.message).toBe("render boom");
     expect(seen()?.source).toBe("react");
     expect(seen()?.extra).toContain("at Editor");
@@ -374,9 +374,9 @@ describe("boundary", () => {
   });
 
   test("the dead-state fallback offers a way out", () => {
-    const b = new CrashBoundary({ children: null });
-    b.state = { dead: true };
-    const html = renderToStaticMarkup(b.render() as ReactElement);
+    const boundary = new CrashBoundary({ children: null });
+    boundary.state = { dead: true };
+    const html = renderToStaticMarkup(boundary.render() as ReactElement);
     expect(html).toContain("unexpected error");
     expect(html).toContain("reload page");
   });

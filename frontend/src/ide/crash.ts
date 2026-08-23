@@ -1,9 +1,6 @@
-// Unexpected-error reporting — the popup that turns a crash into something a user can paste into a bug
-// report. Deliberately generic: this module knows nothing about the compiler, the engine, the decoder or
-// any other subsystem. It traps the *unhandled* channels (window errors, unhandled rejections, and — via
-// CrashDialog's boundary — React render throws) and lets subsystems push context in through
-// registerDiagnostic(). Anything already caught and shown to the user (the notify/<Toasts/> path) must
-// never reach here, or every handled error would be reported twice.
+// Turns an unexpected error into a report a user can paste into a bug ticket. Knows nothing about any
+// subsystem: it traps the *unhandled* channels and subsystems push context in via registerDiagnostic().
+// Anything already caught and shown to the user (the notify/<Toasts/> path) must never reach here.
 //
 // Pure (no React, no DOM at import time) → unit-tested; CrashDialog is a thin renderer over this state.
 
@@ -29,11 +26,9 @@ export interface CrashReport {
 const MAX_MSG = 500;
 const MAX_STACK_LINES = 24;
 const MAX_ALSO = 5;
-// ponytail: exact-message dedupe — a message carrying a tick number or an id makes a fresh key every time
-// and defeats it. This hard cap is the backstop; key on a normalised message if reports get noisy.
+// Backstop: a message carrying a tick number or an id defeats exact-message dedupe.
 const MAX_DIALOGS = 3;
-// Bumping the count on a per-frame error re-renders the dialog every frame. Stop emitting after this many;
-// buildReportText() reads live state, so the copied report still carries the true count.
+// A per-frame error would re-render every frame; the copied report still carries the true count.
 const EMIT_UNTIL = 10;
 
 type Listener = (report: CrashReport | null) => void;
@@ -85,16 +80,14 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}
 // Object.prototype.toString never throws — `e.constructor.name` does, on an Object.create(null).
 const tag = (e: unknown): string => Object.prototype.toString.call(e).slice(8, -1);
 
-// Duck-typed: an Error crossing a worker/iframe realm boundary fails `instanceof`, and DOMException is not
-// an Error subclass in every engine.
+// Duck-typed: an Error crossing a worker realm fails `instanceof`, and DOMException is not always one.
 const errorLike = (e: unknown): boolean =>
   typeof e === "object" &&
   e !== null &&
   typeof (e as { message?: unknown }).message === "string" &&
   typeof (e as { name?: unknown }).name === "string";
 
-// A rejection reason is very often not an Error. This has to survive whatever it is handed — the weird
-// values are exactly the ones worth reporting.
+// A rejection reason is often not an Error, and the weird values are the ones worth reporting.
 export function describeError(e: unknown): CrashDetail {
   if (e instanceof Error || errorLike(e)) {
     const err = e as Error;
@@ -164,8 +157,7 @@ export interface DiagnosticOptions {
 export function registerDiagnostic(key: string, fn: () => string | null, opts: DiagnosticOptions = {}): () => void {
   const entry: Entry = { fn, sensitive: !!opts.sensitive };
   diags.set(key, entry);
-  // Identity-guarded so a stale unregister (StrictMode's mount→unmount→mount, HMR, a route swap) can't
-  // delete whatever replaced it.
+  // Identity-guarded so a stale unregister (StrictMode remount, HMR) can't delete its replacement.
   return () => {
     if (diags.get(key) === entry) {
       diags.delete(key);
@@ -174,7 +166,9 @@ export function registerDiagnostic(key: string, fn: () => string | null, opts: D
 }
 
 export function sensitiveKeys(): string[] {
-  return [...diags.entries()].filter(([, v]) => v.sensitive).map(([k]) => k);
+  return [...diags.entries()]
+    .filter(([, entry]) => entry.sensitive)
+    .map(([key]) => key);
 }
 
 // ---- redaction ------------------------------------------------------------
@@ -184,9 +178,8 @@ const JWT_RE = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 // A source location, not an app route: ".js", ".ts:412:19", ".css".
 const CODE_PATH = /\.[a-z0-9]{1,5}(:\d+)*$/i;
 
-// Keep only the first path segment; every deeper one becomes ":id". A length threshold cannot work — a
-// share linkId is exactly 12 chars and IS the credential, while a docs slug can be longer. `new URL` also
-// means search and hash are never reproduced, which is what closes the OAuth-token-in-the-fragment leak.
+// Keep the first path segment, collapse the rest to ":id". A length threshold cannot work: a share linkId
+// is 12 chars and IS the credential. `new URL` also drops search/hash, closing the OAuth-fragment leak.
 export function redactUrl(raw: string): string {
   let u: URL;
   try {
@@ -201,15 +194,14 @@ export function redactUrl(raw: string): string {
   return u.origin + (segs.length ? `/${segs[0]}${"/:id".repeat(segs.length - 1)}` : "/");
 }
 
-// Applied once to the whole assembled report, so a leak is caught wherever it surfaces — a message, a stack
-// frame, or a diagnostic — rather than field by field.
+// Applied to the whole report, so a leak is caught wherever it surfaces rather than field by field.
 export function scrub(text: string): string {
   return text.replace(JWT_RE, "<jwt>").replace(URL_RE, redactUrl);
 }
 
 // ---- report ---------------------------------------------------------------
 
-const env = (): string => {
+const buildMode = (): string => {
   try {
     return (import.meta as unknown as { env?: { MODE?: string } }).env?.MODE ?? "unknown";
   } catch {
@@ -217,7 +209,7 @@ const env = (): string => {
   }
 };
 
-const here = (): string => {
+const currentLocation = (): string => {
   if (typeof location === "undefined") {
     return "n/a";
   }
@@ -225,39 +217,45 @@ const here = (): string => {
   return redactUrl(location.origin + location.pathname);
 };
 
-const agent = (): string => (typeof navigator === "undefined" ? "n/a" : navigator.userAgent);
+const userAgent = (): string => (typeof navigator === "undefined" ? "n/a" : navigator.userAgent);
 
 const section = (title: string, body: string | null): string => (body ? `\n[${title}]\n${body}\n` : "");
 
 // Reads live module state rather than a passed-in snapshot, so the copied text always carries the true
 // repeat count even after the emit throttle stops re-rendering the dialog.
 export function buildReportText(includeSensitive: boolean): string {
-  const r = current;
-  if (!r) {
+  const report = current;
+  if (!report) {
     return "Qinit crash report\n(no error)\n";
   }
 
-  const head = [
+  const header = [
     "Qinit crash report",
-    `when     ${new Date(r.at).toISOString()}`,
-    `where    ${here()}`,
-    `mode     ${env()}`,
-    `ua       ${agent()}`,
-    `source   ${r.source}`,
-    `seen     ${r.count}x`,
+    `when     ${new Date(report.at).toISOString()}`,
+    `where    ${currentLocation()}`,
+    `mode     ${buildMode()}`,
+    `ua       ${userAgent()}`,
+    `source   ${report.source}`,
+    `seen     ${report.count}x`,
   ].join("\n");
 
-  let body =
-    head +
-    "\n" +
-    section("error", `${r.detail.name}: ${r.detail.message}`) +
-    section("stack", r.detail.stack) +
-    section("component stack", r.extra) +
-    section("also seen", r.alsoSeen.length ? r.alsoSeen.map((m) => `- ${m}`).join("\n") : null);
+  const alsoSeenList = report.alsoSeen.map((message) => `- ${message}`).join("\n");
 
-  // Registration order, non-sensitive first; the opt-in blob goes last so a reader hits the useful bits
-  // before scrolling past a contract.
-  const ordered = [...diags.entries()].filter(([, v]) => !v.sensitive).concat([...diags.entries()].filter(([, v]) => v.sensitive));
+  let body =
+    header +
+    "\n" +
+    section("error", `${report.detail.name}: ${report.detail.message}`) +
+    section("stack", report.detail.stack) +
+    section("component stack", report.extra) +
+    section("also seen", alsoSeenList || null);
+
+  // Registration order, but the opt-in blob goes last so a reader hits the useful bits before a contract.
+  const entries = [...diags.entries()];
+  const ordered = [
+    ...entries.filter(([, entry]) => !entry.sensitive),
+    ...entries.filter(([, entry]) => entry.sensitive),
+  ];
+
   for (const [key, entry] of ordered) {
     if (entry.sensitive && !includeSensitive) {
       continue;
@@ -278,8 +276,7 @@ export function buildReportText(includeSensitive: boolean): string {
 
 let installed = false;
 
-// Called before createRoot so an error in the very first render is already covered. Idempotent, which also
-// makes it safe under StrictMode and callable from tests.
+// Called before createRoot so the first render is covered. Idempotent: StrictMode-safe and test-callable.
 export function installCrashHandlers(): void {
   if (installed || typeof window === "undefined") {
     return;

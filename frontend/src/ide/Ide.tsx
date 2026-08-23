@@ -925,27 +925,47 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   // Context for the crash reporter. Registered once; the providers read through a ref so typing never
   // re-registers them. crash.ts knows nothing about the IDE — everything it reports is pushed in here.
-  const diagRef = useRef({ ws, projectName, compiler, engineLog, log });
-  diagRef.current = { ws, projectName, compiler, engineLog, log };
+  const DIAGNOSTIC_TAIL = 15; // trailing log lines carried into a report
+  const diagnosticsRef = useRef({ ws, projectName, compiler, engineLog, log });
+  diagnosticsRef.current = { ws, projectName, compiler, engineLog, log };
 
   useEffect(() => {
-    const off = [
+    const unregister = [
       registerDiagnostic("compiler", () => {
-        const c = diagRef.current.compiler;
-        return c
-          ? `qinitVersion=${c.qinitVersion} coreCommit=${c.coreCommit} snapshotHash=${c.snapshotHash} generatorVersion=${c.generatorVersion} protocolVersion=${c.protocolVersion}`
-          : "unavailable";
+        const info = diagnosticsRef.current.compiler;
+        if (!info) {
+          return "unavailable";
+        }
+        return [
+          `qinitVersion=${info.qinitVersion}`,
+          `coreCommit=${info.coreCommit}`,
+          `snapshotHash=${info.snapshotHash}`,
+          `generatorVersion=${info.generatorVersion}`,
+          `protocolVersion=${info.protocolVersion}`,
+        ].join(" ");
       }),
+
       registerDiagnostic("workspace", () => {
-        const { ws: w, projectName: n } = diagRef.current;
-        return `project=${n || "(unnamed)"} active=${w.active || "(none)"} files=${w.files.map((f) => `${f.name} ${f.source.length}b`).join(", ") || "(none)"}`;
+        const { ws: workspace, projectName: name } = diagnosticsRef.current;
+        const files = workspace.files.map((file) => `${file.name} ${file.source.length}b`).join(", ");
+        return `project=${name || "(unnamed)"} active=${workspace.active || "(none)"} files=${files || "(none)"}`;
       }),
-      registerDiagnostic("engine log", () => diagRef.current.engineLog.slice(-15).map((e) => `${e.level} tick=${e.tick} [${e.cat}] ${e.msg}`).join("\n") || null),
-      registerDiagnostic("console", () => diagRef.current.log.slice(-15).join("\n") || null),
+
+      registerDiagnostic("engine log", () => {
+        const lines = diagnosticsRef.current.engineLog.slice(-DIAGNOSTIC_TAIL);
+        return lines.map((event) => `${event.level} tick=${event.tick} [${event.cat}] ${event.msg}`).join("\n") || null;
+      }),
+
+      registerDiagnostic("console", () => diagnosticsRef.current.log.slice(-DIAGNOSTIC_TAIL).join("\n") || null),
+
       // The one opt-in provider — its presence is what puts the checkbox on the dialog.
-      registerDiagnostic("contract source", () => diagRef.current.ws.files.map((f) => `--- ${f.name} ---\n${f.source}`).join("\n\n") || null, { sensitive: true }),
+      registerDiagnostic(
+        "contract source",
+        () => diagnosticsRef.current.ws.files.map((file) => `--- ${file.name} ---\n${file.source}`).join("\n\n") || null,
+        { sensitive: true },
+      ),
     ];
-    return () => off.forEach((f) => f());
+    return () => unregister.forEach((remove) => remove());
   }, []);
 
   const activeFile = ws.files.find((f) => f.name === ws.active) ?? ws.files[0];
