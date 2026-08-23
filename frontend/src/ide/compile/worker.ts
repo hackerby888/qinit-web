@@ -124,14 +124,24 @@ async function handleGtest(req: WorkerGtestRequest): Promise<WorkerGtestResponse
   }
 }
 
+// A failed reply (DataCloneError on an already-detached buffer) rejects inside the worker, where
+// Worker.onerror never fires — the caller just waits out its timeout. Turn it into a normal error reply.
+const post = (res: WorkerCompileResponse | WorkerGtestResponse, transfer: Transferable[]): void => {
+  try {
+    self.postMessage(res, transfer);
+  } catch (error) {
+    self.postMessage({ id: res.id, kind: res.kind, ok: false, diagnostics: [], error: `worker reply failed: ${error instanceof Error ? error.message : String(error)}` });
+  }
+};
+
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (e.data.kind === "hello") {
     self.postMessage({ id: e.data.id, kind: "hello", protocolVersion: COMPILER_PROTOCOL_VERSION, compilerInfo });
     return;
   }
   if (e.data.kind === "compile-gtest") {
-    void handleGtest(e.data).then((response) => self.postMessage(response, response.wasm ? [response.wasm.buffer] : []));
+    void handleGtest(e.data).then((response) => post(response, response.wasm ? [response.wasm.buffer] : []));
     return;
   }
-  void handle(e.data).then(({ res, transfer }) => self.postMessage(res, transfer));
+  void handle(e.data).then(({ res, transfer }) => post(res, transfer));
 };

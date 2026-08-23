@@ -82,6 +82,14 @@ jobs:
             exit 1
           fi
 
+      - name: reject dev-only debug code in the production bundle
+        working-directory: Qinit-web/frontend
+        run: |
+          if grep -R -E '__crash|\[crash dev\]' dist; then
+            echo "production bundle contains the DEV-only crash triggers (src/ide/crashDev.tsx)" >&2
+            exit 1
+          fi
+
       - name: frontend unit tests
         working-directory: Qinit-web/frontend
         run: bun run test

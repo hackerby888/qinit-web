@@ -5,6 +5,7 @@ import type { CompilerInfo } from "@qinit/compiler/browser";
 import type { GtestProgram } from "@qinit/compiler/browser";
 import type { CompileCallee, CompileResult } from "../api";
 import type { WorkerCompileResponse, WorkerGtestResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
+import { reportCrash } from "../crash";
 
 export interface CompileRequest {
   source: string;
@@ -60,7 +61,9 @@ function getWorker(): Worker | null {
   };
   // A crashed worker (failed chunk load, OOM) fails all in-flight requests and is discarded — the
   // next compile spawns a fresh one.
-  _worker.onerror = () => {
+  _worker.onerror = (ev: ErrorEvent) => {
+    // Everything below degrades to "no compiler"; capture the real cause first.
+    reportCrash(ev.error ?? `compile worker crashed: ${ev.message}`, "manual");
     _worker?.terminate();
     _worker = null;
     for (const [id, resolve] of _pending) {

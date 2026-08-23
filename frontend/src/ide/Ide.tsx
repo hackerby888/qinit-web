@@ -21,6 +21,7 @@ import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
 import { Toasts } from "./Toasts";
 import { OfflineBanner } from "./OfflineBanner";
 import { notify, errorMessage } from "./notify";
+import { registerDiagnostic } from "./crash";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
@@ -920,6 +921,31 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     return () => {
       alive = false;
     };
+  }, []);
+
+  // Context for the crash reporter. Registered once; the providers read through a ref so typing never
+  // re-registers them. crash.ts knows nothing about the IDE — everything it reports is pushed in here.
+  const diagRef = useRef({ ws, projectName, compiler, engineLog, log });
+  diagRef.current = { ws, projectName, compiler, engineLog, log };
+
+  useEffect(() => {
+    const off = [
+      registerDiagnostic("compiler", () => {
+        const c = diagRef.current.compiler;
+        return c
+          ? `qinitVersion=${c.qinitVersion} coreCommit=${c.coreCommit} snapshotHash=${c.snapshotHash} generatorVersion=${c.generatorVersion} protocolVersion=${c.protocolVersion}`
+          : "unavailable";
+      }),
+      registerDiagnostic("workspace", () => {
+        const { ws: w, projectName: n } = diagRef.current;
+        return `project=${n || "(unnamed)"} active=${w.active || "(none)"} files=${w.files.map((f) => `${f.name} ${f.source.length}b`).join(", ") || "(none)"}`;
+      }),
+      registerDiagnostic("engine log", () => diagRef.current.engineLog.slice(-15).map((e) => `${e.level} tick=${e.tick} [${e.cat}] ${e.msg}`).join("\n") || null),
+      registerDiagnostic("console", () => diagRef.current.log.slice(-15).join("\n") || null),
+      // The one opt-in provider — its presence is what puts the checkbox on the dialog.
+      registerDiagnostic("contract source", () => diagRef.current.ws.files.map((f) => `--- ${f.name} ---\n${f.source}`).join("\n\n") || null, { sensitive: true }),
+    ];
+    return () => off.forEach((f) => f());
   }, []);
 
   const activeFile = ws.files.find((f) => f.name === ws.active) ?? ws.files[0];
@@ -2303,6 +2329,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       eng.onTick = (info) => { if (active()) setEngineInfo(info); };
       eng.onMemory = (usage) => { if (active()) setEngineMemory(memorySnapshot(usage)); };
       eng.onLog = (e) => { if (active()) setEngineLog((l) => [...l.slice(-999), e]); }; // buffer the engine's diagnostic stream for the popup
+      // A fault is terminal — the chain stops. Usually the contract trapping rather than a Qinit bug, so
+      // this is a toast, not a crash report; the engine log carries it into one if a real crash follows.
+      eng.onFault = (f) => { if (active()) notify.error(`Virtual node faulted: ${f.message}`); };
 
       eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
         if (!active()) return;

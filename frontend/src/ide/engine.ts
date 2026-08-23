@@ -4,6 +4,7 @@
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import type { EngineLogEvent, TestResult } from "@qinit/engine";
 import type { EngineFaultInfo } from "@qinit/core";
+import { reportCrash } from "./crash";
 import type { GtestProgram } from "@qinit/compiler/browser";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import type {
@@ -106,7 +107,12 @@ export class IdeEngine {
       ? this.workerFactory()
       : new Worker(new URL("./engine-worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (event: MessageEvent<EngineWorkerMessage>) => this.handleMessage(event.data);
-    worker.onerror = () => this.failWorker(new Error("virtual node worker crashed"));
+    worker.onerror = (ev: ErrorEvent) => {
+      // The event carries the only copy of what actually went wrong; failWorker degrades to a generic
+      // message, so report the real one before it is lost.
+      reportCrash(ev.error ?? `virtual node worker crashed: ${ev.message}`, "manual");
+      this.failWorker(new Error("virtual node worker crashed"));
+    };
     this.worker = worker;
     return worker;
   }

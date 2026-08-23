@@ -27,8 +27,14 @@ async function handle(request: EngineRequest): Promise<void> {
   } catch (error) {
     response.error = error instanceof Error ? error.message : String(error);
   }
-  sendMemory();
-  send(response);
+  try {
+    sendMemory();
+    send(response);
+  } catch (error) {
+    // postMessage throws on an unclonable value (DataCloneError). That rejects inside the worker, where
+    // Worker.onerror never fires, so the caller would sit out its full 60s timeout instead of failing.
+    send({ id: request.id, kind: "result", ok: false, error: `worker reply failed: ${error instanceof Error ? error.message : String(error)}` });
+  }
 }
 
 // Serialize every command. This preserves node ordering even if React requests a state refresh while another
