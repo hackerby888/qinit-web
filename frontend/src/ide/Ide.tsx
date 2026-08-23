@@ -58,7 +58,7 @@ import { InputFields } from "./InputFields";
 import { buildInput, inputToDraft, type InputDraft } from "./input-values";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
-import type { DecodedState as StateDump } from "@qinit/inspector";
+import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import "../landing/pixel.css";
 
 // Structural borders, read live at render so a theme swap (neo 3px ↔ flat 1px) takes effect without a

@@ -5,7 +5,7 @@ import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./id
 import type { EngineLogEvent, TestResult } from "@qinit/engine";
 import type { EngineFaultInfo } from "@qinit/core";
 import type { GtestProgram } from "@qinit/compiler/browser";
-import type { DecodedState as StateDump } from "@qinit/inspector";
+import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import type {
   Account,
   AssetView,

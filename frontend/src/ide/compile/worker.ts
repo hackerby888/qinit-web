@@ -6,7 +6,7 @@
 // the qinit CLI's local-compile flow; their source also rides along so the caller can read the
 // callee's nested output types.
 /// <reference lib="webworker" />
-import { compileContract, compileGtest, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compiler/browser";
+import { compileContractWithTypeScript as compileContract, compileGtestWithTypeScript as compileGtest, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compiler/browser";
 import type { ContractIdl, CompileDiagnostic } from "@qinit/compiler/browser";
 import { initK12, k12Sync } from "@qinit/core";
 import { toContractIdlView } from "../idl-view";

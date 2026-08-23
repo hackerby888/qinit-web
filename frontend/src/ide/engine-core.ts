@@ -9,8 +9,10 @@ export type { EngineLogEvent } from "@qinit/engine";
 import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity, type EngineFaultInfo } from "@qinit/core";
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
-import { readState, describeTrace, jstr } from "@qinit/inspector";
-import type { DecodedState as StateDump } from "@qinit/inspector";
+import { describeTrace } from "@qinit/inspector";
+import { readState } from "@qinit/inspector/state-read";
+import { jstr } from "@qinit/inspector/state-format";
+import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 
 // Re-export the engine's asset-universe snapshot under the IDE's name (one inter-contract asset + its holdings).
 export type AssetView = AssetSnapshot;

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { compileContract, compileGtest } from "@qinit/compiler/browser";
+import { compileContractWithTypeScript as compileContract, compileGtestWithTypeScript as compileGtest } from "@qinit/compiler/browser";
 import { STARTER } from "../../src/ide/examples";
 import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
 import { IdeEngine } from "../../src/ide/engine";

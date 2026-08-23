@@ -24,12 +24,15 @@ const aliases: Record<string, string> = {
   "@qinit/proto/qpi-layout": qinit("proto/src/qpi-layout.ts"),
   "@qinit/proto": qinit("proto/src/index.ts"),
   // trace/format.ts imports the package root; keep that transitive edge on the browser-safe IDL module.
-  "@qinit/build": qinit("build/src/idl.ts"),
+  "@qinit/build": qinit("build/src/compile/idl.ts"),
   // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.
+  // The decoder split upstream: describeTrace stays in format.ts, state reading/formatting moved out.
+  // Subpaths before the root — first match wins.
+  "@qinit/inspector/state-read": qinit("cli/src/trace/state-read.ts"),
+  "@qinit/inspector/state-format": qinit("cli/src/trace/state-format.ts"),
   "@qinit/inspector": qinit("cli/src/trace/format.ts"),
   // The compiler's source-only ABI parser is browser-safe. Keep the subpath before the root alias.
   "@qinit/core/lite-abi-source": qinit("core/src/wasm/abi-source.ts"),
-  "@qinit/core": qinit("core/src/browser.ts"),
 };
 // Subpaths before the package root — first match wins.
 aliases["@qinit/compiler/browser"] = qinit("compiler/src/browser.ts");
@@ -39,7 +42,14 @@ aliases["@qinit/compiler"] = qinit("compiler/src/index.ts");
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: aliases,
+    alias: [
+      ...Object.entries(aliases).map(([find, replacement]) => ({ find, replacement })),
+      // @qinit/core's package exports are "./*": "./src/*.ts", and upstream modules import those real
+      // subpaths (@qinit/core/wasm/journal, …). This entry must precede the root one below, which
+      // matches the same prefix and would rewrite it to <browser.ts>/wasm/journal.
+      { find: /^@qinit\/core\/(.+)$/, replacement: `${QINIT_LOCAL}/packages/core/src/$1.ts` },
+      { find: "@qinit/core", replacement: qinit("core/src/browser.ts") },
+    ],
   },
   // The compile worker code-splits (wabt loads on demand) — the default iife worker format can't.
   worker: { format: "es" },

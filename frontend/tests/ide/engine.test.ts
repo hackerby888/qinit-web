@@ -2,7 +2,7 @@
 // synchronously in the next tick. This drives the real @qinit engine + codecs (resolved
 // from the sibling monorepo via the bun-test alias shim) against a current compiler artifact.
 import { test, expect } from "bun:test";
-import { compileContract } from "@qinit/compiler/browser";
+import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";
 import { IdeEngine } from "../../src/ide/engine";
 import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
 

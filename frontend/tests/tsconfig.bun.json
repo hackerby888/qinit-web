@@ -15,7 +15,9 @@
       "@qinit/proto/contract-idl": ["../../../Qinit/packages/proto/src/contract-idl.ts"],
       "@qinit/proto/qpi-layout": ["../../../Qinit/packages/proto/src/qpi-layout.ts"],
       "@qinit/proto": ["../../../Qinit/packages/proto/src/index.ts"],
-      "@qinit/build": ["../../../Qinit/packages/build/src/idl.ts"],
+      "@qinit/build": ["../../../Qinit/packages/build/src/compile/idl.ts"],
+      "@qinit/inspector/state-read": ["../../../Qinit/packages/cli/src/trace/state-read.ts"],
+      "@qinit/inspector/state-format": ["../../../Qinit/packages/cli/src/trace/state-format.ts"],
       "@qinit/inspector": ["../../../Qinit/packages/cli/src/trace/format.ts"],
       "@qinit/core/lite-abi-source": ["../../../Qinit/packages/core/src/wasm/abi-source.ts"],
       "@qinit/core": ["../../../Qinit/packages/core/src/index.ts"]

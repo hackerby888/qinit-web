@@ -79,12 +79,17 @@ declare module "@qinit/engine" {
   export function runCompiledGtest(program: unknown, runnerWasm: Uint8Array, contracts: Record<number, Uint8Array>): Promise<TestResult[]>;
 }
 
-declare module "@qinit/inspector" {
+declare module "@qinit/inspector/state-format" {
   export interface StateLine {
     label: string;
     text: string;
     filled: boolean;
   }
+  export function jstr(value: unknown): string;
+}
+
+declare module "@qinit/inspector/state-read" {
+  import type { StateLine } from "@qinit/inspector/state-format";
   export interface StateContainer {
     index: number;
     name: string;
@@ -102,6 +107,14 @@ declare module "@qinit/inspector" {
     containers: StateContainer[];
     complete: boolean;
   }
+  export interface StateReader {
+    stateRead(slot: number, off: number, len: number): Promise<{ hex: string }>;
+  }
+  export function readState(rpc: StateReader, idx: number, source: string, name: string, qpiHeader?: string): Promise<DecodedState>;
+}
+
+declare module "@qinit/inspector" {
+  import type { StateLine } from "@qinit/inspector/state-format";
   export interface StateDiffLine extends StateLine {
     detail: string;
     internal: boolean;
@@ -121,12 +134,7 @@ declare module "@qinit/inspector" {
     stateDiff: StateDiffLine[];
     logs: DecodedLog[];
   }
-  export interface StateReader {
-    stateRead(slot: number, off: number, len: number): Promise<{ hex: string }>;
-  }
-  export function readState(rpc: StateReader, idx: number, source: string, name: string, qpiHeader?: string): Promise<DecodedState>;
   export function describeTrace(e: unknown, source: string | undefined, name: string, qpiHeader?: string): Promise<DecodedTrace>;
-  export function jstr(value: unknown): string;
 }
 
 declare module "@qinit/proto" {
@@ -276,7 +284,7 @@ declare module "@qinit/compiler/browser" {
   export const COMPILER_PROTOCOL_VERSION: number;
   export const compilerInfo: CompilerInfo;
   export const qpiSnapshot: string;
-  export function compileContract(opts: {
+  export function compileContractWithTypeScript(opts: {
     source: string;
     contractName: string;
     slot: number;
@@ -287,7 +295,7 @@ declare module "@qinit/compiler/browser" {
     strict?: boolean;
     onPhase?: (phase: string) => void | Promise<void>;
   }): Promise<CompileResult>;
-  export function compileGtest(opts: {
+  export function compileGtestWithTypeScript(opts: {
     source: string;
     testSource: string;
     contractName: string;
