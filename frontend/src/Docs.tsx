@@ -57,6 +57,16 @@ const md: Components = {
     return <code className="rounded bg-snow px-1.5 py-0.5 font-mono text-[13px] text-ink">{children}</code>;
   },
   pre: ({ children }) => <>{children}</>, // code component renders the block; don't double-wrap
+  // GFM tables: scroll the table itself rather than the page when a row is too wide for the column.
+  table: ({ children }) => (
+    <div className="my-5 overflow-x-auto rounded-xl border border-ink/[.08]">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => <thead className="bg-snow/60">{children}</thead>,
+  tr: ({ children }) => <tr className="border-b border-ink/[.06] last:border-0">{children}</tr>,
+  th: ({ children }) => <th className="px-4 py-2.5 text-left font-semibold text-ink">{children}</th>,
+  td: ({ children }) => <td className="px-4 py-2.5 align-top text-slate">{children}</td>,
 };
 
 function Shell({ children }: { children: ReactNode }) {

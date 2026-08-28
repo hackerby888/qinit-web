@@ -46,6 +46,8 @@ Structs and fixed arrays nest naturally:
 
 The repeat marker may be `×`, `*`, or `x`.
 
+See [Format strings](/docs/format-strings) for the full language, padding rules, and what each error means.
+
 ## Invocation reward
 
 ```bash
