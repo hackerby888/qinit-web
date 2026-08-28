@@ -2,7 +2,7 @@
 //   function (read)  -> querySmartContract (no signing)
 //   procedure (write)-> a signed tx (K12 + the engine's faucet seed) -> include in the next tick now
 // Worker-owned engine implementation. The browser-facing IdeEngine proxy lives in ./engine.ts.
-import { VirtualNode, initK12, runCompiledGtest, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
+import { DEFAULT_EPOCH_LENGTH, VirtualNode, initK12, runCompiledGtest, type AssetSnapshot, type EngineLogEvent, type TestResult } from "@qinit/engine";
 import type { GtestProgram } from "@qinit/compiler/browser";
 
 export type { EngineLogEvent } from "@qinit/engine";
@@ -136,7 +136,9 @@ export interface DeployImage {
 const IDE_ENGINE_OPTS = { mempool: true, verifySigs: false, fees: "off", liteTicking: true } as const;
 
 export class IdeEngineCore {
-  private engine = new VirtualNode(IDE_ENGINE_OPTS);
+  // Staged until the chain is next rebuilt — see setEpochLength.
+  private epochLengthValue = DEFAULT_EPOCH_LENGTH;
+  private engine = new VirtualNode({ ...IDE_ENGINE_OPTS, epochLength: this.epochLengthValue });
   private seed: string | null = null;
   private k12Ready = false;
   private ticker: ReturnType<typeof setInterval> | null = null;
@@ -268,6 +270,13 @@ export class IdeEngineCore {
     return this.engine.sim.epochLength;
   }
 
+  // Staged, applied by the next reset. A live change would leave the epoch's own arithmetic wrong: the
+  // node reports initialTick as epoch * length, so shortening mid-epoch puts the epoch's last tick behind
+  // the tick already reached. Rebuilding from genesis keeps every epoch starting where it claims to.
+  setEpochLength(ticks: number): void {
+    this.epochLengthValue = Math.max(0, Math.trunc(ticks));
+  }
+
   // Jump to the next epoch: fast-forward ticks to the upcoming epoch boundary. The switch itself
   // (END_EPOCH -> epoch++ -> BEGIN_EPOCH) is fired by the tick mechanism (sim.advance) as the tick crosses
   // the boundary — same as the live network reaching the last tick of an epoch — not by hand.
@@ -291,7 +300,7 @@ export class IdeEngineCore {
   async reset(images: DeployImage[]): Promise<void> {
     this.stop();
     await this.ensureK12();
-    this.engine = new VirtualNode(IDE_ENGINE_OPTS);
+    this.engine = new VirtualNode({ ...IDE_ENGINE_OPTS, epochLength: this.epochLengthValue });
     this.faultValue = null;
     void this.engine.setDebug(true);
     this.engine.onLog = (e) => this.onLog?.(e);

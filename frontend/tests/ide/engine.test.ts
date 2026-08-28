@@ -440,3 +440,36 @@ test("IdeEngine: a nested callee trap keeps the session ticking", async () => {
     e.stop();
   }
 });
+
+// Ticks per epoch was fixed at 3000, so reaching END_EPOCH in the IDE meant a three-thousand-tick jump.
+// The value is staged rather than live: applying it mid-chain would leave the epoch reporting a last tick
+// the chain had already passed, so the rebuild from genesis is what puts it into effect.
+test("IdeEngine: a new epoch length is staged, then applied by the next reset", async () => {
+  const e = new IdeEngine();
+  await e.deploy(SLOT, await counterWasm(), idl);
+
+  expect(e.epochLength()).toBe(3000);
+  expect(e.pendingEpochLength()).toBe(3000);
+
+  e.setEpochLength(10);
+  expect(e.pendingEpochLength()).toBe(10);
+  expect(e.epochLength()).toBe(3000); // the running chain is untouched
+
+  await e.reset([{ slot: SLOT, wasm: await counterWasm(), name: "Counter" }]);
+  expect(e.epochLength()).toBe(10);
+
+  await e.step(10);
+  expect((await e.info()).epoch).toBe(1); // boundary at tick 10, not 3000
+});
+
+test("IdeEngine: a short epoch keeps rolling over at its own length", async () => {
+  const e = new IdeEngine();
+  await e.deploy(SLOT, await counterWasm(), idl);
+  e.setEpochLength(4);
+  await e.reset([{ slot: SLOT, wasm: await counterWasm(), name: "Counter" }]);
+
+  await e.step(12);
+  const info = await e.info();
+  expect(info.tick).toBe(12);
+  expect(info.epoch).toBe(3); // boundaries at 4, 8, 12
+});

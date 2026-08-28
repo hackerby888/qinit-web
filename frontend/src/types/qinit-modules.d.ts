@@ -11,6 +11,7 @@ declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
 }
 
 declare module "@qinit/engine" {
+  export const DEFAULT_EPOCH_LENGTH: number;
   export interface EngineLogEvent {
     level: "debug" | "info" | "warn" | "error";
     tick: number;
@@ -18,7 +19,7 @@ declare module "@qinit/engine" {
     msg: string;
   }
   export class VirtualNode {
-    constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint; liteTicking?: boolean });
+    constructor(opts?: { slotBase?: number; slotCount?: number; consensus?: unknown; mempool?: boolean; verifySigs?: boolean; fees?: "off" | "metered"; defaultReserve?: bigint; liteTicking?: boolean; epochLength?: number });
     // The chain-sim, exposed for epoch control (the tick path goes through advanceTick, which switches
     // epoch on a boundary via sim.advance).
     readonly sim: {

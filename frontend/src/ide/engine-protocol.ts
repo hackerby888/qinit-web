@@ -6,7 +6,7 @@ import type { EngineFaultInfo } from "@qinit/core";
 export type EngineMethod =
   | "deploy" | "runGtest"
   | "start" | "stop" | "isRunning" | "pause" | "resume" | "setSpeed" | "speed"
-  | "step" | "epochLength" | "advanceEpoch" | "fundAccount"
+  | "step" | "epochLength" | "setEpochLength" | "advanceEpoch" | "fundAccount"
   | "reset" | "replay" | "runSteps" | "exportHistory" | "registerSource"
   | "stateOf" | "assets" | "callFunction" | "callFunctionDetailed" | "submitProcedure"
   | "info" | "faultInfo" | "ensureAccounts" | "restoreAccounts" | "balanceOf" | "addressOf";

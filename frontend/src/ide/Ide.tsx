@@ -641,11 +641,13 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
 
 // Deterministic testnet controls (Remix has none — we own the chain in-page). Pause/step time, jump an
 // epoch to fire BEGIN/END_EPOCH hooks, and reset/replay the whole session against a fresh chain.
-function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpoch, onReset, onReplay, onSpeed }: {
+function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onToggle, onStep, onEpoch, onEpochLen, onReset, onReplay, onSpeed }: {
   paused: boolean;
   speed: number;
   info: { tick: number; epoch: number } | null;
   epochLen: number;
+  pendingEpochLen: number;
+  onEpochLen: (ticks: number) => void;
   onToggle: () => void;
   onStep: (n: number) => void;
   onEpoch: () => void;
@@ -668,6 +670,19 @@ function EngineControls({ paused, speed, info, epochLen, onToggle, onStep, onEpo
             <span style={{ position: "absolute", inset: 0, width: `${pct}%`, background: color.accentDeep }} />
           </span>
           <span>{within}/{epochLen}</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
+          <span>ticks/epoch</span>
+          <input
+            type="number"
+            min={1}
+            value={pendingEpochLen}
+            onChange={(e) => onEpochLen(Number(e.target.value))}
+            title="Ticks per epoch. A short epoch reaches END_EPOCH without ticking three thousand times."
+            style={{ width: 62, border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}
+          />
+          {pendingEpochLen !== epochLen && <span style={{ color: color.secondary }}>applies on ↺ reset</span>}
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
@@ -866,7 +881,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
-  const [epochLen, setEpochLen] = useState(3000); // ticks per epoch (from the engine)
+  const [epochLen, setEpochLen] = useState(3000); // ticks per epoch the running chain uses
+  const [pendingEpochLen, setPendingEpochLen] = useState(3000); // what the next reset will build with
   const { problems, setProblems, problemsOpen, setProblemsOpen, bottomTab, setBottomTab } = useProblemsPanel();
   const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, setLeftHidden, setRightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
   const [openTabs, setOpenTabs] = useState<string[]>([]);
@@ -1655,12 +1671,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     await refreshEngineViews();
   };
 
+  // Staged rather than live: the chain rebuilds from genesis with the new length, so epoch 0 still starts
+  // at tick 0 and the engine's epoch arithmetic stays true.
+  const changeEpochLength = (ticks: number) => {
+    const eng = engineRef.current;
+    if (!eng || !Number.isFinite(ticks) || ticks < 1) {
+      return;
+    }
+    eng.setEpochLength(ticks);
+    setPendingEpochLen(eng.pendingEpochLength());
+  };
+
   const resetChain = async () => {
     const eng = engineRef.current;
     if (!eng) {
       return;
     }
     await eng.reset(deployImages());
+    setEpochLen(eng.epochLength());
     setPaused(false);
     setTxLog([]);
     appendLog("chain reset to genesis — contracts re-deployed, INITIALIZE re-run");
@@ -2374,6 +2402,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       requireActive();
       engineRef.current = eng;
       setEpochLen(eng.epochLength());
+      setPendingEpochLen(eng.pendingEpochLength());
       const accs = await eng.ensureAccounts();
       requireActive();
       setAccounts(accs);
@@ -2899,9 +2928,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                   speed={speed}
                   info={engineInfo}
                   epochLen={epochLen}
+                  pendingEpochLen={pendingEpochLen}
                   onToggle={togglePause}
                   onStep={(n) => void stepTicks(n)}
                   onEpoch={() => void advanceEpoch()}
+                  onEpochLen={changeEpochLength}
                   onReset={() => void resetChain()}
                   onReplay={() => void replayChain()}
                   onSpeed={changeSpeed}

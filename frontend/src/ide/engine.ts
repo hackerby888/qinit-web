@@ -59,7 +59,8 @@ export class IdeEngine {
 
   private running = false;
   private speedMs = 1000;
-  private epochLengthValue = 3000;
+  private epochLengthValue = 3000; // what the running chain uses
+  private pendingEpochLengthValue = 3000; // what the next reset will build with
   private assetsValue: AssetView[] = [];
   private memoryValue: EngineMemoryUsage = { linearMemoryBytes: 0, stateBytes: 0, contractCount: 0 };
   private accountsValue: Account[] = [];
@@ -179,6 +180,7 @@ export class IdeEngine {
     this.recoveringNow = true;
     try {
       this.spawnWorker();
+      await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
       if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
       for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
 
@@ -274,6 +276,15 @@ export class IdeEngine {
     await this.call("step", [n]);
   }
   epochLength(): number { return this.epochLengthValue; }
+  pendingEpochLength(): number { return this.pendingEpochLengthValue; }
+
+  // Staged, not live — the worker applies it when the chain is next rebuilt, so an epoch never reports a
+  // last tick that the chain has already passed. Callers pair this with reset().
+  setEpochLength(ticks: number): void {
+    this.pendingEpochLengthValue = Math.max(0, Math.trunc(ticks));
+    this.fire("setEpochLength", [this.pendingEpochLengthValue]);
+  }
+
   async advanceEpoch(): Promise<{ tick: number; epoch: number }> {
     this.assertOperational();
     return this.call("advanceEpoch", []);
@@ -290,6 +301,7 @@ export class IdeEngine {
     this.running = false;
     if (this.workerMode && !this.worker) {
       this.spawnWorker();
+      await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
       if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
       for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
     }
@@ -298,6 +310,7 @@ export class IdeEngine {
     this.historyValue = [];
     this.extraFunds.clear();
     await this.call("reset", [images.map((image) => ({ ...image, wasm: image.wasm.slice() }))]);
+    this.epochLengthValue = this.pendingEpochLengthValue; // the fresh chain is the one built with it
     this.running = true;
     this.assetsValue = await this.call("assets", []);
   }
