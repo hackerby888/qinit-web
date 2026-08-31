@@ -571,6 +571,52 @@ TEST(Counter, EachTestStartsFresh) {
 `;
 
 // The dev playground — every starter contract (used by the create button's bottom-right "dev" region).
+const cheats = `// Cheats — CC_* macros are dev-only scaffolding. Qinit strips them out before a contract is
+// submitted to Core, so the source that ships is clean and the built wasm is unchanged.
+//
+// CC_PRINT takes any mix of words and values, works inside a function (a LOG_* cannot), and its
+// output shows in the trace pane rather than the chain log. The words never enter the wasm: the
+// compiler records them in the IDL and the reader pairs them back up.
+using namespace QPI;
+
+struct CONTRACT_STATE2_TYPE
+{
+};
+
+struct CONTRACT_STATE_TYPE : public ContractBase
+{
+    struct StateData
+    {
+        uint64 total;
+    };
+
+    struct Add_input { uint64 amount; };
+    struct Add_output {};
+    struct Total_input {};
+    struct Total_output { uint64 total; };
+
+    PUBLIC_PROCEDURE(Add)
+    {
+        CC_PRINT("adding", input.amount);
+        CC_ASSERT(input.amount > 0);
+        state.mut().total += input.amount;
+        CC_PRINT("total is now", state.get().total);
+    }
+
+    PUBLIC_FUNCTION(Total)
+    {
+        CC_PRINT("reading", state.get().total);
+        output.total = state.get().total;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Add, 1);
+        REGISTER_USER_FUNCTION(Total, 1);
+    }
+};
+`;
+
 export const EXAMPLES: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Adder.h", name: "Adder", slot: 28, source: adder },
@@ -579,6 +625,7 @@ export const EXAMPLES: Example[] = [
   { file: "Proxy.h", name: "Proxy", slot: 29, source: proxy },
   { file: "Shares.h", name: "Shares", slot: 28, source: shares },
   { file: "Equity.h", name: "Equity", slot: 28, source: equity },
+  { file: "Cheats.h", name: "Cheats", slot: 28, source: cheats },
   { file: "Counter.test.ts", name: "Counter.test", slot: 0, source: counterTest },
 ];
 

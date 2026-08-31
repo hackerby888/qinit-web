@@ -1,7 +1,9 @@
-// VENDORED VERBATIM from qinit `packages/vscode/src/lint/qpi-rules.ts` (the Qubic QPI VS Code
-// extension). Pure Tier-A QPI linter — kept byte-identical to the extension so the browser IDE and the
-// editor agree on the rules. Do not edit here; change it upstream and re-vendor. (Future: hoist into a
-// shared @qinit/qpi-lint package consumed by both.)
+// Tier-A QPI linter for the browser IDE. Once vendored from `packages/vscode/src/lint/qpi-rules.ts`,
+// which no longer exists: the extension now calls `analyzeContract`, and the rules live in qinit at
+// `packages/compiler/src/analyzer/source-policy.ts`. This copy has drifted behind that one (it is
+// missing dup-fn-index, dup-proc-index, macro-contract-name, public-complex-type and unregistered);
+// the standing fix is to consume the exported `analyzeQpiPolicy` instead of maintaining a fork, which
+// is a separate change because that entry returns diagnostics rather than this file's QpiFinding.
 //
 // Tier-A QPI linter: a single comment/string-aware C++ scanner over the enumerable qpi.h rules
 // (qpi.h:18-39 + doc/contracts.md:592-632). ADVISORY by design — it catches the high-confidence,
@@ -34,8 +36,35 @@ const isIdChar = (c: string) => /[A-Za-z0-9_]/.test(c);
 
 // Scan a contract .h fragment for Tier-A QPI rule violations. The contract is assumed NOT to include
 // qpi.h (the extension supplies IntelliSense instead), so a `#` is flagged as a leftover dev include.
+/** Half-open source ranges covered by a CC_* argument list. */
+function cheatArgumentRanges(src: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  const call = /\bCC_[A-Z0-9_]*\s*\(/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = call.exec(src)) !== null) {
+    let depth = 0;
+    let i = match.index + match[0].length - 1;
+
+    for (; i < src.length; i++) {
+      if (src[i] === "(") depth++;
+      else if (src[i] === ")" && --depth === 0) break;
+    }
+
+    ranges.push([match.index, Math.min(i + 1, src.length)]);
+    call.lastIndex = i + 1;
+  }
+
+  return ranges;
+}
+
+function inCheatArgument(ranges: Array<[number, number]>, offset: number): boolean {
+  return ranges.some(([start, end]) => offset >= start && offset < end);
+}
+
 export function scanQpi(src: string): QpiFinding[] {
   const out: QpiFinding[] = [];
+  const cheatRanges = cheatArgumentRanges(src);
   const push = (rule: string, message: string, offset: number, length: number, severity: QpiSeverity = "warn") =>
     out.push({ rule, message, offset, length, severity });
 
@@ -60,8 +89,12 @@ export function scanQpi(src: string): QpiFinding[] {
       while (i < n && src[i] !== quote) i += src[i] === "\\" ? 2 : 1;
       if (i < n) i++; // consume the closing quote if present
       if (i > n) i = n; // clamp: an unterminated literal / trailing backslash must not overshoot the source
-      if (quote === '"') push("qpi/no-string", "String literals (`\"`) are forbidden in QPI — they can address arbitrary memory.", start, Math.max(1, i - start));
-      else push("qpi/no-char", "Character literals (`'`) are forbidden in QPI.", start, Math.max(1, i - start));
+      // A literal inside a cheatcode argument is interned into the IDL and never reaches memory, and
+      // the whole call is stripped before the contract is submitted.
+      if (!inCheatArgument(cheatRanges, start)) {
+        if (quote === '"') push("qpi/no-string", "String literals (`\"`) are forbidden in QPI — they can address arbitrary memory.", start, Math.max(1, i - start));
+        else push("qpi/no-char", "Character literals (`'`) are forbidden in QPI.", start, Math.max(1, i - start));
+      }
       continue;
     }
 

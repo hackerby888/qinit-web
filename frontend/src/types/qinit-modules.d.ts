@@ -242,8 +242,18 @@ declare module "@qinit/compiler/browser" {
     input: AbiType;
     output: AbiType;
   }
+  export interface ContractCheatPart {
+    lit?: string;
+    type?: AbiType;
+    expr?: string;
+  }
+  export interface ContractCheat {
+    id: number;
+    line: number;
+    parts: ContractCheatPart[];
+  }
   export interface ContractIdl {
-    version: 3;
+    version: 5;
     name: string;
     slot: number;
     functions: ContractEntry[];
@@ -252,6 +262,7 @@ declare module "@qinit/compiler/browser" {
     sysprocMask: number;
     enums: Array<{ name: string; underlying: string; members: Record<string, string> }>;
     logs: Array<{ name: string; type: AbiStruct }>;
+    cheats: ContractCheat[];
     migration?: { oldState: AbiStruct };
     dependencies: string[];
   }

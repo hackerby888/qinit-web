@@ -55,6 +55,15 @@ const CALL_MACROS: Record<string, string> = {
   LOG_PAUSE: "LOG_PAUSE();",
   LOG_RESUME: "LOG_RESUME();",
   STATIC_ASSERT: "STATIC_ASSERT(${1:condition});",
+  // Cheatcodes: dev-only, and stripped before a contract is submitted to Core.
+  CC_PRINT: 'CC_PRINT("${1:label}", ${2:value});',
+  CC_ASSERT: "CC_ASSERT(${1:condition});",
+  CC_PAY: "CC_PAY(${1:destination}, ${2:amount});",
+  CC_DEAL: "CC_DEAL(${1:entity}, ${2:amount});",
+  CC_WARP_TICK: "CC_WARP_TICK(${1:ticks});",
+  CC_WARP_EPOCH: "CC_WARP_EPOCH(${1:epochs});",
+  CC_PRANK: "CC_PRANK(${1:entity}, ${2:reward});",
+  CC_UNPRANK: "CC_UNPRANK();",
 };
 
 // The insert text for a macro completion: a body scaffold, a statement, or the bare name (e.g. the

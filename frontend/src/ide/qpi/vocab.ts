@@ -29,6 +29,8 @@ export const QPI_MACROS = [
   "LOG_INFO", "LOG_DEBUG", "LOG_WARNING", "LOG_ERROR", "LOG_PAUSE", "LOG_RESUME",
   "STATIC_ASSERT",
   "CONTRACT_STATE_TYPE", "CONTRACT_STATE2_TYPE", "CONTRACT_INDEX",
+  // Cheatcodes: dev-only, stripped before a contract is submitted to Core.
+  "CC_PRINT", "CC_ASSERT", "CC_PAY", "CC_DEAL", "CC_WARP_TICK", "CC_WARP_EPOCH", "CC_PRANK", "CC_UNPRANK",
 ];
 
 // The framework-provided locals every entry body sees — the QPI context object and the marshalled
