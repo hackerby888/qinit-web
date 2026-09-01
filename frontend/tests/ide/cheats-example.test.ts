@@ -3,6 +3,8 @@
 import { expect, test } from "bun:test";
 import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";
 import { EXAMPLES } from "../../src/ide/examples";
+import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
+import { IdeEngine } from "../../src/ide/engine";
 import { scanQpi } from "../../src/ide/qpi/lint/qpi-rules";
 
 const source = EXAMPLES.find((file) => file.file === "Cheats.h")?.source ?? "";
@@ -18,4 +20,30 @@ test("the Cheats example compiles, and its printed words are recorded in the IDL
 test("the linter does not flag the words inside a cheatcode, only real string literals", () => {
   expect(scanQpi(source).filter((finding) => finding.rule === "qpi/no-string")).toEqual([]);
   expect(scanQpi(`PUBLIC_PROCEDURE(P) { f("loose"); }`).filter((finding) => finding.rule === "qpi/no-string")).toHaveLength(1);
+});
+
+test("running the Cheats example in the IDE engine surfaces the printed lines", async () => {
+  const compiled = await compileContract({ source, contractName: "Cheats", slot: 28, arenaSizeBytes: 64 * 1024 });
+  const engine = new IdeEngine();
+  const idl = extractIdl(source, "Cheats");
+
+  await engine.deploy(28, compiled.wasm, idl);
+  engine.registerSource(28, source, "Cheats");
+  engine.start();
+  engine.stop();
+
+  let prints: string[] = [];
+  let logs: string[] = [];
+  engine.onTxProcessed = (event) => {
+    prints = event.detail?.prints ?? prints;
+    logs = event.detail?.logs ?? logs;
+  };
+
+  const [caller] = await engine.ensureAccounts();
+  await engine.submitProcedure(28, "1", idl.procedures["1"], { amount: 7 }, "Cheats:p:1", { seed: caller.seed, amount: 0 }, { name: "Cheats", source });
+
+  // The words come from the IDL, the values off the wire; the reader sees the line the dev wrote.
+  expect(prints).toEqual([":27 adding 7", ":30 total is now 7"]);
+  // And none of it reached the protocol log.
+  expect(logs).toEqual([]);
 });

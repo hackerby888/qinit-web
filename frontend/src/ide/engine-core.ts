@@ -60,6 +60,7 @@ export interface DebugStep {
   diff: { label: string; text: string }[];
   hostCalls: string[];
   logs: string[];
+  prints: string[]; // CC_PRINT output — dev scaffolding, never a chain log
 }
 
 export interface TxDetail {
@@ -69,6 +70,7 @@ export interface TxDetail {
   diff: { label: string; text: string }[];
   hostCalls: string[];
   logs: string[];
+  prints: string[]; // CC_PRINT output — dev scaffolding, never a chain log
   steps: DebugStep[]; // the whole call sequence, for the step debugger
 }
 
@@ -380,6 +382,8 @@ export class IdeEngineCore {
       const steps: DebugStep[] = [];
       for (const e of entries) {
         const src = this.contractSources.get(e.index) ?? { source: t.contractSource, name: t.contractName };
+        // No IDL is passed on purpose: the tracer derives a full one from the source, which is what
+        // decodes the logs and the state diff — and it carries the cheat table too.
         const tv = await describeTrace(e, src.source, src.name);
         steps.push({
           seq: e.seq,
@@ -395,6 +399,7 @@ export class IdeEngineCore {
           diff: tv.stateDiff.filter((line) => !line.internal).map(({ label, text }) => ({ label, text })),
           hostCalls: e.hostCalls.map((h) => `${h.name} ${h.detail}`),
           logs: tv.logs.map(formatLog),
+          prints: tv.cheats.map((cheat) => `:${cheat.line} ${cheat.text}`),
         });
       }
 
@@ -406,6 +411,7 @@ export class IdeEngineCore {
         diff: primary.diff,
         hostCalls: primary.hostCalls,
         logs: primary.logs,
+        prints: primary.prints,
         steps,
       };
     } catch {

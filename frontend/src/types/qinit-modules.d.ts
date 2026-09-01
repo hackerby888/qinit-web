@@ -128,14 +128,26 @@ declare module "@qinit/inspector" {
     fields?: Record<string, unknown>;
     hex: string;
   }
+  export interface DecodedCheat {
+    line: number;
+    text: string;
+  }
   export interface DecodedTrace {
     inDecoded: string;
     outDecoded: string;
     caller: string;
     stateDiff: StateDiffLine[];
     logs: DecodedLog[];
+    cheats: DecodedCheat[];
   }
-  export function describeTrace(e: unknown, source: string | undefined, name: string, qpiHeader?: string): Promise<DecodedTrace>;
+  // The IDL is what turns a cheat record into a readable line: the words and the types live there.
+  export function describeTrace(
+    e: unknown,
+    source: string | undefined,
+    name: string,
+    qpiHeader?: string,
+    contractIdl?: ContractIdl,
+  ): Promise<DecodedTrace>;
 }
 
 declare module "@qinit/proto" {
@@ -241,16 +253,6 @@ declare module "@qinit/compiler/browser" {
     outSize: number;
     input: AbiType;
     output: AbiType;
-  }
-  export interface ContractCheatPart {
-    lit?: string;
-    type?: AbiType;
-    expr?: string;
-  }
-  export interface ContractCheat {
-    id: number;
-    line: number;
-    parts: ContractCheatPart[];
   }
   export interface ContractIdl {
     version: 5;
