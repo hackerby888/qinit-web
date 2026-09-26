@@ -97,9 +97,10 @@ function stepLabel(kind: number, entry: number): string {
 }
 
 const formatLog = (log: Awaited<ReturnType<typeof describeTrace>>["logs"][number]) => {
+  // an unnamed log still names the structs it could be, when size, severity and the _type word left more than one
   const detail = log.name
     ? `${log.name}${log.typeName ? `·${log.typeName}` : ""} ${jsonText(log.fields)}`
-    : `${log.size}B ${log.hex.slice(0, 34)}…`;
+    : `${log.candidates ? `?${log.candidates.join("|")} ` : ""}${log.size}B ${log.hex.slice(0, 34)}…`;
   return `${log.severity} ${detail}`;
 };
 

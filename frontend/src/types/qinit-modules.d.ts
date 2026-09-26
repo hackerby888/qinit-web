@@ -126,6 +126,7 @@ declare module "@qinit/inspector" {
     name?: string;
     typeName?: string;
     fields?: Record<string, unknown>;
+    candidates?: string[];
     hex: string;
   }
   export interface DecodedCheat {
