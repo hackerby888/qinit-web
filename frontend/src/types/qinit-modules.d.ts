@@ -86,7 +86,7 @@ declare module "@qinit/inspector/state-format" {
     text: string;
     filled: boolean;
   }
-  export function jstr(value: unknown): string;
+  export function jsonText(value: unknown): string;
 }
 
 declare module "@qinit/inspector/state-read" {
@@ -151,9 +151,9 @@ declare module "@qinit/inspector" {
 }
 
 declare module "@qinit/proto" {
-  export function encodeInput(fmt: string): Promise<Uint8Array>;
+  export function encodeInputFormat(inputFormat: string): Promise<Uint8Array>;
   export function encodeInputJson(fields: { name: string; type: string }[], json: unknown): Promise<Uint8Array>;
-  export function decodeOutput(bytes: Uint8Array, fmt: string): Promise<unknown>;
+  export function decodeAbi(bytes: Uint8Array, type: string): Promise<unknown>;
   export function contractAddress(contractIndex: number): Uint8Array;
 }
 

@@ -6,12 +6,12 @@ import { DEFAULT_EPOCH_LENGTH, VirtualNode, initK12, runCompiledGtest, type Asse
 import type { GtestProgram } from "@qinit/compiler/browser";
 
 export type { EngineLogEvent } from "@qinit/engine";
-import { encodeInput, encodeInputJson, decodeOutput, contractAddress } from "@qinit/proto";
+import { encodeInputFormat, encodeInputJson, decodeAbi, contractAddress } from "@qinit/proto";
 import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity, type EngineFaultInfo } from "@qinit/core";
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import { describeTrace } from "@qinit/inspector";
 import { readState } from "@qinit/inspector/state-read";
-import { jstr } from "@qinit/inspector/state-format";
+import { jsonText } from "@qinit/inspector/state-format";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 
 // Re-export the engine's asset-universe snapshot under the IDE's name (one inter-contract asset + its holdings).
@@ -98,7 +98,7 @@ function stepLabel(kind: number, entry: number): string {
 
 const formatLog = (log: Awaited<ReturnType<typeof describeTrace>>["logs"][number]) => {
   const detail = log.name
-    ? `${log.name}${log.typeName ? `·${log.typeName}` : ""} ${jstr(log.fields)}`
+    ? `${log.name}${log.typeName ? `·${log.typeName}` : ""} ${jsonText(log.fields)}`
     : `${log.size}B ${log.hex.slice(0, 34)}…`;
   return `${log.severity} ${detail}`;
 };
@@ -135,7 +135,8 @@ export interface DeployImage {
 // liteTicking: skip the per-tick committee quorum (8 FourQ votes + leader signature) for EMPTY ticks. The IDE
 // never serves the peer protocol that reads those records, and it lets a full-epoch jump (~3000 ticks) run
 // without signing ~27k times on the main thread. State digests are unaffected (still computed every tick).
-const IDE_ENGINE_OPTS = { mempool: true, verifySigs: false, fees: "off", liteTicking: true } as const;
+// minIoBytes: 0 because the IDE compiles a 64 MiB arena (compile/worker.ts), below the core io minimum a node enforces by default.
+const IDE_ENGINE_OPTS = { mempool: true, verifySigs: false, fees: "off", liteTicking: true, minIoBytes: 0 } as const;
 
 export class IdeEngineCore {
   // Staged until the chain is next rebuilt — see setEpochLength.
@@ -446,20 +447,20 @@ export class IdeEngineCore {
 
   // Read a function's output. No crypto — a direct query against the deployed wasm.
   async callFunction(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<unknown> {
-    const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
+    const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInputFormat("");
     const out = await this.runEngineOperation(() => this.engine.querySmartContract(slot, Number(fnId), bytes));
-    return entry.out ? decodeOutput(out, entry.out) : null;
+    return entry.out ? decodeAbi(out, entry.out) : null;
   }
 
   // Interactive function call with the same decoded trace surface procedures use. The plain callFunction
   // remains output-only for generated clients and scenario assertions.
   async callFunctionDetailed(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<FunctionCallResult> {
-    const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
+    const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInputFormat("");
     const base = (await this.engine.debugTrace()).entries.length;
     const out = await this.runEngineOperation(() => this.engine.querySmartContract(slot, Number(fnId), bytes));
     const src = this.contractSources.get(slot) ?? { name: `Contract ${slot}`, source: "" };
     const detail = await this.traceOf(base, { name: entry.name, key: "", contractName: src.name, contractSource: src.source });
-    return { output: entry.out ? await decodeOutput(out, entry.out) : null, detail };
+    return { output: entry.out ? await decodeAbi(out, entry.out) : null, detail };
   }
 
   // Submit a signed procedure transaction for the next tick and advance to that tick before returning. This
@@ -473,7 +474,7 @@ export class IdeEngineCore {
       return await this.runEngineOperation(async () => {
         await this.ensureK12();
 
-        const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInput("");
+        const payload = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInputFormat("");
         const ti = await this.engine.tickInfo();
         const targetTick = ti.tick + 1;
 

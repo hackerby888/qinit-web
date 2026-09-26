@@ -291,14 +291,14 @@ test("IdeEngine: stateOf decodes the live StateData scalars before and after a m
   await e.deploy(SLOT, await counterWasm(), idl);
 
   const before = await e.stateOf(SLOT, SRC, "Counter");
-  expect(before.fields).toEqual([{ name: "counter", value: "0" }]);
+  expect(before.fields).toEqual([{ name: "counter", value: "0", data: 0n }]);
   expect(before.containers).toEqual([]);
 
   const [caller] = await e.ensureAccounts();
   await e.submitProcedure(SLOT, "1", idl.procedures["1"], {}, "inc-1", { seed: caller.seed, amount: 0 }, { name: "Counter", source: SRC });
 
   const after = await e.stateOf(SLOT, SRC, "Counter");
-  expect(after.fields).toEqual([{ name: "counter", value: "1" }]);
+  expect(after.fields).toEqual([{ name: "counter", value: "1", data: 1n }]);
 });
 
 test("IdeEngine: stateOf exposes the current container line model", async () => {
@@ -458,8 +458,11 @@ test("IdeEngine: a new epoch length is staged, then applied by the next reset", 
   await e.reset([{ slot: SLOT, wasm: await counterWasm(), name: "Counter" }]);
   expect(e.epochLength()).toBe(10);
 
+  // core's rule: an epoch ends after the tick a full length past its first tick, so tick 10 is still epoch 0
   await e.step(10);
-  expect((await e.info()).epoch).toBe(1); // boundary at tick 10, not 3000
+  expect((await e.info()).epoch).toBe(0);
+  await e.step(1);
+  expect((await e.info()).epoch).toBe(1); // boundary after tick 10, not 3000
 });
 
 test("IdeEngine: a short epoch keeps rolling over at its own length", async () => {
@@ -468,8 +471,8 @@ test("IdeEngine: a short epoch keeps rolling over at its own length", async () =
   e.setEpochLength(4);
   await e.reset([{ slot: SLOT, wasm: await counterWasm(), name: "Counter" }]);
 
-  await e.step(12);
+  await e.step(15);
   const info = await e.info();
-  expect(info.tick).toBe(12);
-  expect(info.epoch).toBe(3); // boundaries at 4, 8, 12
+  expect(info.tick).toBe(15);
+  expect(info.epoch).toBe(3); // epochs end after ticks 4, 9 and 14: each runs its first tick plus 4
 });
