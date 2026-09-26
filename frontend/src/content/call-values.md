@@ -15,6 +15,8 @@ qinit call --proc Balances Set \
 
 Quote 64-bit integers in JSON when they may exceed JavaScript's safe integer range.
 
+A byte array (`Array<uint8, N>` or `Array<sint8, N>`) also takes one hex string of exactly `N` bytes, such as a signature from `qinit sign`. See [Verify signatures](/docs/signatures).
+
 ## Raw values
 
 Use `--in` for numeric entry IDs, missing schemas, or exact ABI work. Every scalar carries its QPI type:

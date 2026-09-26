@@ -44,7 +44,7 @@ test("developer docs are internally consistent", () => {
     })
     .filter((doc) => doc !== null);
 
-  expect(docs).toHaveLength(13);
+  expect(docs).toHaveLength(17);
 
   const slugs = new Set<string>();
   const positions = new Set<string>();
