@@ -1,7 +1,7 @@
 import { type CSSProperties, type ReactNode } from "react";
 import { Chip, GlyphBadge, NotchBox, PixelButton, PixelQMark } from "./components";
 import { color, font } from "./tokens";
-import { CHIPS, ECOSYSTEM, FEATURES, IDE_URL, NAV, PILLARS, REPO, TYPE_SEG } from "./content";
+import { CHIPS, FEATURES, IDE_URL, NAV, PATH, PILLARS, REPO, TYPE_SEG } from "./content";
 import { DotField, Typewriter, VoteDots, VoxelStack } from "./illustrations";
 
 const wrap: CSSProperties = { maxWidth: 1140, margin: "0 auto" };
@@ -63,7 +63,7 @@ export function Hero() {
             A <span style={{ color: color.accent }}>framework</span> and an <span style={{ color: color.accent }}>IDE</span> for Qubic smart contracts.
           </h1>
           <p style={{ margin: "0 0 30px", maxWidth: 500, fontSize: 18, lineHeight: 1.65, color: color.textMutedDk }}>
-            qinit is two tools in one: a type-safe CLI framework for your terminal, and a Remix-style browser IDE. Write, test, and deploy to Qubic — from wherever you build.
+            qinit is two tools in one: a CLI that builds, tests, and deploys Qubic contracts from your terminal, and an IDE that does the same in your browser.
           </p>
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 30 }}>
             <PixelButton href="#ways" onDark>Start building →</PixelButton>
@@ -93,7 +93,7 @@ export function Hero() {
             <span style={{ fontFamily: font.mono, fontSize: 12, marginLeft: 6, color: color.textFaintDk }}>terminal</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", fontFamily: font.mono, fontSize: 14.5, color: "#C9D1CB" }}>
-            <span><span style={{ color: color.textGhostDk }}>$</span> npx qinit create <span style={{ color: color.accent }}>my-contract</span></span>
+            <span><span style={{ color: color.textGhostDk }}>$</span> qinit new <span style={{ color: color.accent }}>counter</span></span>
             <span style={{ display: "inline-block", width: 9, height: 17, background: color.accent, animation: "qblink 1.1s steps(1) infinite" }} />
           </div>
         </NotchBox>
@@ -137,9 +137,9 @@ export function NetworkStrip() {
     <section style={{ background: color.panelDeep, color: color.textLight, padding: "30px 32px", borderBottom: `3px solid ${color.ink}` }}>
       <div className="pix-quorum-strip" style={{ ...wrap, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 32, flexWrap: "wrap" }}>
         <div style={{ maxWidth: 430 }}>
-          <h3 style={{ fontFamily: font.display, margin: "0 0 6px", fontSize: 22, fontWeight: 600, color: color.textLightHi }}>Deploys land on Qubic.</h3>
+          <h3 style={{ fontFamily: font.display, margin: "0 0 6px", fontSize: 22, fontWeight: 600, color: color.textLightHi }}>Built for how Qubic runs.</h3>
           <p style={{ margin: 0, fontSize: 14, color: color.textMutedDk, lineHeight: 1.5 }}>
-            qinit deploy broadcasts to Qubic's <span style={{ color: color.accent }}>676 computors</span> — validated, final, feeless. The browser IDE previews it first on the TypeScript engine.
+            On mainnet, <span style={{ color: color.accent }}>676 computors</span> run every contract as native code, and a tick is final once a quorum of 451 agrees. qinit gives you that chain on your laptop, one tick at a time.
           </p>
         </div>
         <div style={{ flex: 1, minWidth: 300, maxWidth: 560 }}>
@@ -175,12 +175,12 @@ export function CodeShowcase() {
         <Chip tone="yellow">Write less</Chip>
         <h2 style={{ ...h2, fontSize: 38, margin: "18px 0 16px", lineHeight: 1.1 }}>A contract is a file. Deploy is a command.</h2>
         <p style={{ margin: "0 0 24px", fontSize: 16.5, lineHeight: 1.65, color: color.textBody }}>
-          No boilerplate. Define your contract, run <span style={{ fontFamily: font.mono, background: color.white, border: `2px solid ${color.ink}`, padding: "1px 6px" }}>qinit deploy</span>, and qinit handles compilation, the in-process engine, and broadcast to Qubic.
+          No boilerplate. Define your contract, run <span style={{ fontFamily: font.mono, background: color.white, border: `2px solid ${color.ink}`, padding: "1px 6px" }}>qinit deploy</span>, and qinit compiles it, deploys it to your local node, and checks the code hash.
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
-          <CheckRow>Type-safe by default.</CheckRow>
-          <CheckRow>Instant in-process engine.</CheckRow>
-          <CheckRow>Feeless deploys, no gas math.</CheckRow>
+          <CheckRow>One header, no project wiring.</CheckRow>
+          <CheckRow>Running on a local node in seconds.</CheckRow>
+          <CheckRow>State decoded by field name.</CheckRow>
         </div>
       </div>
 
@@ -198,23 +198,28 @@ export function CodeShowcase() {
   );
 }
 
-export function Ecosystem() {
+export function Path() {
   return (
     <section style={{ padding: "8px 32px 76px", ...wrap, ...dotGrid(false) }}>
       <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <Chip tone="yellow">Built for</Chip>
-        <h2 style={{ ...h2, fontSize: 38, margin: "18px 0 8px" }}>The Qubic ecosystem.</h2>
-        <p style={{ margin: 0, fontSize: 16, color: color.textBody }}>The contracts and tools you'll build alongside.</p>
+        <Chip tone="yellow">The path</Chip>
+        <h2 style={{ ...h2, fontSize: 38, margin: "18px 0 8px" }}>From first line to mainnet.</h2>
+        <p style={{ margin: 0, fontSize: 16, color: color.textBody }}>Every step has a command and a guide.</p>
       </div>
       <div className="pix-3col" style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 20 }}>
-        {ECOSYSTEM.map((b) => (
-          <NotchBox key={b.name} shadow={5} faceStyle={{ height: 104, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 11 }}>
-            <GlyphBadge glyph={b.glyph} tint={b.tint} size={36} />
-            <span style={{ fontFamily: font.display, fontSize: 16, fontWeight: 500, color: color.textMutedLt }}>{b.name}</span>
-          </NotchBox>
+        {PATH.map((p) => (
+          <a key={p.title} href={p.href} style={{ display: "block", textDecoration: "none", color: "inherit" }}>
+            <NotchBox shadow={5} style={{ height: "100%" }} faceStyle={{ height: "100%", padding: 22 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 14 }}>
+                <GlyphBadge glyph={p.step} tint={p.tint} size={36} />
+                <span style={{ fontFamily: font.display, fontSize: 22, fontWeight: 600, color: color.ink }}>{p.title}</span>
+              </div>
+              <div style={{ display: "inline-block", background: color.ink, color: p.tint, fontFamily: font.mono, fontSize: 12, padding: "6px 10px", marginBottom: 12 }}>{p.cmd}</div>
+              <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.6, color: color.textBody }}>{p.body}</p>
+            </NotchBox>
+          </a>
         ))}
       </div>
-      <p style={{ textAlign: "center", margin: "26px 0 0", fontFamily: font.mono, fontSize: 11.5, color: color.textMutedLt, letterSpacing: ".04em" }}>// independent · community framework · not affiliated with these projects</p>
     </section>
   );
 }
@@ -228,7 +233,7 @@ export function Cta() {
           <div style={{ position: "absolute", bottom: 40, right: "10%", width: 16, height: 16, background: color.yellow, border: `3px solid ${color.void}`, animation: "twk 3.6s ease-in-out infinite" }} />
           <h2 style={{ fontFamily: font.display, margin: "0 0 14px", fontSize: 46, fontWeight: 700, color: color.textLightHi }}>Ship your first Qubic contract today.</h2>
           <p style={{ margin: "0 auto 32px", maxWidth: 460, fontSize: 17, color: color.textMutedDk }}>Free, open source, and ready the moment you install it.</p>
-          <PixelButton href={REPO} onDark style={{ fontSize: 19 }}>npx qinit create</PixelButton>
+          <PixelButton href="/docs" onDark style={{ fontSize: 19 }}>Install qinit</PixelButton>
         </div>
       </div>
     </section>

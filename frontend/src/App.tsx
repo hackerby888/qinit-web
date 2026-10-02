@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import "./landing/pixel.css";
 import { KEYFRAMES } from "./landing/components";
-import { CodeShowcase, Cta, Ecosystem, Features, Footer, Hero, Nav, NetworkStrip, Pillars } from "./landing/sections";
+import { CodeShowcase, Cta, Features, Footer, Hero, Nav, NetworkStrip, Path, Pillars } from "./landing/sections";
 import { IdeShowcase } from "./landing/IdeShowcase";
 import { applyTheme } from "./landing/tokens";
 
@@ -24,7 +24,7 @@ export default function App() {
       <Features />
       <IdeShowcase />
       <CodeShowcase />
-      <Ecosystem />
+      <Path />
       <Cta />
       <Footer />
     </div>

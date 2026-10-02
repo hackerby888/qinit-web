@@ -105,7 +105,7 @@ export function Chip({ children, tone = "yellow", style = {} }: ChipProps) {
   );
 }
 
-// The small square colored tile holding a glyph (feature/pillar/ecosystem cards).
+// The small square colored tile holding a glyph (feature/pillar/path cards).
 export function GlyphBadge({ glyph, tint = color.accent, size = 48 }: { glyph: ReactNode; tint?: string; size?: number }) {
   return (
     <div style={{ width: size, height: size, background: tint, border: `3px solid ${color.ink}`, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: font.display, fontWeight: 700, fontSize: size * 0.46, color: color.ink, flex: "none" }}>

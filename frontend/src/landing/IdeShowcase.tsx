@@ -1,14 +1,14 @@
 import { Chip, NotchBox } from "./components";
 import { color, font } from "./tokens";
-import { IDE_SEG, IDE_TREE } from "./content";
+import { IDE_FIRST_LINE, IDE_LINE_COUNT, IDE_SEG, IDE_TREE } from "./content";
 import { Segments, VoteDots } from "./illustrations";
 
-// engine status rows (the in-process TS engine — NOT live network consensus).
+// what the engine panel shows after one Inc and one Get on the starter contract.
 const STATS: [string, string, boolean][] = [
-  ["mode", "in-process", false],
-  ["deploy", "slot 28 ✓", true],
-  ["digest", "node-match ✓", true],
-  ["fee", "0", true],
+  ["contract", "Counter", false],
+  ["Inc()", "processed ✓", true],
+  ["Get()", "1", true],
+  ["state", "counter 1", false],
 ];
 
 export function IdeShowcase() {
@@ -21,7 +21,7 @@ export function IdeShowcase() {
           </Chip>
           <h2 style={{ fontFamily: font.display, margin: "18px 0 10px", fontSize: 42, fontWeight: 600, color: color.textLightHi }}>Write, test, deploy — all in your browser.</h2>
           <p style={{ margin: "0 auto", maxWidth: 580, fontSize: 17, lineHeight: 1.6, color: color.textMutedDk }}>
-            A Remix-style IDE running the Qubic <span style={{ color: color.accent }}>SC engine in TypeScript</span> — your contract's wasm executes in the page, byte-identical to the node. No installs, no setup. Hit deploy and test instantly.
+            A full IDE with the Qubic <span style={{ color: color.accent }}>contract engine built in</span>. Your contract compiles and runs in the page, with the same compiler and engine as the CLI. No installs, no setup.
           </p>
         </div>
 
@@ -31,7 +31,7 @@ export function IdeShowcase() {
             <span style={{ width: 11, height: 11, background: color.accent }} />
             <span style={{ width: 11, height: 11, background: color.swatchOff }} />
             <span style={{ width: 11, height: 11, background: color.swatchOff }} />
-            <span style={{ fontFamily: font.mono, fontSize: 12, marginLeft: 8, color: color.textFaintDk }}>qinit ide — my-contract</span>
+            <span style={{ fontFamily: font.mono, fontSize: 12, marginLeft: 8, color: color.textFaintDk }}>qinit ide — counter</span>
             <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>ide.qinit.dev</span>
           </div>
 
@@ -48,7 +48,7 @@ export function IdeShowcase() {
 
             <div style={{ display: "flex", fontFamily: font.mono, fontSize: 13, lineHeight: 1.85, borderRight: `3px solid ${color.hair}`, overflow: "hidden" }}>
               <div style={{ padding: "16px 12px 16px 16px", color: "#3D443E", textAlign: "right", userSelect: "none", background: "#0C0F0D" }}>
-                {Array.from({ length: 10 }, (_, i) => <div key={i}>{i + 1}</div>)}
+                {Array.from({ length: IDE_LINE_COUNT }, (_, i) => <div key={i}>{IDE_FIRST_LINE + i}</div>)}
               </div>
               <pre style={{ margin: 0, padding: 16, color: "#C9D1CB", overflowX: "auto" }}><Segments segs={IDE_SEG} /></pre>
             </div>
@@ -64,15 +64,15 @@ export function IdeShowcase() {
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop: "auto", background: color.accent, color: color.void, fontFamily: font.display, fontSize: 15, textAlign: "center", padding: 9, border: `3px solid ${color.ink}` }}>▶ Deploy</div>
+              <div style={{ marginTop: "auto", background: color.accent, color: color.void, fontFamily: font.display, fontSize: 15, textAlign: "center", padding: 9, border: `3px solid ${color.ink}` }}>▶ Compile</div>
             </div>
           </div>
 
           {/* status bar */}
           <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "8px 16px", borderTop: `3px solid ${color.hair}`, background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk }}>
             <span style={{ color: color.accent }}>● ready</span>
-            <span>engine.ts</span>
-            <span>TypeScript</span>
+            <span>Counter.h</span>
+            <span>C++ (QPI)</span>
             <span style={{ marginLeft: "auto" }}>✓ compiled in 0.6s</span>
           </div>
         </NotchBox>

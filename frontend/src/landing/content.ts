@@ -1,6 +1,5 @@
-// Landing data — technically accurate for qinit + Qubic. qinit = a CLI framework + a browser IDE;
-// the IDE runs the Qubic SC engine in TypeScript (the contract's wasm executes in the page,
-// byte-identical to the node — a single-authority dev testnet, NOT live network consensus).
+// Landing data. qinit = a CLI framework + a browser IDE; both run the same compiler and contract engine.
+// Every claim here is one the CLI or Qubic Core backs: keep it that way when editing.
 import { color } from "./tokens";
 
 export const REPO = "https://github.com/hackerby888/qinit";
@@ -14,7 +13,7 @@ export const NAV: { href: string; label: string }[] = [
 ];
 
 // Qubic network capability chips (properties of the chain you ship to).
-export const CHIPS = ["FEELESS", "INSTANT FINALITY", "15.5M TPS", "USEFUL POW"];
+export const CHIPS = ["676 COMPUTORS", "INSTANT FINALITY", "15.5M TPS", "USEFUL POW"];
 
 // Two co-equal pillars: the CLI framework + the browser IDE.
 export type Pillar = { kicker: string; title: string; glyph: string; tint: string; body: string; points: string[]; cmdmark: string; cmd: string };
@@ -24,18 +23,18 @@ export const PILLARS: Pillar[] = [
     title: "qinit CLI",
     glyph: "⌘",
     tint: color.accent,
-    body: "The smart-contract development framework. Type-safe contracts, an in-process engine, and one-command deploy — right in your terminal.",
-    points: ["Type-safe contract toolkit", "In-process engine + hot reload", "Feeless one-command deploy"],
+    body: "The command-line framework. Scaffold, build, test, and deploy Qubic contracts against a local node, all from one binary.",
+    points: ["Built-in compiler, cross-checked with Clang", "Local node with hot reload", "C++ and TypeScript tests from the start"],
     cmdmark: "$ ",
-    cmd: "npx qinit create",
+    cmd: "qinit new counter",
   },
   {
     kicker: "02 · BROWSER",
     title: "qinit IDE",
     glyph: "▢",
     tint: color.secondary,
-    body: "The browser-based IDE. A Remix-style editor running the Qubic SC engine in TypeScript — write, test, and ship with zero install.",
-    points: ["Remix-style in-browser editor", "Qubic SC engine in TypeScript", "Deploy + test with no setup"],
+    body: "The browser IDE. The same compiler and engine run in the page, so you write, test, and call a contract with nothing installed.",
+    points: ["Full editor with QPI diagnostics", "Qubic contract engine in the page", "Compile, deploy, and test with no setup"],
     cmdmark: "→ ",
     cmd: "ide.qinit.dev",
   },
@@ -43,70 +42,101 @@ export const PILLARS: Pillar[] = [
 
 export type Feature = { glyph: string; tint: string; title: string; body: string };
 export const FEATURES: Feature[] = [
-  { glyph: "⌘", tint: color.accent, title: "One-command deploy", body: "qinit deploy compiles, runs a local node, and broadcasts to Qubic — nothing to babysit." },
-  { glyph: "{}", tint: color.yellow, title: "Type-safe contracts", body: "Catch mistakes at compile time. Your editor knows your contract's shape." },
-  { glyph: "◇", tint: color.secondary, title: "In-process engine", body: "The Qubic SC engine in TypeScript — run and test contracts instantly, byte-identical to the node." },
-  { glyph: "↻", tint: color.yellow, title: "Hot reload", body: "Edit a contract and re-deploy in milliseconds. Tight feedback loops." },
+  { glyph: "⌘", tint: color.accent, title: "One-command deploy", body: "qinit deploy builds the contract, deploys what it depends on first, and verifies the live code hash." },
+  { glyph: "{}", tint: color.yellow, title: "Two compilers, one source", body: "A built-in compiler for instant builds, and Clang to cross-check before you ship. Same C++ header." },
+  { glyph: "◇", tint: color.secondary, title: "In-process engine", body: "A Qubic node simulator inside the same binary. Nothing to download, nothing to configure." },
+  { glyph: "↻", tint: color.yellow, title: "Hot reload", body: "qinit dev redeploys on every save and keeps the state. Tight feedback loops." },
   { glyph: "⊞", tint: color.secondary, title: "Inter-contract calls", body: "Call QX, QUTIL, or your own contracts through the upstream QPI macros." },
-  { glyph: "★", tint: color.accent, title: "Feeless by design", body: "Target Qubic's feeless network — deploy and call with instant finality." },
+  { glyph: "★", tint: color.accent, title: "Ticks, epochs, oracles", body: "Qubic contracts run code on every tick and epoch and can ask oracles for real-world data. Skip time and answer oracle queries on your own node." },
 ];
 
-// The IDE file tree.
+// The IDE file tree: the starter project the web IDE opens (STARTER in ide/examples.ts).
 export type TreeRow = { label: string; pad: number; color: string; dot: string; active?: boolean };
 export const IDE_TREE: TreeRow[] = [
-  { label: "my-contract", pad: 16, color: color.textLight, dot: color.textGhostDk },
-  { label: "contracts", pad: 30, color: color.textMutedDk, dot: color.secondary },
-  { label: "Counter.h", pad: 46, color: color.accent, dot: color.accent, active: true },
-  { label: "Vault.h", pad: 46, color: color.textMutedDk, dot: color.textGhostDk },
-  { label: "engine.test.ts", pad: 30, color: color.textMutedDk, dot: color.accent },
-  { label: "qinit.config.ts", pad: 30, color: color.textMutedDk, dot: color.textGhostDk },
+  { label: "counter", pad: 16, color: color.textLight, dot: color.textGhostDk },
+  { label: "Counter.h", pad: 30, color: color.accent, dot: color.accent, active: true },
+  { label: "Counter.test.ts", pad: 30, color: color.textMutedDk, dot: color.secondary },
+  { label: "Counter.test.cpp", pad: 30, color: color.textMutedDk, dot: color.textGhostDk },
 ];
 
-// Built-for-the-ecosystem tiles (real Qubic ecosystem, not "investors").
-export type Eco = { glyph: string; name: string; tint: string };
-export const ECOSYSTEM: Eco[] = [
-  { glyph: "Q", name: "Qubic", tint: color.accent },
-  { glyph: "X", name: "QX", tint: color.yellow },
-  { glyph: "U", name: "QUTIL", tint: color.secondary },
-  { glyph: "A", name: "Aigarth", tint: color.accent },
-  { glyph: "E", name: "Qearn", tint: color.yellow },
-  { glyph: "V", name: "Vottun", tint: color.secondary },
-  { glyph: "M", name: "MMID", tint: color.accent },
-  { glyph: "◆", name: "QVault", tint: color.yellow },
+// The road from an empty folder to a pull request on Qubic Core, one command per step.
+export type PathStep = { step: string; title: string; cmd: string; body: string; href: string; tint: string };
+export const PATH: PathStep[] = [
+  { step: "1", title: "Write", cmd: "qinit new counter", body: "One QPI C++ header. Templates for counters, maps, assets, and contract-to-contract calls.", href: "/docs/writing-a-contract", tint: color.accent },
+  { step: "2", title: "Test", cmd: "qinit gtest · qinit test", body: "Core-style C++ tests on an isolated chain, TypeScript tests through a generated client.", href: "/docs/testing", tint: color.yellow },
+  { step: "3", title: "Run", cmd: "qinit deploy · qinit call", body: "A local Qubic node in one command. Call entries, read decoded state, trace every call.", href: "/docs/deploy-and-call", tint: color.secondary },
+  { step: "4", title: "Ship", cmd: "qinit integrate", body: "Puts the contract into a Qubic Core checkout, ready for your pull request.", href: "/docs/core-integration", tint: color.accent },
 ];
 
 // Code segments — role → color: def (default), sec (keyword), acc (identifier), mut (comment), str (string).
 export type Seg = { t: string; r: "def" | "sec" | "acc" | "mut" | "str"; b?: boolean };
 
-// Typewriter (code showcase): a REAL Qubic contract (qpi.h) — not Solidity.
-export const TYPE_SEG: Seg[] = [
-  { t: "struct ", r: "sec", b: true },
-  { t: "Counter", r: "acc", b: true },
-  { t: " : ", r: "def" },
-  { t: "public ContractBase", r: "sec" },
-  { t: " {\n  ", r: "def" },
-  { t: "// state lives on-chain", r: "mut" },
-  { t: "\n  uint64", r: "sec" },
-  { t: " counter;\n\n  ", r: "def" },
-  { t: "PUBLIC_PROCEDURE", r: "sec", b: true },
-  { t: "(Inc)", r: "acc", b: true },
-  { t: " {\n    state.mut().counter += ", r: "def" },
-  { t: "1", r: "acc" },
-  { t: ";\n  }\n  ", r: "def" },
-  { t: "PUBLIC_FUNCTION", r: "sec", b: true },
-  { t: "(Get)", r: "acc", b: true },
-  { t: " {\n    output.value = state.get().counter;\n  }\n}", r: "def" },
-];
+// The contract `qinit new counter` writes, verbatim.
+export const COUNTER_H = `// Generated by \`qinit new\`. qpi.h-constrained smart contract.
+using namespace QPI;
 
-// IDE editor (static): REAL @qinit/engine usage — the TS SC engine, not a fake "@qinit/qubic" quorum.
-export const IDE_SEG: Seg[] = [
-  { t: "import", r: "sec" }, { t: " { VirtualNode } ", r: "def" }, { t: "from", r: "sec" }, { t: ' "@qinit/engine"', r: "str" }, { t: "\n\n", r: "def" },
-  { t: "// the Qubic SC engine in TypeScript — single authority", r: "mut" }, { t: "\n", r: "def" },
-  { t: "const", r: "sec" }, { t: " engine = ", r: "def" }, { t: "new", r: "sec" }, { t: " ", r: "def" }, { t: "VirtualNode", r: "acc" }, { t: "()\n\n", r: "def" },
-  { t: "await", r: "sec" }, { t: " engine.", r: "def" }, { t: "deploy", r: "acc" }, { t: "(Counter)", r: "def" }, { t: "     ", r: "def" }, { t: "// runs the real wasm", r: "mut" }, { t: "\n", r: "def" },
-  { t: "await", r: "sec" }, { t: " engine.", r: "def" }, { t: "invoke", r: "acc" }, { t: '("Inc")', r: "def" }, { t: "      ", r: "def" }, { t: "// tx applied in-page", r: "mut" }, { t: "\n", r: "def" },
-  { t: "const", r: "sec" }, { t: " v = ", r: "def" }, { t: "await", r: "sec" }, { t: " engine.", r: "def" }, { t: "call", r: "acc" }, { t: '("Get")', r: "def" }, { t: " ", r: "def" }, { t: "// → 1 · digest = node", r: "mut" },
-];
+struct Counter2
+{
+};
+
+struct Counter : public ContractBase
+{
+    struct StateData
+    {
+        uint64 counter;
+    };
+
+    struct Inc_input {};
+    struct Inc_output {};
+    struct Get_input {};
+    struct Get_output { uint64 value; };
+
+    PUBLIC_PROCEDURE(Inc)
+    {
+        state.mut().counter += 1;
+    }
+
+    PUBLIC_FUNCTION(Get)
+    {
+        output.value = state.get().counter;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Inc, 1);
+        REGISTER_USER_FUNCTION(Get, 1);
+    }
+
+    INITIALIZE()
+    {
+        state.mut().counter = 0;
+    }
+};`;
+
+// comment | keyword or QPI type | QPI macro (all caps) | number
+const CPP_TOKEN = /(\/\/[^\n]*)|\b(using|namespace|struct|public|uint64)\b|\b([A-Z][A-Z0-9_]{3,})\b|\b(\d+)\b/g;
+
+// C++ source -> coloured segments, e.g. "uint64 counter;" -> [{ t: "uint64", r: "sec" }, { t: " counter;", r: "def" }]
+export function cppSegs(source: string): Seg[] {
+  const segs: Seg[] = [];
+  let last = 0;
+  for (const match of source.matchAll(CPP_TOKEN)) {
+    if (match.index > last) segs.push({ t: source.slice(last, match.index), r: "def" });
+    segs.push(match[1] ? { t: match[0], r: "mut" } : match[3] ? { t: match[0], r: "sec", b: true } : match[4] ? { t: match[0], r: "acc" } : { t: match[0], r: "sec" });
+    last = match.index + match[0].length;
+  }
+  if (last < source.length) segs.push({ t: source.slice(last), r: "def" });
+  return segs;
+}
+
+// Typewriter (code showcase): the whole file.
+export const TYPE_SEG: Seg[] = cppSegs(COUNTER_H);
+
+// IDE editor (static): the same file scrolled to the contract struct, lines 8-28, numbered as in the file.
+export const IDE_FIRST_LINE = 8;
+const IDE_LAST_LINE = 28;
+export const IDE_LINE_COUNT = IDE_LAST_LINE - IDE_FIRST_LINE + 1;
+export const IDE_SEG: Seg[] = cppSegs(COUNTER_H.split("\n").slice(IDE_FIRST_LINE - 1, IDE_LAST_LINE).join("\n"));
 
 export const SEG_COLOR: Record<Seg["r"], string> = {
   def: "#C9D1CB",
