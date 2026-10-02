@@ -29,7 +29,7 @@ The installer runs `qinit setup` and caches the Qubic headers, local node, Wasm 
 ```bash
 qinit new counter && cd counter
 qinit node run
-qinit dev
+qinit deploy
 ```
 
 Out of the box Qinit runs the in-process **simulator** and compiles with its **TypeScript compiler**. That is the shortest edit-test loop, and it needs no setup.
