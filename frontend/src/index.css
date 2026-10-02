@@ -6,7 +6,7 @@
 /* ---- theme tokens (RGB channels; flipped by the .dark class) ---- */
 :root {
   color-scheme: light;
-  --paper: 241 240 235; /* #F1F0EB warm off-white canvas */
+  --paper: 242 239 227; /* #F2EFE3 the landing page's warm paper */
   --card: 255 255 255;  /* #FFFFFF surfaces */
   --snow: 231 230 224;  /* #E7E6E0 hairline / hover wash */
   --ink: 11 14 12;      /* #0B0E0C primary text + hairline source */
@@ -32,15 +32,11 @@ body {
 }
 ::selection { background: rgb(var(--accent) / 0.2); color: rgb(var(--ink)); }
 
-/* ---- fixed atmosphere: flat warm canvas + one faint top wash + faint grid ---- */
+/* ---- fixed atmosphere: light = the landing's dotted paper; dark = a glow and a faint lattice ---- */
 .bg-fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.bg-fx::before { /* soft light wash at the top */
-  content: ""; position: absolute; top: -360px; left: 50%; transform: translateX(-50%);
-  width: 1100px; height: 760px; border-radius: 9999px; filter: blur(120px);
-  background: radial-gradient(closest-side, rgba(255,255,255,.85), transparent 70%);
-}
 .dark .bg-fx::before { /* mint glow */
-  width: 900px; height: 720px; filter: blur(150px);
+  content: ""; position: absolute; top: -360px; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 720px; border-radius: 9999px; filter: blur(150px);
   background: radial-gradient(closest-side, rgba(60,232,196,.20), transparent 70%);
 }
 .dark .bg-fx::after { /* lone amber ember, far + faint */
@@ -48,18 +44,19 @@ body {
   width: 540px; height: 540px; border-radius: 9999px; filter: blur(170px); opacity: .12;
   background: radial-gradient(closest-side, #FFB347, transparent 70%);
 }
-.bg-grid { /* hairline lattice, masked to a soft pool at the top */
+.bg-grid { /* the landing's small dots, edge to edge */
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(#16190F0d 1.5px, transparent 1.5px);
+  background-size: 8px 8px;
+}
+.dark .bg-grid { /* hairline lattice, masked to a soft pool at the top */
   background-image:
-    linear-gradient(rgb(var(--ink) / .04) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(var(--ink) / .04) 1px, transparent 1px);
+    linear-gradient(rgba(232,234,230,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232,234,230,.04) 1px, transparent 1px);
   background-size: 46px 46px;
   -webkit-mask-image: radial-gradient(ellipse 75% 55% at 50% 0%, #000 30%, transparent 80%);
   mask-image: radial-gradient(ellipse 75% 55% at 50% 0%, #000 30%, transparent 80%);
 }
-.dark .bg-grid { background-image:
-    linear-gradient(rgba(232,234,230,.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232,234,230,.04) 1px, transparent 1px); }
 
 /* ---- accent (one phrase of colour, like Aleo's lone colour dots) ---- */
 .phosphor { color: rgb(var(--accent)); }

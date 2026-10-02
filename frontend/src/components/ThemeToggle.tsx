@@ -9,7 +9,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark);
-    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0B0E0C" : "#F1F0EB");
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0B0E0C" : "#F2EFE3");
     try { localStorage.setItem("theme", dark ? "dark" : "light"); } catch { /* ignore */ }
   }, [dark]);
 
