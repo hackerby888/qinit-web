@@ -32,7 +32,7 @@ body {
 }
 ::selection { background: rgb(var(--accent) / 0.2); color: rgb(var(--ink)); }
 
-/* ---- fixed atmosphere: light = the landing's dotted paper; dark = a glow and a faint lattice ---- */
+/* ---- fixed atmosphere: the landing's dots in both themes; dark adds a glow ---- */
 .bg-fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .dark .bg-fx::before { /* mint glow */
   content: ""; position: absolute; top: -360px; left: 50%; transform: translateX(-50%);
@@ -49,13 +49,9 @@ body {
   background-image: radial-gradient(#16190F0d 1.5px, transparent 1.5px);
   background-size: 8px 8px;
 }
-.dark .bg-grid { /* hairline lattice, masked to a soft pool at the top */
-  background-image:
-    linear-gradient(rgba(232,234,230,.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(232,234,230,.04) 1px, transparent 1px);
-  background-size: 46px 46px;
-  -webkit-mask-image: radial-gradient(ellipse 75% 55% at 50% 0%, #000 30%, transparent 80%);
-  mask-image: radial-gradient(ellipse 75% 55% at 50% 0%, #000 30%, transparent 80%);
+.dark .bg-grid { /* the landing's mint dots on its dark bands */
+  background-image: radial-gradient(#19E0B40d 1.5px, transparent 1.5px);
+  background-size: 9px 9px;
 }
 
 /* ---- accent (one phrase of colour, like Aleo's lone colour dots) ---- */
