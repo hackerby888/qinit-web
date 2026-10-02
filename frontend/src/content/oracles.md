@@ -110,10 +110,10 @@ qinit oracle pending
 #5832565592064 Price  slot 31  query 6d6f636b0000000000000000… (104 B)
 ```
 
-Answer it. The reply is written like `call --in`: one value per field of the interface's reply ([Call values](/docs/call-values)):
+Answer it. The reply is written like `call --in`: one typed value per field of the interface's reply ([Call values](/docs/call-values)). Qinit knows the interface's reply layout, so the types are optional here too: `--reply "6512345, 100"` means the same.
 
 ```bash
-qinit oracle resolve 5832565592064 --reply "6512345, 100"
+qinit oracle resolve 5832565592064 --reply "6512345sint64, 100sint64"
 ```
 
 ```text
@@ -144,13 +144,13 @@ ERROR: input.numerator is sint64, got '65000uint64'
 While you iterate, let Qinit answer every query:
 
 ```bash
-qinit oracle serve --reply "6600000, 100"
+qinit oracle serve --reply "6600000sint64, 100sint64"
 ```
 
 To answer several interfaces at once, give each interface its own reply in a rules file:
 
 ```bash
-echo '{ "Price": "6512345, 100" }' > oracle.json
+echo '{ "Price": "6512345sint64, 100sint64" }' > oracle.json
 qinit oracle serve --rules oracle.json
 ```
 

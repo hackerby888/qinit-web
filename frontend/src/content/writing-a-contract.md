@@ -120,7 +120,7 @@ Deploy it and pass the amount with `--in`:
 
 ```bash
 qinit deploy
-qinit call --proc Counter Inc --in 5
+qinit call --proc Counter Inc --in 5uint64
 qinit call --fn Counter Get
 ```
 
@@ -133,4 +133,4 @@ qinit call --fn Counter Get
   out 5
 ```
 
-Qinit knows `amount` is a `uint64` from the contract, so the value is all you type. See [Call values](/docs/call-values).
+The value carries its QPI type. Qinit also knows from the contract that `amount` is a `uint64`, so `--in 5` works too. See [Call values](/docs/call-values).

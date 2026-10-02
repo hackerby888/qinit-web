@@ -19,10 +19,10 @@ qinit node stop
 ```bash
 qinit call --proc Counter Inc
 qinit call --fn Counter Get
-qinit call --proc Balances Set --in "0, 100"
+qinit call --proc Balances Set --in "0id, 100uint64"
 ```
 
-`--in` takes the input values. See [Call values](/docs/call-values).
+`--in` takes the input values, each with its type. The type is optional when Qinit knows the entry's schema: `--in "0, 100"` means the same. See [Call values](/docs/call-values).
 
 ## Create and develop
 
@@ -73,8 +73,8 @@ Skip ahead instead of waiting for tick and epoch hooks. See [Control the local c
 
 ```bash
 qinit oracle pending
-qinit oracle resolve <queryId> --reply "6512345, 100"
-qinit oracle serve --reply "6512345, 100"
+qinit oracle resolve <queryId> --reply "6512345sint64, 100sint64"
+qinit oracle serve --reply "6512345sint64, 100sint64"
 ```
 
 A local node has no oracle machine, so you answer queries yourself. See [Use oracles](/docs/oracles).

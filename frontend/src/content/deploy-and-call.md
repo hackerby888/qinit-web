@@ -43,11 +43,11 @@ qinit call --fn Counter Get
 - Procedures are signed transactions. Qinit waits and reports `processed`, `dropped`, or `unconfirmed`.
 - `--amount <n>` transfers QUs with a procedure.
 
-Pass input with `--in`, one value per field, in the order the contract declares them. This sets a balance on the `hashmap` template (`Set_input { id who; uint64 amount; }`):
+Pass input with `--in`, one value per field, in the order the contract declares them. Each value is written with its QPI type. This sets a balance on the `hashmap` template (`Set_input { id who; uint64 amount; }`):
 
 ```bash
-qinit call --proc Balances Set --in "0, 100"
-qinit call --proc Balances Set --in "BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK, 25"
+qinit call --proc Balances Set --in "0id, 100uint64"
+qinit call --proc Balances Set --in "BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXKid, 25uint64"
 ```
 
 ```text
@@ -56,10 +56,12 @@ qinit call --proc Balances Set --in "BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFB
   tick 5450
 ```
 
-An `id` is a 60-letter identity, a 64-hex public key, or `0` for the zero id.
+An `id` is a 60-letter identity or a 64-hex public key followed by `id`, or `0id` for the zero id.
+
+The type is optional when Qinit knows the entry's schema: `--in "0, 100"` means the same.
 
 ```bash
-qinit call --fn Balances BalanceOf --in BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK
+qinit call --fn Balances BalanceOf --in BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXKid
 ```
 
 ```text
@@ -78,7 +80,7 @@ qinit call --fn Balances Stats
   out {total: 125, population: 2}
 ```
 
-Qinit takes each value's type from the contract. See [Call values](/docs/call-values) for ids, arrays, and structs.
+See [Call values](/docs/call-values) for ids, arrays, and structs.
 
 ## Use another node
 

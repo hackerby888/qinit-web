@@ -58,7 +58,7 @@ A real contract would do this inside a procedure that pays out once. Two functio
 
 ```bash
 qinit deploy
-qinit call --fn Voucher Digest --in 100 --out m256i
+qinit call --fn Voucher Digest --in 100uint64 --out m256i
 ```
 
 ```text
@@ -90,10 +90,10 @@ qinit sign a59a3f499df8fa2ff0ed47d6c91359386444a274773d63743f611e2da3aa3fb3 --js
 
 ## Check it on-chain
 
-The contract takes the signature as `Array<sint8, 64>`. A byte array accepts one hex string, so paste the signature from `qinit sign --json` as it is, followed by the signer and the amount:
+The contract takes the signature as `Array<sint8, 64>`. A byte array is written as one hex string, so paste the signature from `qinit sign --json` as it is, followed by the signer and the amount with their types:
 
 ```bash
-qinit call --fn Voucher Check --in "0dc5ee0303cc518bd807074447173d54f65c019f98f91cadaa9565a541c428d950ca470f2c085631f6f69e6d24eb2054c07f616ef7312bffe1fed41387020e00, BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK, 100"
+qinit call --fn Voucher Check --in "0dc5ee0303cc518bd807074447173d54f65c019f98f91cadaa9565a541c428d950ca470f2c085631f6f69e6d24eb2054c07f616ef7312bffe1fed41387020e00, BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXKid, 100uint64"
 ```
 
 ```text
@@ -101,6 +101,6 @@ qinit call --fn Voucher Check --in "0dc5ee0303cc518bd807074447173d54f65c019f98f9
   out 1
 ```
 
-Change the last value to `101` and the same signature gives `out 0`: the digest no longer matches what was signed.
+Change the last value to `101uint64` and the same signature gives `out 0`: the digest no longer matches what was signed.
 
 > Never paste a real seed into a command you share. Use `qinit seed` to keep it on your machine.

@@ -63,7 +63,7 @@ struct Tally : public ContractBase
 
 ```bash
 qinit deploy
-qinit call --proc Tally Add --in 5 --trace
+qinit call --proc Tally Add --in 5uint64 --trace
 ```
 
 ```text
@@ -82,8 +82,8 @@ Each print shows its source line. Prints also appear live in `qinit debug Tally`
 ## Catch a broken assumption
 
 ```bash
-qinit call --fn Tally Get --in 5
-qinit call --fn Tally Get --in 6
+qinit call --fn Tally Get --in 5uint64
+qinit call --fn Tally Get --in 6uint64
 ```
 
 ```text

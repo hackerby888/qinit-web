@@ -6,67 +6,68 @@ order: 3
 
 A format string is the text you pass to `--in`, to `qinit oracle resolve --reply`, and to `--out`.
 
-## Values only
+## Two dialects
 
-When Qinit knows the entry's schema, a format string is just the values, comma-separated, one per field:
+`--in` and `--reply` take values. `--out` takes types. Same shapes, one carries numbers.
 
 ```text
---in "0, 100"
---in "BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK, 25"
---reply "6512345, 100"
+--in    42uint64, [2; 1uint8, 2uint8]
+--out   uint64,   [2;uint8]
 ```
 
-Each value takes the type of the field it lands in. Qinit has the schema whenever it has the contract: your project's build, or the source a node registered at deploy.
+## Values
+
+A value is a number followed by its QPI type. Values are comma-separated, one per field:
+
+```text
+--in "0id, 100uint64"
+--in "BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXKid, 25uint64"
+--reply "6512345sint64, 100sint64"
+```
 
 | Type | Bytes | Value |
 | --- | --- | --- |
-| `uint8` `sint8` | 1 | `42` `-7` |
-| `bit` | 1 | `0` `1` |
-| `uint16` `sint16` | 2 | `300` |
-| `uint32` `sint32` | 4 | `70000` |
-| `uint64` `sint64` | 8 | `42` `-7` |
-| `uint128` `sint128` | 16 | `42` |
-| `id` | 32 | 60-letter identity, 64-hex public key, or `0` |
-| `m256i` | 32 | 64 hex characters, or `0` |
+| `uint8` `sint8` | 1 | `42uint8` `-7sint8` |
+| `bit` | 1 | `1bit` |
+| `uint16` `sint16` | 2 | `300uint16` |
+| `uint32` `sint32` | 4 | `70000uint32` |
+| `uint64` `sint64` | 8 | `42uint64` `-7sint64` |
+| `uint128` `sint128` | 16 | `42uint128` |
+| `id` | 32 | `0id` |
+| `m256i` | 32 | `0m256i` |
 
-Numbers are plain decimal. Hex is for `id`, `m256i`, and byte arrays only.
+`0id` and `0m256i` are shorthands for 32 zero bytes. A real `id` is a 60-letter Qubic identity or a 64-hex public key, then `id`. A real `m256i` is 64 hex characters, then `m256i`.
+
+Numbers are plain decimal. An asset name packed into a `uint64` is written `MYTOKasset`.
 
 ## Structs and arrays
 
 ```text
-{ 7, 9 }              struct
-[3; 1, 2, 3]          array — the count must match
-[8; 0 ×8]             repeat, so you don't type eight zeros
+{ 7uint32, 9uint64 }              struct
+[3; 1uint16, 2uint16, 3uint16]    array — the count must match
+[8; 0uint8 ×8]                    repeat, so you don't type eight zeros
 ```
 
-The repeat marker may be `×`, `*`, or `x`, with a space before it. Commas separate fields; one trailing comma is fine. Nest as deep as you like:
+The repeat marker may be `×`, `*`, or `x`. Commas separate fields; one trailing comma is fine. Nest as deep as you like:
 
 ```text
-{ 1, [2; { 2, 3 }, { 4, 5 } ] }
+{ 1uint8, [2; { 2uint16, 3uint64 }, { 4uint16, 5uint64 } ] }
 ```
 
-A byte array (`Array<uint8, N>` or `Array<sint8, N>`) also takes one hex string of exactly `N` bytes in place of `[N; …]`.
+A byte array (`Array<uint8, N>` or `Array<sint8, N>`) also takes one hex string of exactly `N` bytes in place of `[N; …]`, when Qinit knows the entry's schema.
 
-## Typed values
+## Without the types
 
-A value may carry its type: the number, then the type name.
+The type is optional when Qinit knows the entry's schema: `--in "0, 100"` means the same as `--in "0id, 100uint64"`. Each value takes the type of the field it lands in.
 
 ```text
-42uint64   -7sint64   1bit   0id   0m256i
+--in "0, 100"
+--in "BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK, 25"
+--in "{ 7, 9 }, [3; 1, 2, 3], [8; 0 ×8]"
+--reply "6512345, 100"
 ```
 
-You need this in two cases:
-
-- **No schema.** Calling an entry by number on a contract whose source Qinit cannot see. Then every value carries its type, and `--out` names the output type:
-
-```bash
-qinit call --proc 31 1 --in "0id, 25uint64"
-qinit call --fn 31 1 --in "0id" --out uint64
-```
-
-- **An asset name** packed into a `uint64`: `MYTOKasset`.
-
-With a schema, a typed value is still accepted, and it must match its field:
+Qinit has the schema whenever it has the contract: your project's build, or the source a node registered at deploy. Typed and untyped values can be mixed, and a typed one must still match its field:
 
 ```text
 ✗ call
@@ -74,7 +75,14 @@ With a schema, a typed value is still accepted, and it must match its field:
   all-zero sample: 0id, 0uint64
 ```
 
-`--out` always takes types, never values: `uint64`, `{ id, uint16 }`, `[2;uint8]`.
+Two details for untyped values: write a repeat with a space or with `×` / `*` (`0 x8`, since `0x8` reads as hex), and keep asset names typed (`MYTOKasset`).
+
+Without a schema, for example calling an entry by number on a contract whose source Qinit cannot see, every value needs its type and `--out` names the output type:
+
+```bash
+qinit call --proc 31 1 --in "0id, 25uint64"
+qinit call --fn 31 1 --in "0id" --out uint64
+```
 
 ## Padding
 
@@ -96,7 +104,7 @@ This is why `qinit state` reports the sizes it does, and why a byte count in an 
 
 ## When it fails
 
-The CLI hands you a filled-in template. It spells every value with its type so you can see what each field expects; copy it and replace the zeros, with or without the types:
+The CLI hands you a filled-in template. Copy it and replace the zeros:
 
 ```text
 ✗ call
@@ -107,7 +115,7 @@ The CLI hands you a filled-in template. It spells every value with its type so y
 | Message | Cause |
 | --- | --- |
 | `input has 2 field(s), got 1 value(s)` | too few or too many values for the entry |
-| `input.amount is uint64, got 'abc'` | the value is not a number, or carries the wrong type |
+| `input.amount is uint64, got '100uint32'` | the value carries the wrong type, or is not a number |
 | `id must be 0, a 60-char identity (A-Z) or a 64-hex pubkey, got 'nobody'` | not a valid `id` |
 | `hex is not accepted, write '0x10' in decimal` | a hex number where a decimal one is wanted |
 | `uint64 out of range: -1 (allowed 0..18446744073709551615)` | the number does not fit the field |
