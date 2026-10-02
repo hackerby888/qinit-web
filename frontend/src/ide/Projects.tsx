@@ -11,6 +11,7 @@ import { SplashScreen, type SplashStep } from "./Splash";
 import { isIdeModuleLoaded, loadIdeModule } from "./load";
 import { getStore, getLocalStore } from "./projects/store";
 import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./auth";
+import { BACKEND_ENABLED } from "./backend";
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace } from "./workspace";
@@ -328,9 +329,9 @@ export default function Projects() {
               <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textLight, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={me.email ?? me.name}>{me.name}</span>
               <NeoBtn onClick={signOut} title="Sign out">sign out</NeoBtn>
             </div>
-          ) : (
+          ) : BACKEND_ENABLED ? (
             <NeoBtn onClick={() => setLoginOpen(true)} active title="Sign in to sync your projects">sign in</NeoBtn>
-          )}
+          ) : null}
           <Link to="/docs" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
         </div>
       </div>
@@ -339,7 +340,7 @@ export default function Projects() {
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 22 }}>
           <span style={{ width: 12, height: 12, background: color.accent }} />
           <h1 style={{ fontFamily: font.display, fontSize: 30, color: color.textLightHi, margin: 0 }}>Projects</h1>
-          <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk }}>{metas ? `${metas.length} ${me ? "· synced to your account" : "local · sign in to sync"}` : "…"}</span>
+          <span style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk }}>{metas ? `${metas.length} ${me ? "· synced to your account" : BACKEND_ENABLED ? "local · sign in to sync" : "· stored in this browser"}` : "…"}</span>
         </div>
 
         {authErr && (

@@ -1,7 +1,10 @@
 // Backend API client for the IDE. Compilation happens in the browser (./compile/local.ts — the
 // @qinit/compiler worker); the backend only serves the system-contract catalog + sources, which the
 // browser then compiles and runs in-page via ./engine.
+import { BACKEND_ENABLED } from "./backend";
 import type { ContractIdlView as ContractIdl } from "./idl-view";
+
+const BACKEND_OFF = "system contracts come from the backend, which is switched off (BACKEND_ENABLED in ide/backend.ts)";
 
 export interface CompileDiagnostic {
   severity: "error" | "warning";
@@ -40,6 +43,9 @@ export interface SystemContractEntry {
 
 // The system-contract catalog (the picker list). [] on any error — the picker just shows nothing.
 export async function fetchSystemCatalog(): Promise<SystemContractEntry[]> {
+  if (!BACKEND_ENABLED) {
+    return [];
+  }
   try {
     const r = await fetch("/api/system-contracts");
     if (!r.ok) {
@@ -60,6 +66,9 @@ export interface SystemSource {
 
 // The source of a named system contract, for the in-browser compiler to build at its canonical slot.
 export async function fetchSystemSource(name: string): Promise<SystemSource | { error: string }> {
+  if (!BACKEND_ENABLED) {
+    return { error: BACKEND_OFF };
+  }
   let r: Response;
   try {
     r = await fetch(`/api/system-contracts/${encodeURIComponent(name)}/source`);
@@ -78,6 +87,9 @@ export async function fetchSystemSource(name: string): Promise<SystemSource | { 
 // Every system contract's source in one request — the callee retry needs the target's lower-index
 // siblings compiled alongside it.
 export async function fetchSystemSources(): Promise<SystemSource[] | { error: string }> {
+  if (!BACKEND_ENABLED) {
+    return { error: BACKEND_OFF };
+  }
   let r: Response;
   try {
     r = await fetch("/api/system-contracts/sources");

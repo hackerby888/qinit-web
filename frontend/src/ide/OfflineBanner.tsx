@@ -2,6 +2,7 @@
 // "nothing saves and I don't know why". Driven by the window online/offline events. Rendered on both pages.
 import { useEffect, useState } from "react";
 import { color, font } from "../landing/tokens";
+import { BACKEND_ENABLED } from "./backend";
 
 export function OfflineBanner() {
   const [offline, setOffline] = useState(typeof navigator !== "undefined" && navigator.onLine === false);
@@ -17,7 +18,8 @@ export function OfflineBanner() {
     };
   }, []);
 
-  if (!offline) {
+  // nothing syncs without the backend, so there is nothing to warn about
+  if (!offline || !BACKEND_ENABLED) {
     return null;
   }
 

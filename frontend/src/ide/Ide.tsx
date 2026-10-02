@@ -27,6 +27,7 @@ import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";
 import { Copy, Check, FastForward, LoaderCircle } from "lucide-react";
 import { getToken, fetchMe, login, type Me } from "./auth";
+import { BACKEND_ENABLED } from "./backend";
 import { GitHubDialog } from "./GitHubDialog";
 import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
@@ -2412,7 +2413,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       requireActive();
       setEngineInfo(info);
       // Re-seed the project's chosen system contracts onto the fresh node (compiled by the backend, cached).
-      for (const name of projectRef.current?.systemContracts ?? []) {
+      for (const name of BACKEND_ENABLED ? projectRef.current?.systemContracts ?? [] : []) {
         requireActive();
         await deploySystem(eng, name).catch(() => false);
       }
@@ -2728,8 +2729,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             { id: "format", label: "Format document", hint: "Shift Alt F", run: () => void editorRef.current?.getAction("editor.action.formatDocument")?.run() },
             { id: "search", label: "Search in files", hint: "Ctrl Shift F", run: () => setSearchOpen(true) },
             { id: "analysis", label: "Static analysis: scan workspace", run: () => openBottom("analysis") },
-            { id: "gh-import", label: "Import from GitHub…", run: () => setGithub("import") },
-            { id: "gh-export", label: "Export as Gist…", run: () => setGithub("export") },
+            ...(BACKEND_ENABLED ? [
+              { id: "gh-import", label: "Import from GitHub…", run: () => setGithub("import") },
+              { id: "gh-export", label: "Export as Gist…", run: () => setGithub("export") },
+            ] : []),
             { id: "newfile", label: "New file…", run: promptNewFile },
             { id: "close", label: "Close active tab", hint: "Ctrl W", run: () => closeActiveTabRef.current() },
             { id: "share", label: "Share workspace link", run: () => void share() },
@@ -2803,14 +2806,16 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             <span style={{ flex: 1, color: color.textGhostDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Search files…</span>
             <span style={{ color: color.textFaintDk, fontSize: 9.5 }}>⌃⇧F</span>
           </button>
-          <button
-            onClick={() => setGithub("import")}
-            title="Import from GitHub / export as Gist"
-            style={{ display: "flex", alignItems: "center", gap: 6, height: 24, flex: "none", border: `1px solid ${color.hair2}`, background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 11.5, cursor: "pointer", padding: "0 9px" }}
-          >
-            <span style={{ color: color.textFaintDk }}>⎇</span>
-            GitHub
-          </button>
+          {BACKEND_ENABLED && (
+            <button
+              onClick={() => setGithub("import")}
+              title="Import from GitHub / export as Gist"
+              style={{ display: "flex", alignItems: "center", gap: 6, height: 24, flex: "none", border: `1px solid ${color.hair2}`, background: color.void, color: color.textGhostDk, fontFamily: font.mono, fontSize: 11.5, cursor: "pointer", padding: "0 9px" }}
+            >
+              <span style={{ color: color.textFaintDk }}>⎇</span>
+              GitHub
+            </button>
+          )}
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 16 }}>
           {collab && <CollabBar status={collabApi.status} peers={collabApi.peers} mode={collab.mode} selfName={collab.displayName} selfColor={collab.color} />}

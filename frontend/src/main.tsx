@@ -1,11 +1,12 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { Docs } from "./Docs";
 import { SplashScreen } from "./ide/Splash";
 import { loadIdeModule } from "./ide/load";
+import { BACKEND_ENABLED } from "./ide/backend";
 import { installCrashHandlers } from "./ide/crash";
 import { CrashBoundary, CrashOverlay } from "./ide/CrashDialog";
 import { CrashDevTrigger, installCrashDev } from "./ide/crashDev"; // DEV-only smoke triggers
@@ -44,8 +45,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="/docs/:slug" element={<Docs />} />
             <Route path="/ide" element={<Suspense fallback={routeFallback("Opening projects", "project manager")}><Projects /></Suspense>} />
             <Route path="/ide/p/:id" element={<Suspense fallback={routeFallback("Opening workspace", "editor bundle")}><Ide /></Suspense>} />
-            <Route path="/ide/s/:linkId" element={<Suspense fallback={routeFallback("Opening shared project", "collaboration client")}><SharedEntry /></Suspense>} />
-            <Route path="/admin" element={<Suspense fallback={routeFallback("Opening admin", "admin console")}><Admin /></Suspense>} />
+            {/* shared links and the admin console exist only with the backend */}
+            <Route path="/ide/s/:linkId" element={BACKEND_ENABLED ? <Suspense fallback={routeFallback("Opening shared project", "collaboration client")}><SharedEntry /></Suspense> : <Navigate to="/ide" replace />} />
+            <Route path="/admin" element={BACKEND_ENABLED ? <Suspense fallback={routeFallback("Opening admin", "admin console")}><Admin /></Suspense> : <Navigate to="/ide" replace />} />
           </Routes>
         </BrowserRouter>
       </QueryClientProvider>

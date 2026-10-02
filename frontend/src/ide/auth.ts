@@ -1,6 +1,8 @@
 // Client auth: a Bearer JWT in localStorage (set by the OAuth callback's #token redirect), sent on the cloud
 // API calls. login(provider) is a full-page navigation to the backend, which bounces to Google/GitHub and
 // back to /ide#token=… ; captureAuthRedirect() consumes that on load.
+import { BACKEND_ENABLED } from "./backend";
+
 const TOKEN_KEY = "qinit.token";
 
 export interface Me {
@@ -11,8 +13,9 @@ export interface Me {
   provider: string;
 }
 
+// With the backend off nobody is signed in: a token left in storage is kept for later, not used.
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return BACKEND_ENABLED ? localStorage.getItem(TOKEN_KEY) : null;
 }
 
 export function setToken(t: string): void {
@@ -34,6 +37,9 @@ export function authHeaders(): Record<string, string> {
 
 // Begin login — the backend redirects to the provider's consent screen, then back with the token.
 export function login(provider: "google" | "github"): void {
+  if (!BACKEND_ENABLED) {
+    return;
+  }
   window.location.href = `/api/auth/${provider}`;
 }
 
@@ -67,6 +73,9 @@ export function handleUnauthorized(): void {
 
 // On app load, consume the OAuth callback fragment (#token / #auth_error) and clean the URL.
 export function captureAuthRedirect(): { error?: string } {
+  if (!BACKEND_ENABLED) {
+    return {};
+  }
   const hash = window.location.hash;
   const tok = hash.match(/[#&]token=([^&]+)/);
   if (tok) {
