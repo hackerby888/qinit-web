@@ -59,7 +59,7 @@ export function Hero() {
           <Chip tone="panel" style={{ marginBottom: 28 }}>
             <span style={{ width: 9, height: 9, background: color.accent }} /> FRAMEWORK + BROWSER IDE
           </Chip>
-          <h1 style={{ fontFamily: font.display, margin: "0 0 22px", fontSize: 56, lineHeight: 1.06, fontWeight: 600, color: color.textLightHi }}>
+          <h1 style={{ fontFamily: font.body, margin: "0 0 22px", fontSize: 56, lineHeight: 1.06, fontWeight: 600, color: color.textLightHi }}>
             A <span style={{ color: color.accent }}>framework</span> and an <span style={{ color: color.accent }}>IDE</span> for Qubic smart contracts.
           </h1>
           <p style={{ margin: "0 0 30px", maxWidth: 500, fontSize: 18, lineHeight: 1.65, color: color.textMutedDk }}>
