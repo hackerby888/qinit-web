@@ -49,9 +49,11 @@ body {
   background-image: radial-gradient(#16190F0d 1.5px, transparent 1.5px);
   background-size: 8px 8px;
 }
-.dark .bg-grid { /* the landing's mint dots on its dark bands */
-  background-image: radial-gradient(#19E0B40d 1.5px, transparent 1.5px);
-  background-size: 9px 9px;
+.dark .bg-grid { /* sparse neutral dots that fade out below the fold, so they never sit behind long text */
+  background-image: radial-gradient(rgba(232,234,230,.13) 1px, transparent 1px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 35%, transparent 85%);
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 35%, transparent 85%);
 }
 
 /* ---- accent (one phrase of colour, like Aleo's lone colour dots) ---- */
