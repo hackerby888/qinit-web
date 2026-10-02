@@ -619,7 +619,7 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
       <Outline source={source} onJump={onJump} />
       </div>
 
-      <AdSlot />
+      {SHOW_SPONSOR_SLOT && <AdSlot />}
 
       {confirm && (
         <ConfirmDialog
@@ -756,7 +756,9 @@ function Outline({ source, onJump }: { source: string; onJump: (name: string) =>
 }
 
 // Reserved sponsor slot pinned at the bottom of the explorer — a square placement. Placeholder for now:
-// the Qubic mark + wordmark; later this becomes a real ad unit.
+// the Qubic mark + wordmark; later this becomes a real ad unit. Hidden until there is a real placement.
+const SHOW_SPONSOR_SLOT: boolean = false;
+
 function AdSlot() {
   return (
     <div style={{ flex: "none", borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, padding: "8px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
