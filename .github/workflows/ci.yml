@@ -79,7 +79,8 @@ jobs:
       - name: reject live core-lite compiler dependencies
         working-directory: Qinit-web/frontend
         run: |
-          if grep -R -E 'QINIT_CORE|qubic-core-lite|not a core checkout|assembleQpiHeader|parseLiteAbiSource' dist; then
+          # match what the live loader's code carries, not the bare words: the docs name QINIT_CORE and show qubic-core-lite paths
+          if grep -R -E 'env\.QINIT_CORE|cannot load live qpi\.h|not a core checkout|assembleQpiHeader|parseLiteAbiSource' dist; then
             echo "browser bundle contains a live core-lite dependency" >&2
             exit 1
           fi
