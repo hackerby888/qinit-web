@@ -33,7 +33,7 @@ import type { RepoFile } from "./githubApi";
 import { setupQpi } from "./qpi";
 import { definitionOffset } from "./qpi/definition";
 import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type CompileResult, type SystemContractEntry } from "./api";
-import { compileGtestInBrowser, compileInBrowser, getCompilerInfo } from "./compile/local";
+import { compileInBrowser, getCompilerInfo } from "./compile/local";
 import type { CompilerInfo } from "@qinit/compiler/browser";
 import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent, EngineMemoryUsage } from "./engine";
 import { Debugger } from "./Debugger";
@@ -49,7 +49,6 @@ import { useProblemsPanel, type ProblemItem } from "./useProblemsPanel";
 import { useOverlays } from "./useOverlays";
 import { useTestRunner } from "./useTestRunner";
 import { genQinitDts } from "./tests/dts";
-import { setGtestIdls } from "./qpi/gtest";
 import { crossContractDefinitionAt, setQpiWorkspaceFiles } from "./qpi/cross-contract";
 import { SplashScreen } from "./Splash";
 import { ideStartupPending, ideStartupSteps, type StartupTaskStatus } from "./startup";
@@ -995,7 +994,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   filesRef.current = ws.files;
 
   const activeIsTest = /\.tsx?$/.test(ws.active); // a .ts test file -> run-tests, not compile
-  const activeIsGtest = /\.(cpp|cc|cxx)$/.test(ws.active); // a C++ gtest file -> run-gtest (compile into the contract wasm)
+  const activeIsGtest = /\.(cpp|cc|cxx)$/.test(ws.active); // a C++ gtest file: nothing to run here, `qinit gtest` runs it locally
 
   useEffect(() => {
     setQpiWorkspaceFiles(ws.files);
@@ -1836,7 +1835,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     qinitLibRef.current?.dispose();
     const idls = Object.values(deployedRef.current).map((d) => d.idl);
     qinitLibRef.current = monaco.languages.typescript.typescriptDefaults.addExtraLib(genQinitDts(idls), "file:///.qinit.d.ts");
-    setGtestIdls(idls); // same IDLs drive contract-type completion in .cpp gtest files
   };
 
   const onEditorMount: OnMount = (editor, monaco) => {
@@ -2211,8 +2209,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       return;
     }
 
-    // A .cpp gtest file isn't a contract — the in-browser compiler has no gtest support, so it gets no
-    // background diagnostics. Clear any stale markers and stay idle.
+    // A .cpp gtest file isn't a contract and the IDE doesn't run gtests, so it gets no background
+    // diagnostics. Clear any stale markers and stay idle.
     if (/\.(cpp|cc|cxx)$/.test(fileName)) {
       const monaco = monacoRef.current;
       const model = editorRef.current?.getModel();
@@ -2603,35 +2601,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  // Compile the authoritative core-lite ContractTesting source into a portable test program, then execute it
-  // against the same deployed Wasm bytes on a throwaway worker-owned virtual node.
-  const runGtestFile = async () => {
-    const fileContract = ws.active.replace(/\.test\.(cpp|cc|cxx)$/i, "").replace(/\.(cpp|cc|cxx)$/i, "");
-    const target = deployedRef.current[fileContract] ?? (Object.keys(deployedRef.current).length === 1 ? Object.values(deployedRef.current)[0] : undefined);
-    setTestRun({ results: [], running: true, title: ws.active });
-    if (!target) {
-      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: `deploy '${fileContract}' before running its gtest`, logs: [] }], running: false, title: ws.active });
-      return;
-    }
-    try {
-      const compiled = await compileGtestInBrowser({ source: target.source, testSource: source, name: target.name, slot: target.slot });
-      if (!compiled.ok || !compiled.program || !compiled.wasm) {
-        const detail = compiled.error ?? (compiled.diagnostics.map((item) => `L${item.line}:${item.column} ${item.message}`).join("\n") || "gtest compilation failed");
-        setTestRun({ results: [{ name: "(gtest compile)", ok: false, ms: Math.round(compiled.ms ?? 0), error: detail, logs: [] }], running: false, title: ws.active });
-        return;
-      }
-      const contracts = Object.fromEntries(Object.values(deployedRef.current).map((contract) => [contract.slot, contract.wasm]));
-      const results = await (await ensureEngine()).runGtest(compiled.program, compiled.wasm, contracts);
-      setTestRun({
-        results: results.map((result) => ({ name: result.name, ok: result.passed, ms: 0, error: result.message || undefined, logs: [] })),
-        running: false,
-        title: ws.active,
-      });
-    } catch (error) {
-      setTestRun({ results: [{ name: "(gtest)", ok: false, ms: 0, error: error instanceof Error ? error.message : String(error), logs: [] }], running: false, title: ws.active });
-    }
-  };
-
   const formatOut = (out: unknown): string =>
     JSON.stringify(out, (_k, v) => (typeof v === "bigint" ? v.toString() : v)) ?? String(out);
 
@@ -2771,9 +2740,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
               {testRun?.running ? "Running…" : "▶ Run tests"}
             </ToolButton>
           ) : activeIsGtest ? (
-            <ToolButton variant="accent" onClick={() => void runGtestFile()} disabled={!!testRun?.running}>
-              {testRun?.running ? "Running…" : "▶ Run gtest"}
-            </ToolButton>
+            <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>C++ test · run it locally with qinit gtest</span>
           ) : (
             <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling" || collabApi.building.byOther}>
               {phase === "compiling" ? "Compiling…" : collabApi.building.byOther ? `${collabApi.building.by} building…` : "▶ Compile & Run"}

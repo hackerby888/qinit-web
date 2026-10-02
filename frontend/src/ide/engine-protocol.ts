@@ -4,7 +4,7 @@ import type { EngineLogEvent } from "@qinit/engine";
 import type { EngineFaultInfo } from "@qinit/core";
 
 export type EngineMethod =
-  | "deploy" | "runGtest"
+  | "deploy"
   | "start" | "stop" | "isRunning" | "pause" | "resume" | "setSpeed" | "speed"
   | "step" | "epochLength" | "setEpochLength" | "advanceEpoch" | "fundAccount"
   | "reset" | "replay" | "runSteps" | "exportHistory" | "registerSource"

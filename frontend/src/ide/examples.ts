@@ -520,56 +520,6 @@ test("increments again on the same chain", async () => {
 });
 `;
 
-const counterGtest = `// Standard core-lite contract_testing.h gtest. The same source builds natively with
-// core-lite and compiles in-browser through Qinit's TS gtest compiler.
-#define NO_UEFI
-#include "contract_testing.h"
-
-class ContractTestingCounter : protected ContractTesting {
-public:
-    ContractTestingCounter() {
-        initEmptySpectrum();
-        initEmptyUniverse();
-        INIT_CONTRACT(Counter);
-        callSystemProcedure(Counter_CONTRACT_INDEX, INITIALIZE);
-    }
-    void fund(const id& account, uint64 amount) { increaseEnergy(account, amount); }
-    Counter::Inc_output inc(const id& user, sint64 amount = 0) {
-        Counter::Inc_input input{};
-        Counter::Inc_output output{};
-        invokeUserProcedure(Counter_CONTRACT_INDEX, 1, input, output, user, amount);
-        return output;
-    }
-    Counter::Get_output get() const {
-        Counter::Get_input input{};
-        Counter::Get_output output{};
-        callFunction(Counter_CONTRACT_INDEX, 1, input, output);
-        return output;
-    }
-};
-
-TEST(Counter, StartsAtZero) {
-    ContractTestingCounter t;
-    EXPECT_EQ(t.get().value, 0ull);
-}
-
-TEST(Counter, Increments) {
-    ContractTestingCounter t;
-    const id user = id::randomValue();
-    t.fund(user, 1000000000);
-    Counter::Inc_output ignored = t.inc(user);
-    (void)ignored;
-    EXPECT_EQ(((Counter::StateData*)contractStates[Counter_CONTRACT_INDEX])->counter, 1ull);
-    EXPECT_EQ(t.get().value + 1ull, 2ull);
-}
-
-TEST(Counter, EachTestStartsFresh) {
-    ContractTestingCounter t;
-    Counter::Get_output output = t.get();
-    EXPECT_EQ(output.value, 0ull);
-}
-`;
-
 // The dev playground — every starter contract (used by the create button's bottom-right "dev" region).
 const cheats = `// Cheats — CC_* macros are dev-only scaffolding. Qinit strips them out before a contract is
 // submitted to Core, so the source that ships is clean and the built wasm is unchanged.
@@ -629,9 +579,8 @@ export const EXAMPLES: Example[] = [
   { file: "Counter.test.ts", name: "Counter.test", slot: 0, source: counterTest },
 ];
 
-// The standard project — one Counter contract + its TS test + its C++ gtest. The default for a new project.
+// The standard project — one Counter contract + its TS test. The default for a new project.
 export const STARTER: Example[] = [
   { file: "Counter.h", name: "Counter", slot: 28, source: counter },
   { file: "Counter.test.ts", name: "Counter.test", slot: 0, source: counterTest },
-  { file: "Counter.test.cpp", name: "Counter.test", slot: 0, source: counterGtest },
 ];

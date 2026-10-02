@@ -2,7 +2,6 @@
 // sides (worker.ts, local.ts) and tests share the exact shapes.
 import type { ContractIdlView as ContractIdl } from "../idl-view";
 import type { CompilerInfo } from "@qinit/compiler/browser";
-import type { GtestProgram } from "@qinit/compiler/browser";
 import type { CompileDiagnostic } from "../api";
 
 export interface WorkerHelloRequest {
@@ -19,16 +18,7 @@ export interface WorkerCompileRequest {
   callees?: Array<{ name: string; source: string; slot: number }>;
 }
 
-export interface WorkerGtestRequest {
-  id: number;
-  kind: "compile-gtest";
-  source: string;
-  testSource: string;
-  name: string;
-  slot: number;
-}
-
-export type WorkerRequest = WorkerHelloRequest | WorkerCompileRequest | WorkerGtestRequest;
+export type WorkerRequest = WorkerHelloRequest | WorkerCompileRequest;
 
 export interface WorkerHelloResponse {
   id: number;
@@ -51,15 +41,4 @@ export interface WorkerCompileResponse {
   ms: number;
 }
 
-export interface WorkerGtestResponse {
-  id: number;
-  kind: "gtest-compiled";
-  ok: boolean;
-  program?: GtestProgram;
-  wasm?: Uint8Array;
-  diagnostics: CompileDiagnostic[];
-  error?: string;
-  ms: number;
-}
-
-export type WorkerResponse = WorkerHelloResponse | WorkerCompileResponse | WorkerGtestResponse;
+export type WorkerResponse = WorkerHelloResponse | WorkerCompileResponse;

@@ -2,10 +2,9 @@
 // contract Wasm instances, linear memories, ticker, tracing and state decoding live in engine-worker.ts.
 // Bun tests use the same IdeEngineCore in-process because there is no browser UI thread to protect.
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
-import type { EngineLogEvent, TestResult } from "@qinit/engine";
+import type { EngineLogEvent } from "@qinit/engine";
 import type { EngineFaultInfo } from "@qinit/core";
 import { reportCrash } from "./crash";
-import type { GtestProgram } from "@qinit/compiler/browser";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import type {
   Account,
@@ -247,10 +246,6 @@ export class IdeEngine {
     this.deployments.set(slot, { slot, wasm: wasm.slice(), name: idl.name, idl });
     await this.call("deploy", [slot, wasm.slice(), idl]);
     this.assetsValue = await this.call<AssetView[]>("assets", []);
-  }
-
-  async runGtest(program: GtestProgram, runnerWasm: Uint8Array, contracts: Record<number, Uint8Array>): Promise<TestResult[]> {
-    return this.call("runGtest", [program, runnerWasm.slice(), Object.fromEntries(Object.entries(contracts).map(([slot, wasm]) => [slot, wasm.slice()]))]);
   }
 
   start(): void {

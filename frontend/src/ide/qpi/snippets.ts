@@ -101,7 +101,7 @@ export function registerQpiSnippets(monaco: typeof Monaco): void {
   monaco.languages.registerCompletionItemProvider("cpp", {
     provideCompletionItems(model, position) {
       if (isGtestModel(model)) {
-        return { suggestions: [] }; // a gtest test gets the gtest provider, not the contract snippets
+        return { suggestions: [] }; // a gtest test is not a contract
       }
       const word = model.getWordUntilPosition(position);
       const offset = model.getOffsetAt(position);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { compileContractWithTypeScript as compileContract, compileGtestWithTypeScript as compileGtest } from "@qinit/compiler/browser";
+import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";
 import { STARTER } from "../../src/ide/examples";
 import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
 import { IdeEngine } from "../../src/ide/engine";
@@ -71,19 +71,6 @@ struct Bridge : public ContractBase {
   expect(seen[0]).toStartWith("INFO ?OrderLog|TokensLog 24B 0x");
 });
 
-test("Counter core-lite gtest compiles and runs in-browser without clang", async () => {
-  const source = STARTER.find((file) => file.file === "Counter.h")?.source ?? "";
-  const testSource = STARTER.find((file) => file.file === "Counter.test.cpp")?.source ?? "";
-  const contract = await compileContract({ source, contractName: "Counter", slot: 28, arenaSizeBytes: 64 * 1024 });
-  const gtest = await compileGtest({ source, testSource, contractName: "Counter", slot: 28 });
-  expect(gtest.diagnostics.filter((item) => item.severity === "error")).toEqual([]);
-  expect(gtest.program).toBeDefined();
-
-  const engine = new IdeEngine();
-  const results = await engine.runGtest(gtest.program!, gtest.wasm!, { 28: contract.wasm });
-  expect(results.map((result) => [result.name, result.passed])).toEqual([
-    ["Counter.StartsAtZero", true],
-    ["Counter.Increments", true],
-    ["Counter.EachTestStartsFresh", true],
-  ]);
+test("the starter project holds the contract and its TS test, no gtest", () => {
+  expect(STARTER.map((file) => file.file)).toEqual(["Counter.h", "Counter.test.ts"]);
 });

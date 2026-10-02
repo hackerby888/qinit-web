@@ -2,9 +2,8 @@
 // CompileResult shape the IDE consumes. This is the only compile path — there is no backend
 // compiler; a crashed or wedged worker surfaces as an error and the next compile gets a fresh one.
 import type { CompilerInfo } from "@qinit/compiler/browser";
-import type { GtestProgram } from "@qinit/compiler/browser";
 import type { CompileCallee, CompileResult } from "../api";
-import type { WorkerCompileResponse, WorkerGtestResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
+import type { WorkerCompileResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
 import { reportCrash } from "../crash";
 
 export interface CompileRequest {
@@ -25,7 +24,6 @@ const HELLO_TIMEOUT_MS = 10_000;
 let _worker: Worker | null = null;
 let _seq = 0;
 const _pending = new Map<number, (r: WorkerCompileResponse | null) => void>();
-const _gtestPending = new Map<number, (r: WorkerGtestResponse | null) => void>();
 const _helloPending = new Map<number, (r: WorkerHelloResponse | null) => void>();
 
 function getWorker(): Worker | null {
@@ -40,14 +38,6 @@ function getWorker(): Worker | null {
       const resolve = _helloPending.get(e.data.id);
       if (resolve) {
         _helloPending.delete(e.data.id);
-        resolve(e.data);
-      }
-      return;
-    }
-    if (e.data.kind === "gtest-compiled") {
-      const resolve = _gtestPending.get(e.data.id);
-      if (resolve) {
-        _gtestPending.delete(e.data.id);
         resolve(e.data);
       }
       return;
@@ -74,44 +64,8 @@ function getWorker(): Worker | null {
       _helloPending.delete(id);
       resolve(null);
     }
-    for (const [id, resolve] of _gtestPending) {
-      _gtestPending.delete(id);
-      resolve(null);
-    }
   };
   return _worker;
-}
-
-export interface BrowserGtestCompileResult {
-  ok: boolean;
-  program?: GtestProgram;
-  wasm?: Uint8Array;
-  diagnostics: WorkerGtestResponse["diagnostics"];
-  error?: string;
-  ms?: number;
-}
-
-export async function compileGtestInBrowser(req: { source: string; testSource: string; name: string; slot: number }): Promise<BrowserGtestCompileResult> {
-  const worker = getWorker();
-  if (!worker) return { ok: false, diagnostics: [], error: "the in-browser compiler worker is unavailable" };
-  const id = ++_seq;
-  const response = await new Promise<WorkerGtestResponse | null>((resolve) => {
-    const timer = setTimeout(() => {
-      if (_gtestPending.has(id)) {
-        _gtestPending.delete(id);
-        _worker?.terminate();
-        _worker = null;
-        resolve(null);
-      }
-    }, COMPILE_TIMEOUT_MS);
-    _gtestPending.set(id, (result) => {
-      clearTimeout(timer);
-      resolve(result);
-    });
-    worker.postMessage({ id, kind: "compile-gtest", ...req });
-  });
-  if (!response) return { ok: false, diagnostics: [], error: "the in-browser gtest compiler crashed or timed out" };
-  return { ok: response.ok, program: response.program, wasm: response.wasm, diagnostics: response.diagnostics, error: response.error, ms: response.ms };
 }
 
 function compileInWorker(req: CompileRequest): Promise<WorkerCompileResponse | null> {

@@ -5,7 +5,7 @@
 import type * as Monaco from "monaco-editor";
 // eslint-disable-next-line import/no-unresolved -- deep ESM entry, typed via qinit-modules.d.ts
 import { language as cppLanguage } from "monaco-editor/esm/vs/basic-languages/cpp/cpp.js";
-import { QPI_TYPES, QPI_MACROS, QPI_BUILTINS, QPI_GTEST } from "./vocab";
+import { QPI_TYPES, QPI_MACROS, QPI_BUILTINS } from "./vocab";
 
 // The cpp identifier rule looks like `[/[a-zA-Z_]\w*/, { cases: { "@keywords": …, "@default": … } }]`.
 // Find it by its `@keywords` case so a Monaco version bump that reshapes the grammar degrades cleanly
@@ -42,7 +42,6 @@ export function applyQpiGrammar(monaco: typeof Monaco): void {
       cases: {
         "@keywords": action.cases["@keywords"],
         "@qpiMacros": "annotation",
-        "@qpiGtest": "annotation",
         "@qpiTypes": "type.qpi",
         "@qpiBuiltins": "variable.predefined",
         "@default": action.cases["@default"] ?? "identifier",
@@ -63,7 +62,6 @@ export function applyQpiGrammar(monaco: typeof Monaco): void {
     ...base,
     qpiTypes: QPI_TYPES,
     qpiMacros: QPI_MACROS,
-    qpiGtest: QPI_GTEST,
     qpiBuiltins: QPI_BUILTINS,
     tokenizer: { ...base.tokenizer, root: newRoot },
   } as unknown as Monaco.languages.IMonarchLanguage;

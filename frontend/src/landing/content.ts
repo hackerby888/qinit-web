@@ -56,7 +56,6 @@ export const IDE_TREE: TreeRow[] = [
   { label: "counter", pad: 16, color: color.textLight, dot: color.textGhostDk },
   { label: "Counter.h", pad: 30, color: color.accent, dot: color.accent, active: true },
   { label: "Counter.test.ts", pad: 30, color: color.textMutedDk, dot: color.secondary },
-  { label: "Counter.test.cpp", pad: 30, color: color.textMutedDk, dot: color.textGhostDk },
 ];
 
 // The road from an empty folder to a pull request on Qubic Core, one command per step.

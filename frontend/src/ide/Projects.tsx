@@ -217,7 +217,7 @@ export default function Projects() {
     }
   };
 
-  // "standard" (the default click) seeds a Counter contract + its TS test + its C++ gtest; "dev" (the
+  // "standard" (the default click) seeds a Counter contract + its TS test; "dev" (the
   // bottom-right region) seeds the full example playground (all the starter contracts).
   const create = async (mode: "standard" | "dev" = "standard") => {
     try {
@@ -459,18 +459,18 @@ function LoginModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// The "New project" tile. The main face creates the standard project (Counter + TS test + gtest); the
+// The "New project" tile. The main face creates the standard project (Counter + TS test); the
 // bottom-right "dev" region — highlighted on hover so it's discoverable — seeds the full example playground.
 function NewProjectCard({ onStandard, onDev }: { onStandard: () => void; onDev: () => void }) {
   const [devHover, setDevHover] = useState(false);
   return (
     <div style={{ position: "relative" }}>
-      <button onClick={onStandard} title="New project — Counter contract + TS test + C++ gtest" style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
+      <button onClick={onStandard} title="New project — Counter contract + TS test" style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
         <Card frame={color.accentDeep} shadow={5} faceStyle={{ minHeight: 150 }}>
           <div style={{ padding: 16, minHeight: 150, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
             <span style={{ fontFamily: font.display, fontSize: 40, color: color.accent, lineHeight: 1 }}>+</span>
             <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>New project</span>
-            <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>Counter · TS test · gtest</span>
+            <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>Counter · TS test</span>
           </div>
         </Card>
       </button>

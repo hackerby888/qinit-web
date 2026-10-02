@@ -6,11 +6,11 @@
 // the qinit CLI's local-compile flow; their source also rides along so the caller can read the
 // callee's nested output types.
 /// <reference lib="webworker" />
-import { compileContractWithTypeScript as compileContract, compileGtestWithTypeScript as compileGtest, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compiler/browser";
+import { compileContractWithTypeScript as compileContract, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compiler/browser";
 import type { ContractIdl, CompileDiagnostic } from "@qinit/compiler/browser";
 import { initK12, k12Sync } from "@qinit/core";
 import { toContractIdlView } from "../idl-view";
-import type { WorkerCompileRequest, WorkerCompileResponse, WorkerGtestRequest, WorkerGtestResponse, WorkerRequest } from "./protocol";
+import type { WorkerCompileRequest, WorkerCompileResponse, WorkerRequest } from "./protocol";
 
 // Matches the backend's browser default (LITE_WASM_ARENA_SZ) — the 1 GiB compiler default would
 // make every deployed module reserve far more memory than a browser tab should.
@@ -98,35 +98,9 @@ async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileRe
   }
 }
 
-async function handleGtest(req: WorkerGtestRequest): Promise<WorkerGtestResponse> {
-  const started = performance.now();
-  try {
-    const result = await compileGtest({ source: req.source, testSource: req.testSource, contractName: req.name, slot: req.slot });
-    const errors = result.diagnostics.filter((item) => item.severity === "error");
-    return {
-      id: req.id,
-      kind: "gtest-compiled",
-      ok: errors.length === 0 && !!result.program,
-      program: result.program,
-      wasm: result.wasm,
-      diagnostics: mapDiagnostics(result.diagnostics),
-      ms: performance.now() - started,
-    };
-  } catch (error) {
-    return {
-      id: req.id,
-      kind: "gtest-compiled",
-      ok: false,
-      diagnostics: [],
-      error: error instanceof Error ? error.message : String(error),
-      ms: performance.now() - started,
-    };
-  }
-}
-
 // A failed reply (DataCloneError on an already-detached buffer) rejects inside the worker, where
 // Worker.onerror never fires — the caller just waits out its timeout. Turn it into a normal error reply.
-const post = (res: WorkerCompileResponse | WorkerGtestResponse, transfer: Transferable[]): void => {
+const post = (res: WorkerCompileResponse, transfer: Transferable[]): void => {
   try {
     self.postMessage(res, transfer);
   } catch (error) {
@@ -137,10 +111,6 @@ const post = (res: WorkerCompileResponse | WorkerGtestResponse, transfer: Transf
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   if (e.data.kind === "hello") {
     self.postMessage({ id: e.data.id, kind: "hello", protocolVersion: COMPILER_PROTOCOL_VERSION, compilerInfo });
-    return;
-  }
-  if (e.data.kind === "compile-gtest") {
-    void handleGtest(e.data).then((response) => post(response, response.wasm ? [response.wasm.buffer] : []));
     return;
   }
   void handle(e.data).then(({ res, transfer }) => post(res, transfer));
