@@ -1,7 +1,7 @@
 ---
 title: Format strings
 group: Reference
-order: 3
+order: 4
 ---
 
 A format string is the text you pass to `--in`, to `qinit oracle resolve --reply`, and to `--out`.

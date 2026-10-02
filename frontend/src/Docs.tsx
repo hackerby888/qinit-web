@@ -1,10 +1,11 @@
-import { useEffect, type ReactNode } from "react";
-import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
+import { Children, isValidElement, useEffect, type ReactNode } from "react";
+import { Link, Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
 import { CodeBlock } from "./components/CodeBlock";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { pageHeadings, slugifyHeading } from "./docs-headings";
 
 const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
 const DOC_ALIASES = new Map([
@@ -34,10 +35,14 @@ const DOCS: Doc[] = Object.entries(files)
   .sort((a, b) => GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group) || a.order - b.order);
 const bySlug = Object.fromEntries(DOCS.map((d) => [d.slug, d]));
 
+// The plain text of a rendered heading, for its anchor id.
+const textOf = (node: ReactNode): string =>
+  Children.toArray(node).map((child) => (isValidElement<{ children?: ReactNode }>(child) ? textOf(child.props.children) : String(child))).join("");
+
 // Markdown -> styled React. Fenced code -> terminal CodeBlock; inline -> chip; links -> Router for internal.
 const md: Components = {
-  h2: ({ children }) => <h2 className="mb-3 mt-12 font-display text-2xl font-bold text-ink">{children}</h2>,
-  h3: ({ children }) => <h3 className="mb-2 mt-7 font-display text-lg font-semibold text-ink">{children}</h3>,
+  h2: ({ children }) => <h2 id={slugifyHeading(textOf(children))} className="mb-3 mt-12 scroll-mt-24 font-display text-2xl font-bold text-ink">{children}</h2>,
+  h3: ({ children }) => <h3 id={slugifyHeading(textOf(children))} className="mb-2 mt-7 scroll-mt-24 font-display text-lg font-semibold text-ink">{children}</h3>,
   p: ({ children }) => <p className="mb-4 leading-relaxed text-slate">{children}</p>,
   ul: ({ children }) => <ul className="mb-4 list-disc space-y-1.5 pl-6 text-slate marker:text-ink/25">{children}</ul>,
   ol: ({ children }) => <ol className="mb-4 list-decimal space-y-1.5 pl-6 text-slate marker:text-ink/25">{children}</ol>,
@@ -46,7 +51,9 @@ const md: Components = {
   a: ({ href, children }) =>
     href?.startsWith("/")
       ? <Link to={href} className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</Link>
-      : <a href={href} target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</a>,
+      : href?.startsWith("#")
+        ? <a href={href} className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</a>
+        : <a href={href} target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</a>,
   blockquote: ({ children }) => <div className="my-5 rounded-xl border-l-2 border-ink/25 bg-snow/60 px-4 py-3 text-sm text-ink [&_p]:my-0 [&_p]:text-slate">{children}</div>,
   code: ({ className, children }) => {
     const lang = /language-(\w+)/.exec(className ?? "")?.[1];
@@ -66,7 +73,8 @@ const md: Components = {
   thead: ({ children }) => <thead className="bg-snow/60">{children}</thead>,
   tr: ({ children }) => <tr className="border-b border-ink/[.06] last:border-0">{children}</tr>,
   th: ({ children }) => <th className="px-4 py-2.5 text-left font-semibold text-ink">{children}</th>,
-  td: ({ children }) => <td className="px-4 py-2.5 align-top text-slate">{children}</td>,
+  // a flag such as `--in "<values>"` stays on one line; the cell still wraps between chips
+  td: ({ children }) => <td className="px-4 py-2.5 align-top text-slate [&_code]:whitespace-nowrap">{children}</td>,
 };
 
 function Shell({ children }: { children: ReactNode }) {
@@ -102,20 +110,25 @@ function Shell({ children }: { children: ReactNode }) {
 
 export function Docs() {
   const { slug } = useParams();
+  const { hash } = useLocation();
   const navigate = useNavigate();
   const fallback = DOCS[0]?.slug ?? "overview";
   const requested = slug ?? fallback;
   const active = DOC_ALIASES.get(requested) ?? requested;
 
+  // a link to a section lands on its heading; a plain page change starts at the top
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [slug]);
+    const target = hash ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+    if (target) target.scrollIntoView({ behavior: "instant" });
+    else window.scrollTo(0, 0);
+  }, [slug, hash]);
 
   if (slug && active !== slug) return <Navigate to={`/docs/${active}`} replace />;
   if (!bySlug[active]) return <Navigate to={`/docs/${fallback}`} replace />;
   const page = bySlug[active];
   const idx = DOCS.findIndex((d) => d.slug === active);
   const prev = DOCS[idx - 1], next = DOCS[idx + 1];
+  const toc = pageHeadings(page.body);
 
   return (
     <Shell>
@@ -169,6 +182,21 @@ export function Docs() {
             {next ? <Link to={`/docs/${next.slug}`} className="glass glass-hover rounded-xl px-4 py-3 text-right text-sm"><div className="font-mono text-xs text-faint">Next →</div><div className="text-ink">{next.title}</div></Link> : <span />}
           </div>
         </main>
+
+        {toc.length > 1 && (
+          <aside className="hidden xl:block xl:w-52 xl:shrink-0">
+            <nav aria-label="On this page" className="sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto pr-2">
+              <div className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-faint">On this page</div>
+              <ul className="space-y-1 text-sm">
+                {toc.map((h) => (
+                  <li key={h.id} className={h.level === 3 ? "pl-3" : ""}>
+                    <a href={`#${h.id}`} className="block text-slate transition hover:text-ink">{h.text}</a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </aside>
+        )}
       </div>
     </Shell>
   );

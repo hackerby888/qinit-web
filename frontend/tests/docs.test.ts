@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
+import { pageHeadings } from "../src/docs-headings";
 
 const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
 const ALIASES: Record<string, string> = {
@@ -40,11 +41,11 @@ test("developer docs are internally consistent", () => {
       if ((raw.match(/^```/gm)?.length ?? 0) % 2 !== 0) errors.push(`${file}: unbalanced code fence`);
       if (/\bqinit\s+(?:up|sync)\b/.test(frontmatter[2])) errors.push(`${file}: uses removed qinit command`);
 
-      return { file, slug, group: meta.group, order, body: frontmatter[2] };
+      return { file, slug, group: meta.group, order, body: frontmatter[2], ids: pageHeadings(frontmatter[2]).map((heading) => heading.id) };
     })
     .filter((doc) => doc !== null);
 
-  expect(docs).toHaveLength(19);
+  expect(docs).toHaveLength(20);
 
   const slugs = new Set<string>();
   const positions = new Set<string>();
@@ -61,10 +62,19 @@ test("developer docs are internally consistent", () => {
     if (!slugs.has(target)) errors.push(`${alias}: alias target ${target} is missing`);
   }
 
+  // a section link must land on a heading: the renderer gives every ## and ### an id from its text
+  const idsBySlug = new Map(docs.map((doc) => [doc.slug, new Set(doc.ids)]));
   for (const doc of docs) {
-    for (const link of doc.body.matchAll(/\]\(\/docs\/([^\s)?#]+)(?:[?#][^)]*)?\)/g)) {
-      const slug = link[1];
-      if (!slugs.has(slug) && !Object.hasOwn(ALIASES, slug)) errors.push(`${doc.file}: broken /docs/${slug} link`);
+    for (const id of doc.ids) {
+      if (doc.ids.indexOf(id) !== doc.ids.lastIndexOf(id)) errors.push(`${doc.file}: two headings share the id #${id}`);
+    }
+    for (const link of doc.body.matchAll(/\]\(\/docs\/([^\s)?#]+)(?:\?[^)#]*)?(?:#([^)]*))?\)/g)) {
+      const slug = ALIASES[link[1]] ?? link[1];
+      if (!slugs.has(slug)) errors.push(`${doc.file}: broken /docs/${link[1]} link`);
+      else if (link[2] && !idsBySlug.get(slug)!.has(link[2])) errors.push(`${doc.file}: /docs/${link[1]}#${link[2]} names no heading`);
+    }
+    for (const link of doc.body.matchAll(/\]\(#([^)]+)\)/g)) {
+      if (!doc.ids.includes(link[1])) errors.push(`${doc.file}: #${link[1]} names no heading`);
     }
   }
 
