@@ -78,7 +78,7 @@ export const ECOSYSTEM: Eco[] = [
 // Code segments — role → color: def (default), sec (keyword), acc (identifier), mut (comment), str (string).
 export type Seg = { t: string; r: "def" | "sec" | "acc" | "mut" | "str"; b?: boolean };
 
-// Typewriter (code showcase): a REAL Qubic dynamic contract (qpi.h) — not Solidity.
+// Typewriter (code showcase): a REAL Qubic contract (qpi.h) — not Solidity.
 export const TYPE_SEG: Seg[] = [
   { t: "struct ", r: "sec", b: true },
   { t: "Counter", r: "acc", b: true },

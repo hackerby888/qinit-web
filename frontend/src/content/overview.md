@@ -4,7 +4,7 @@ group: Getting Started
 order: 1
 ---
 
-Qinit is one CLI for building, testing, deploying, and inspecting **Qubic dynamic contracts**.
+Qinit is one CLI for building, testing, deploying, and inspecting **Qubic contracts**.
 
 ## Install
 
@@ -28,18 +28,25 @@ The installer runs `qinit setup` and caches the Qubic headers, local node, Wasm 
 
 ```bash
 qinit new counter && cd counter
-qinit runtime simulator
-qinit compiler typescript
 qinit node run
 qinit dev
 ```
 
-The simulator and TypeScript compiler give you the shortest edit-test loop. Check production-shaped builds with Clang and Core when your contract is ready.
+Out of the box Qinit runs the in-process **simulator** and compiles with its **TypeScript compiler**. That is the shortest edit-test loop, and it needs no setup.
+
+Before you ship, check the same contract with Clang and a real Core node:
+
+```bash
+qinit compiler clang
+qinit runtime core
+```
+
+Both choices are saved. To switch for one command only, pass `--compiler` or `--runtime` to that command.
 
 ## The Qubic model
 
-- Contracts are QPI C++ headers compiled to Wasm.
-- A dynamic contract lives at a numbered **slot**. Redeploying the same name reuses its slot.
+- Contracts are QPI C++ headers. Qinit compiles them to Wasm for your local node.
+- A contract lives at a numbered **slot**. Redeploying the same name reuses its slot.
 - A **function** reads immediately. A **procedure** is a signed transaction processed at a future tick.
 - Inputs use QPI types such as `uint64`, `sint64`, `id`, `bit`, and `m256i`.
 

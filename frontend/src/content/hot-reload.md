@@ -15,16 +15,16 @@ qinit dev
 
 The contract name keeps its slot, so call commands do not change.
 
-Redeploy does not rerun `INITIALIZE`. Existing state bytes are preserved; when `StateData` changes shape, add `OldStateData` and `MIGRATE()` instead of relying on byte overlap.
+Redeploy does not rerun `INITIALIZE`, and existing state is kept. When `StateData` changes shape, Qinit refuses the redeploy until the contract says how to carry the old state over. See [Migrate state](/docs/migrate-state).
 
-## Fastest loop
+## Start clean
 
 ```bash
-qinit runtime simulator
-qinit compiler typescript
 qinit node run --restart
 qinit dev
 ```
+
+`--restart` throws the chain away and starts a fresh one, so the next deploy runs `INITIALIZE` again.
 
 Press `q` to stop the watcher. Stop the background node separately:
 

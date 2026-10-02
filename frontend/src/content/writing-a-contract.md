@@ -9,9 +9,11 @@ A Qinit contract is one QPI C++ header. `qinit new counter` creates `contracts/C
 ```cpp
 using namespace QPI;
 
-struct CONTRACT_STATE2_TYPE {};
+struct Counter2
+{
+};
 
-struct CONTRACT_STATE_TYPE : public ContractBase
+struct Counter : public ContractBase
 {
     struct StateData
     {
@@ -64,7 +66,7 @@ The project root also has `qinit.json`, so commands need no repeated flags:
 - `PUBLIC_PROCEDURE` may write with `state.mut()`.
 - Registration assigns a numeric ID. Function and procedure IDs are separate, so both can use `1`.
 - `INITIALIZE` sets state on the first deployment.
-- The empty `CONTRACT_STATE2_TYPE` is part of the Core contract shape; keep it in the file.
+- The empty `Counter2` struct is part of the Core contract shape; keep it in the file.
 
 Use QPI fixed-width types and containers: `uint64`, `sint32`, `id`, `bit`, `Array`, `HashMap`, and friends.
 
@@ -95,5 +97,40 @@ Then check and build it:
 
 ```bash
 qinit verify
+```
+
+```text
+✓ protocol rules  passed — complies with qpi.h restrictions
+```
+
+```bash
 qinit build
 ```
+
+```text
+[built ✓ (TypeScript)]
+╭───────────────────────────────────────────────────────────────────────────╮
+│ wasm /home/you/counter/dist/contracts/Counter.wasm                        │
+│ size 4438 bytes                                                           │
+│ k12  8dbf57bb8dc1f7a4eb971ccc10529c8ccc1d91d79c920aa66bbb9d7fe5c2a81e     │
+╰───────────────────────────────────────────────────────────────────────────╯
+```
+
+Deploy it and pass the amount with `--in`:
+
+```bash
+qinit deploy
+qinit call --proc Counter Inc --in 5
+qinit call --fn Counter Get
+```
+
+```text
+✓ Counter.Inc   processed
+  tx   docetjjnmtygnappzrxzfhvgickfpbffiyklpsevgacmcybejvckjrchlsug
+  tick 2716
+
+✓ Counter.Get
+  out 5
+```
+
+Qinit knows `amount` is a `uint64` from the contract, so the value is all you type. See [Call values](/docs/call-values).

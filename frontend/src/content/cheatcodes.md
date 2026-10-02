@@ -63,15 +63,17 @@ struct Tally : public ContractBase
 
 ```bash
 qinit deploy
-qinit call --proc Tally Add --args '{"amount":"5"}' --trace
+qinit call --proc Tally Add --in 5 --trace
 ```
 
 ```text
-✓ Tally proc#1 (Add) 674µs · tick 3685
+✓ Tally proc#1 (Add) 422µs · tick 2760
   in     5
+  out    {}
+  caller SINUBYSBZKBSVEFQDZBQWUEJWRXCXOZNKPHIXDZWRBKXDSPJEHFAMBACXHUN
   state
     total 0 → 5
-  print  :19 adding 5 from BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK
+  print  :19 adding 5 from SINUBYSBZKBSVEFQDZBQWUEJWRXCXOZNKPHIXDZWRBKXDSPJEHFAMBACXHUN
   print  :21 total is now 5
 ```
 
@@ -80,11 +82,14 @@ Each print shows its source line. Prints also appear live in `qinit debug Tally`
 ## Catch a broken assumption
 
 ```bash
-qinit call --fn Tally Get --args '{"expected":"5"}'
-qinit call --fn Tally Get --args '{"expected":"6"}'
+qinit call --fn Tally Get --in 5
+qinit call --fn Tally Get --in 6
 ```
 
 ```text
+✓ Tally.Get
+  out 5
+
 ✗ call
   querySmartContract: code=-1 Error calling smart contract function:
   abort(0xCC00001A)

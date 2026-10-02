@@ -19,7 +19,10 @@ qinit node stop
 ```bash
 qinit call --proc Counter Inc
 qinit call --fn Counter Get
+qinit call --proc Balances Set --in "0, 100"
 ```
+
+`--in` takes the input values. See [Call values](/docs/call-values).
 
 ## Create and develop
 
@@ -36,14 +39,14 @@ Use `qinit test` for Bun integration tests against a deployed contract. Use `qin
 ## Choose a backend
 
 ```bash
-qinit runtime core
 qinit runtime simulator
+qinit runtime core
 
-qinit compiler clang
 qinit compiler typescript
+qinit compiler clang
 ```
 
-`core` and `clang` are the defaults. The simulator plus TypeScript compiler is the quickest local loop; both compilers accept the same QPI C++ contract header.
+`simulator` and `typescript` are the defaults, the quickest local loop. Both compilers accept the same QPI C++ contract header. Most build commands also take `--compiler` for one run; `node run` and `test` take `--runtime`.
 
 ## Inspect the node
 
@@ -70,8 +73,8 @@ Skip ahead instead of waiting for tick and epoch hooks. See [Control the local c
 
 ```bash
 qinit oracle pending
-qinit oracle resolve <queryId> --reply "6512345sint64, 100sint64"
-qinit oracle serve --reply "6512345sint64, 100sint64"
+qinit oracle resolve <queryId> --reply "6512345, 100"
+qinit oracle serve --reply "6512345, 100"
 ```
 
 A local node has no oracle machine, so you answer queries yourself. See [Use oracles](/docs/oracles).
@@ -106,7 +109,7 @@ qinit deploy --state counter.bin
 qinit deploy --allow-state-carryover
 ```
 
-See [Control the local chain](/docs/local-chain) for how `MIGRATE` and state files fit together.
+See [Control the local chain](/docs/local-chain) for system contracts, and [Migrate state](/docs/migrate-state) for how `MIGRATE` and state files fit together.
 
 ## Native Core integration
 
@@ -116,7 +119,7 @@ qinit integrate contracts/MyToken.h \
   --construction-epoch 200
 ```
 
-`integrate` edits a Qubic Core checkout for a native contract build. It is not a dynamic Wasm deployment.
+`integrate` adds the contract to a Qubic Core checkout, ready for a pull request. See [Ship to Qubic Core](/docs/core-integration).
 
 ## JSON for scripts
 

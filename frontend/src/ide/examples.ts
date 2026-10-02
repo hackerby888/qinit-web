@@ -1,4 +1,4 @@
-// Starter contracts shown in the IDE file tree. Each is a real, qpi.h-constrained dynamic contract
+// Starter contracts shown in the IDE file tree. Each is a real, qpi.h-constrained contract
 // (the `CONTRACT_STATE_TYPE` macro form the build wrapper concretizes — identical to `qinit new`).
 export interface Example {
   file: string;
@@ -7,7 +7,7 @@ export interface Example {
   source: string;
 }
 
-const counter = `// Counter — the minimal dynamic contract. State lives on-chain; a procedure mutates it,
+const counter = `// Counter — the minimal contract. State lives on-chain; a procedure mutates it,
 // a function reads it. Compiles to wasm and runs in this page, byte-identical to the node.
 using namespace QPI;
 

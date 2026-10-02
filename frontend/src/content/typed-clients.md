@@ -6,14 +6,26 @@ order: 6
 
 ## Generate a client
 
-First find the deployed slot, then generate against that slot:
+Deploy first, then generate:
 
 ```bash
-qinit ls
-qinit gen --slot 29
+qinit deploy
+qinit gen
 ```
 
-Replace `29` with your contract's slot. `qinit gen` writes:
+```text
+[client generated ✓]
+╭──────────────────────────────────────────────────────────────────╮
+│ contract  Counter                                                │
+│ slot      31                                                     │
+│ fns/procs 1 / 1                                                  │
+│ file      /home/you/counter/dist/clients/Counter.ts              │
+│                                                                  │
+│ import { Counter } from "/home/you/counter/dist/clients/Counter" │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+`qinit gen` writes:
 
 ```text
 dist/clients/Counter.ts
@@ -47,11 +59,18 @@ The local test node can provide a funded development seed. For another node, pas
 
 ## Slot matters
 
-The generated class remembers its slot. `qinit gen` does not look up the live deployment; without `--slot` (or a project slot), it targets the first dynamic slot, currently 29. Pass `--slot` when the deployed contract lives elsewhere. You can still override it at runtime:
+The generated class remembers its slot. `qinit gen` uses the slot your last `qinit deploy` recorded for the contract; it does not ask the node. Pass `--slot` when the contract lives somewhere else, for example on another node:
+
+```bash
+qinit ls
+qinit gen --slot 34
+```
+
+You can still override it at runtime:
 
 ```ts
 const counter = new Counter({
-  index: 30,
+  index: 34,
   seed: process.env.QUBIC_SEED,
 });
 ```

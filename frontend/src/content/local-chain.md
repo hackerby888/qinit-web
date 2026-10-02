@@ -59,17 +59,42 @@ struct Clock : public ContractBase
 ```bash
 qinit deploy
 qinit tick
+```
+
+```text
+epoch           1
+tick            2866
+epoch last tick 5401
+ticks left      2535
+epoch length    2701 ticks
+```
+
+```bash
 qinit tick advance 100
+```
+
+```text
+tick     2866 → 2966
+advanced 100
+```
+
+```bash
 qinit epoch advance
+```
+
+```text
+epoch                1 → 2
+tick                 2967 → 5403
+new epoch start tick 5403
+```
+
+```bash
 qinit call --fn Clock Now
 ```
 
 ```text
-epoch                4 → 5
-tick                 11756 → 13509
-new epoch start tick 13509
-
-out  {epochsSeen: 1, lastEpoch: 5, lastTick: 13522}
+✓ Clock.Now
+  out {epochsSeen: 1, lastEpoch: 2, lastTick: 5405}
 ```
 
 - `qinit tick` (or `qinit epoch`) shows the current tick, epoch, and ticks left in the epoch.
@@ -92,49 +117,40 @@ qinit node stop
 
 ## System contracts
 
-Qubic's built-in contracts (QX, QUTIL, …) are loaded only when you ask for them on the simulator:
+System contracts are the contracts already live on mainnet: QX, QUTIL, QEARN, and the rest. Their code ships inside the node, and each one sits at its mainnet slot. On the simulator they are loaded only when you ask for them:
 
 ```bash
 qinit system ls
+```
+
+```text
+slot  contract     state   (add: qinit system add <name…>)
+•  1  QX           available
+•  2  QTRY         available
+•  3  RANDOM       available
+•  4  QUTIL        available
+…
+```
+
+```bash
 qinit system add QX
+```
+
+```text
+✓ QX @ 1 deployed · contracts/system_scs/Qx.h
+✓ qinit.json system += QX
+```
+
+```bash
 qinit system rm QX
 ```
 
-`add` deploys the contract and any contracts it depends on, and records the choice in `qinit.json` so the next simulator start loads it again. `rm` refuses while a deployed contract still calls it. Pass `--force` to remove it anyway. On the core runtime, system contracts are always built in.
-
-## Upgrade state safely
-
-Redeploying keeps a contract's state. If you change `StateData`, the old bytes no longer fit, so Qinit refuses:
-
 ```text
-state layout changed — was 8 B (uint64), now 16 B (uint64, uint64) — and
-Tally has no MIGRATE handler, so the old state bytes would be reinterpreted
-under the new offsets.
+✓ QX @ 1 removed
 ```
 
-Describe the old layout and move the data over in `MIGRATE`:
+`add` deploys the contract at its mainnet slot, along with any contracts it depends on, and records the choice in `qinit.json` so the next simulator start loads it again. `rm` refuses while a deployed contract still calls it. Pass `--force` to remove it anyway. On the core runtime, system contracts are always built in.
 
-```cpp
-struct OldStateData
-{
-    uint64 total;
-};
+## Upgrade and move state
 
-MIGRATE()
-{
-    state.mut().total = oldState.total;
-}
-```
-
-To keep the old bytes as they are, redeploy with `--allow-state-carryover`. To start clean, run `qinit node run --restart`.
-
-## Save and load state
-
-Snapshot a contract's state, and later deploy from it instead of running `INITIALIZE`:
-
-```bash
-qinit state Tally --dump --out tally.bin
-qinit deploy --state tally.bin
-```
-
-If the file's size matches the current `StateData`, it is loaded as-is. If it matches `OldStateData`, `MIGRATE` runs on it. Any other size is rejected. A core node's `contract????.???` state file works too. For a system contract, use `qinit system add QX --state QX=qx.bin`.
+Redeploying keeps a contract's state. Changing `StateData`, saving state to a file, and starting a contract from one are covered in [Migrate state](/docs/migrate-state).

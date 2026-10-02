@@ -107,21 +107,32 @@ qinit oracle pending
 `--amount 10` funds the query fee. Without it the query is refused and `queryId` is `-1`.
 
 ```text
-#6058051375104 Price  slot 31  query 6d6f636b0000000000000000… (104 B)
+#5832565592064 Price  slot 31  query 6d6f636b0000000000000000… (104 B)
 ```
 
-Answer it. The reply uses the same value format as `call --in` ([Call values](/docs/call-values)):
+Answer it. The reply is written like `call --in`: one value per field of the interface's reply ([Call values](/docs/call-values)):
 
 ```bash
-qinit oracle resolve 6058051375104 --reply "6512345sint64, 100sint64"
+qinit oracle resolve 5832565592064 --reply "6512345, 100"
+```
+
+```text
+query     5832565592064
+interface Price
+reply     d95e6300000000006400000000000000
+accepted  yes — the contract is notified once the reply is revealed
+```
+
+```bash
 qinit call --fn BtcPrice Get
 ```
 
 ```text
-out  {queryId: 6058051375104, status: 3, numerator: 6512345, denominator: 100}
+✓ BtcPrice.Get
+  out {queryId: 5832565592064, status: 3, numerator: 6512345, denominator: 100}
 ```
 
-The price is `6512345 / 100` = 65 123.45 USDT. The reply is checked against the interface before it is sent:
+The price is `6512345 / 100` = 65 123.45 USDT. The reply is checked against the interface before it is sent, so a value of the wrong type is refused:
 
 ```text
 ERROR: input.numerator is sint64, got '65000uint64'
@@ -133,13 +144,13 @@ ERROR: input.numerator is sint64, got '65000uint64'
 While you iterate, let Qinit answer every query:
 
 ```bash
-qinit oracle serve --reply "6600000sint64, 100sint64"
+qinit oracle serve --reply "6600000, 100"
 ```
 
 To answer several interfaces at once, give each interface its own reply in a rules file:
 
 ```bash
-echo '{ "Price": "6512345sint64, 100sint64" }' > oracle.json
+echo '{ "Price": "6512345, 100" }' > oracle.json
 qinit oracle serve --rules oracle.json
 ```
 
@@ -150,6 +161,13 @@ qinit oracle serve --rules oracle.json
 ```bash
 qinit call --proc BtcPrice Ask --amount 10
 qinit oracle resolve <queryId> --status unavailable
+```
+
+```text
+query     5858335395840
+interface Price
+reply     none (reported unavailable)
+accepted  yes — the contract is notified once the reply is revealed
 ```
 
 This reports that there is no answer. The query stays `PENDING` until its timeout, and then `OnPrice` runs with status `4` (`TIMEOUT`) and an empty reply. A single machine can't produce `UNRESOLVABLE`. That status only happens when computors disagree.

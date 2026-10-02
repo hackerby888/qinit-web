@@ -7,13 +7,36 @@ order: 5
 ## Read contract state
 
 ```bash
-qinit ls
 qinit state Counter
 ```
 
-For a deployed dynamic contract, Qinit decodes the source registered by the node against the configured QPI headers. A local `qinit.idl.json` is not used for decoded state.
+```text
+• Counter state
+  counter 1
+```
 
-Large containers stay collapsed until you ask for them:
+Qinit decodes the state from the contract source the node holds, so the fields always match what is deployed. A local `qinit.idl.json` is not used for decoded state.
+
+Containers are listed with their occupancy, and long empty runs are skipped:
+
+```bash
+qinit state Balances
+```
+
+```text
+• Balances state
+  total 125
+
+[1] balances · 2 entries · 1022/1024 slots unoccupied
+  slot[0]          AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFXIB
+                   = 100
+  slots[1..286]    (unoccupied ×286; skipped)
+  slot[287]        BZBQFLLBNCXEMGLOBHUVFTLUPLVCPQUASSILFABOFFBCADQSSUPNWLZBQEXK
+                   = 25
+  slots[288..1023] (unoccupied ×736; skipped)
+```
+
+A large container stays collapsed until you ask for it by its index, or for all of them:
 
 ```bash
 qinit state Balances --container 1
@@ -24,17 +47,43 @@ Use a digest when you only need to compare state, or dump the exact bytes for of
 
 ```bash
 qinit state Counter --digest
+```
+
+```text
+[state digest ✓]
+╭───────────────────────────────────────────────────────────────────────────╮
+│ slot       31                                                             │
+│ state size 8                                                              │
+│ digest     4e34329a1bac6e80862edb5e727be3d…d1169670a179622a21be84ff826f6e │
+╰───────────────────────────────────────────────────────────────────────────╯
+```
+
+```bash
 qinit state Counter --dump --out counter-state.bin
 ```
+
+A dumped file can start a contract later. See [Migrate state](/docs/migrate-state).
 
 ## Trace one call
 
 ```bash
 qinit call --proc Counter Inc --trace
-qinit call --fn Counter Get --trace-full
 ```
 
-`--trace` shows the captured invocation: entry, nested calls, logs, and state changes. `--trace-full` also expands container details. It implies `--trace`.
+```text
+✓ Counter.Inc   processed
+  tx   yeoftyjhyhdhvfnyuhyebbszetgaocdzkqowofljehibsenxvhubhrxgagef
+  tick 2777
+
+✓ Counter proc#1 (Inc) 61µs · tick 2777
+  in     {}
+  out    {}
+  caller SINUBYSBZKBSVEFQDZBQWUEJWRXCXOZNKPHIXDZWRBKXDSPJEHFAMBACXHUN
+  state
+    counter 1 → 2
+```
+
+`--trace` shows the captured invocation: entry, input and output, caller, nested calls, logs, and state changes. `--trace-full` also expands container details. It implies `--trace`.
 
 The state shown in a trace is the change recorded for that call. Use `qinit state` when you want the contract's current state.
 
