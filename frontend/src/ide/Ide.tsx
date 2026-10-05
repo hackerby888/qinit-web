@@ -2654,6 +2654,16 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       eng.onTick = (info) => { if (active()) setEngineInfo(info); };
       eng.onMemory = (usage) => { if (active()) setEngineMemory(memorySnapshot(usage)); };
       eng.onLog = (e) => { if (active()) setEngineLog((l) => [...l.slice(-999), e]); }; // buffer the engine's diagnostic stream for the popup
+      // The node was rebuilt after a stopped or timed-out call. When its earlier calls could not be replayed the chain is
+      // at genesis again, so what the page shows of them goes too.
+      eng.onRestart = (historyKept) => {
+        if (!active()) return;
+        if (!historyKept) {
+          clearSession();
+          appendLog("the earlier calls could not be replayed after the restart — the chain is back at genesis, contracts deployed");
+        }
+        void guarded("refresh", refreshEngineViews);
+      };
       // A fault is terminal — the chain stops. Usually the contract trapping rather than a Qinit bug, so
       // this is a toast, not a crash report; the engine log carries it into one if a real crash follows.
       eng.onFault = (f) => {

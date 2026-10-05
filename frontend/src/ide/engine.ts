@@ -38,6 +38,8 @@ export interface IdeEngineOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+// A call replayed while the node is rebuilt ran in milliseconds the first time; one that takes this long is the code that hung.
+const RECOVERY_STEP_TIMEOUT_MS = 5_000;
 
 export class IdeEngine {
   onTick: ((info: EngineTickInfo) => void) | null = null;
@@ -45,6 +47,9 @@ export class IdeEngine {
   onLog: ((event: EngineLogEvent) => void) | null = null;
   onMemory: ((usage: EngineMemoryUsage) => void) | null = null;
   onFault: ((fault: EngineFaultInfo) => void) | null = null;
+  // The node was rebuilt after a call that never returned. `historyKept` is false when the session's earlier calls
+  // could not be replayed, and the chain is back at genesis with the contracts deployed.
+  onRestart: ((historyKept: boolean) => void) | null = null;
 
   private readonly workerFactory?: () => Worker;
   private readonly timeoutMs: number;
@@ -181,40 +186,55 @@ export class IdeEngine {
 
   private async restoreWorker(): Promise<void> {
     this.recoveringNow = true;
+    let historyKept = true;
     try {
-      this.spawnWorker();
-      if (this.pendingEpochLengthValue !== null) await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
-      if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
-      for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
-
-      const images = [...this.deployments.values()]
-        .sort((a, b) => a.slot - b.slot)
-        .map(({ slot, wasm, name }) => ({ slot, wasm: wasm.slice(), name }));
-      await this.workerCallRaw("reset", [images]);
-      for (const [id, amount] of this.extraFunds) await this.workerCallRaw("fundAccount", [id, amount]);
-      for (const step of this.historyValue) {
-        await this.workerCallRaw("submitProcedure", [step.slot, step.procId, step.entry, step.input, step.key, step.caller, step.contract]);
+      try {
+        await this.rebuildWorker(this.historyValue);
+      } catch {
+        // A replayed call did not come back: the contract that hung is still deployed, and the session's calls run
+        // through it. Keep the contracts and start them from genesis, rather than wait out every call and end on an empty node.
+        historyKept = false;
+        this.historyValue = [];
+        await this.rebuildWorker([]);
       }
-      this.assetsValue = await this.workerCallRaw<AssetView[]>("assets", []);
-      await this.workerCallRaw("setSpeed", [this.speedMs]);
-      if (this.running) await this.workerCallRaw("resume", []);
-      else await this.workerCallRaw("pause", []);
     } finally {
       this.recoveringNow = false;
       this.onMemory?.(this.memoryValue);
     }
+    this.onRestart?.(historyKept);
   }
 
-  private async workerCallRaw<T>(method: EngineMethod, args: unknown[]): Promise<T> {
+  // A fresh worker holding what this session deployed and funded, with `steps` replayed on top.
+  private async rebuildWorker(steps: ReplayStep[]): Promise<void> {
+    this.spawnWorker();
+    if (this.pendingEpochLengthValue !== null) await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
+    if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
+    for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
+
+    const images = [...this.deployments.values()]
+      .sort((a, b) => a.slot - b.slot)
+      .map(({ slot, wasm, name }) => ({ slot, wasm: wasm.slice(), name }));
+    await this.workerCallRaw("reset", [images]);
+    for (const [id, amount] of this.extraFunds) await this.workerCallRaw("fundAccount", [id, amount]);
+    for (const step of steps) {
+      await this.workerCallRaw("submitProcedure", [step.slot, step.procId, step.entry, step.input, step.key, step.caller, step.contract], Math.min(this.timeoutMs, RECOVERY_STEP_TIMEOUT_MS));
+    }
+    this.assetsValue = await this.workerCallRaw<AssetView[]>("assets", []);
+    await this.workerCallRaw("setSpeed", [this.speedMs]);
+    if (this.running) await this.workerCallRaw("resume", []);
+    else await this.workerCallRaw("pause", []);
+  }
+
+  private async workerCallRaw<T>(method: EngineMethod, args: unknown[], timeoutMs = this.timeoutMs): Promise<T> {
     const worker = this.worker ?? this.spawnWorker();
     const id = ++this.seq;
     const request: EngineRequest = { id, kind: "call", method, args };
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (!this.pending.has(id)) return;
-        const error = new Error(`virtual node ${method} timed out after ${this.timeoutMs}ms; worker restarted`);
+        const error = new Error(`virtual node ${method} timed out after ${timeoutMs}ms; worker restarted`);
         this.failWorker(error);
-      }, this.timeoutMs);
+      }, timeoutMs);
       this.pending.set(id, { resolve: (value) => resolve(value as T), reject, timer });
       try {
         worker.postMessage(request);

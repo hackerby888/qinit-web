@@ -139,6 +139,66 @@ test("a timed-out call terminates the wedged worker and restores a fresh one", a
   expect(workers.length).toBe(2);
 });
 
+// The recovery replays the session's calls. When the contract that hung is one they run through, the replay hangs too:
+// it once waited out a full timeout per call and then left the page on an empty node, without a word.
+test("a recovery whose replay hangs falls back to genesis at once, and says the history is gone", async () => {
+  const workers: FakeWorker[] = [];
+  // worker 0 hangs on the read; worker 1 (the first rebuild) hangs on the replayed write; worker 2 answers everything.
+  const hangs: string[][] = [["callFunction"], ["submitProcedure"], []];
+  const engine = new IdeEngine({
+    timeoutMs: 15,
+    workerFactory: () => {
+      const stuck = hangs[workers.length] ?? [];
+      const worker = new FakeWorker(true);
+      const answer = worker.postMessage.bind(worker);
+      worker.postMessage = (message) => (stuck.includes(message.method) ? void worker.calls.push(message) : answer(message));
+      workers.push(worker);
+      return workerAsBrowser(worker);
+    },
+  });
+  const restarts: boolean[] = [];
+  engine.onRestart = (historyKept) => restarts.push(historyKept);
+  const entry = { name: "Inc", in: "", out: "", inFields: [], outFields: [] };
+
+  await engine.submitProcedure(28, "1", entry, {}, "Counter:p:1", { seed: "a".repeat(55), amount: 0 }, { name: "Counter", source: "" });
+  expect(engine.exportHistory()).toHaveLength(1);
+
+  await expect(engine.callFunction(28, "1", entry, {})).rejects.toThrow(/timed out.*worker restarted/);
+  await engine.info(); // waits for the recovery
+
+  expect(restarts).toEqual([false]);
+  expect(engine.exportHistory()).toEqual([]);
+  expect(workers.map((worker) => worker.terminated)).toEqual([true, true, false]);
+  expect(workers[2].calls.map((call) => call.method)).toContain("reset");
+  expect(workers[2].calls.some((call) => call.method === "submitProcedure")).toBe(false);
+});
+
+test("a recovery whose replay answers keeps the history", async () => {
+  const workers: FakeWorker[] = [];
+  const engine = new IdeEngine({
+    timeoutMs: 15,
+    workerFactory: () => {
+      const first = workers.length === 0;
+      const worker = new FakeWorker(true);
+      const answer = worker.postMessage.bind(worker);
+      worker.postMessage = (message) => (first && message.method === "callFunction" ? void worker.calls.push(message) : answer(message));
+      workers.push(worker);
+      return workerAsBrowser(worker);
+    },
+  });
+  const restarts: boolean[] = [];
+  engine.onRestart = (historyKept) => restarts.push(historyKept);
+  const entry = { name: "Inc", in: "", out: "", inFields: [], outFields: [] };
+
+  await engine.submitProcedure(28, "1", entry, {}, "Counter:p:1", { seed: "a".repeat(55), amount: 0 }, { name: "Counter", source: "" });
+  await expect(engine.callFunction(28, "1", entry, {})).rejects.toThrow(/timed out/);
+  await engine.info();
+
+  expect(restarts).toEqual([true]);
+  expect(engine.exportHistory()).toHaveLength(1);
+  expect(workers[1].calls.filter((call) => call.method === "submitProcedure")).toHaveLength(1);
+});
+
 test("a disposed engine cannot restart its worker", async () => {
   const workers: FakeWorker[] = [];
   const engine = new IdeEngine({
