@@ -35,7 +35,7 @@ import { definitionOffset } from "./qpi/definition";
 import { base64ToBytes, fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type CompileResult, type SystemContractEntry } from "./api";
 import { compileInBrowser, getCompilerInfo } from "./compile/local";
 import type { CompilerInfo } from "@qinit/compiler/browser";
-import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineLogEvent, EngineMemoryUsage } from "./engine";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineFaultInfo, EngineLogEvent, EngineMemoryUsage, EngineTickInfo } from "./engine";
 import { Debugger } from "./Debugger";
 import { SystemSourceView } from "./SystemSourceView";
 import { TxExplorer, type TxRow } from "./TxExplorer";
@@ -56,7 +56,9 @@ import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
 import { ScenarioPanel, compare, uid, type Scenario, type AssertStep, type AssertResult, type CallStep } from "./scenarios";
 import { InputFields } from "./InputFields";
-import { buildInput, inputToDraft, type InputDraft } from "./input-values";
+import { buildInput, inputToDraft, parseQu, type InputDraft } from "./input-values";
+import { nameOutput, outputText } from "./output-values";
+import { failureLine, faultLine } from "./fault";
 import { getStore } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
@@ -137,7 +139,7 @@ function CollabBar({ status, peers, mode, selfName, selfColor }: { status: Colla
 }
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
-const fmtQus = (b?: string): string => (b === undefined ? "…" : Number(b).toLocaleString("en-US"));
+const fmtQus = (b?: string): string => (b === undefined ? "…" : BigInt(b).toLocaleString("en-US"));
 
 // A 32-byte id as hex → bytes. Asset issuer/owner ids cross from the engine as hex; the panel needs raw bytes
 // to tell a contract id apart from a wallet and to derive the Qubic identity.
@@ -448,7 +450,10 @@ const fieldInput = (): CSSProperties => ({
   outline: "none",
 });
 
-function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDebug }: {
+// How long a call may run before the row offers to stop it.
+const STOP_OFFER_MS = 2000;
+
+function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onStop, onDebug }: {
   kind: "function" | "procedure";
   id: string;
   entry: IdlEntry;
@@ -456,12 +461,23 @@ function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDeb
   disabled: boolean;
   output?: string;
   detail?: TxDetail;
-  onRun: (input: InputDraft, value: number) => void;
+  onRun: (input: InputDraft, value: string) => void;
+  onStop: () => void;
   onDebug?: (steps: DebugStep[], title: string) => void;
 }) {
   const [vals, setVals] = useState<InputDraft>({});
   const [value, setValue] = useState(""); // empty, so the "0" placeholder shows as a hint
+  const [slow, setSlow] = useState(false);
   const accent = kind === "function" ? color.accent : color.secondary;
+
+  useEffect(() => {
+    setSlow(false);
+    if (!busy) {
+      return;
+    }
+    const timer = setTimeout(() => setSlow(true), STOP_OFFER_MS);
+    return () => clearTimeout(timer);
+  }, [busy]);
 
   return (
     <div style={{ borderLeft: `3px solid ${accent}`, border: `1px solid ${color.hair}`, borderLeftWidth: 3, background: color.panel, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
@@ -469,11 +485,14 @@ function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDeb
         <span style={{ width: 7, height: 7, background: accent, flex: "none" }} />
         <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
         <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>#{id} · {kind === "function" ? "read" : "write"}</span>
+        {busy && slow && (
+          <button onClick={onStop} title="Stop this call — the chain is rebuilt from the session's earlier calls" style={{ marginLeft: "auto", border: `1px solid ${color.hair2}`, background: color.void, color: "#f85149", fontFamily: font.mono, fontSize: 11, padding: "3px 8px", cursor: "pointer" }}>■ stop</button>
+        )}
         <button
-          onClick={() => onRun(vals, Number(value) || 0)}
+          onClick={() => onRun(vals, value)}
           disabled={disabled}
           aria-busy={busy}
-          style={{ marginLeft: "auto", minWidth: 64, border: `2px solid ${color.ink}`, background: accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 10px", cursor: disabled ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: disabled && !busy ? 0.55 : 1 }}
+          style={{ marginLeft: busy && slow ? 0 : "auto", minWidth: 64, border: `2px solid ${color.ink}`, background: accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 10px", cursor: disabled ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: disabled && !busy ? 0.55 : 1 }}
         >
           {busy ? <><LoaderCircle className="pix-call-spinner" size={13} strokeWidth={2.5} /><span>{kind === "function" ? "Calling" : "Running"}</span></> : kind === "function" ? "Call" : "Run"}
         </button>
@@ -504,6 +523,14 @@ function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onDeb
           {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.text}</div>)}
           {detail.hostCalls.map((h, i) => <div key={`h${i}`} style={{ color: color.textMutedDk }}>host {h}</div>)}
           {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
+          {detail.callees.map((callee) => (
+            <div key={callee.seq} style={{ paddingLeft: 10, borderLeft: `1px solid ${color.hair2}`, marginTop: 2 }}>
+              <div style={{ color: color.textMutedDk }}>↳ {callee.contract}.{callee.label}{callee.ok ? "" : " (failed)"}</div>
+              {callee.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.text}</div>)}
+              {callee.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
+            </div>
+          ))}
+          {detail.prints.map((line, i) => <div key={`p${i}`} style={{ color: color.yellow, whiteSpace: "pre-wrap" }}>print {line}</div>)}
         </div>
       )}
     </div>
@@ -600,7 +627,7 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
   caller: string;
   onSelect: (id: string) => void;
   balances: Record<string, string>;
-  onFund: (id: string, qus: number) => void;
+  onFund: (id: string, qus: string) => void;
 }) {
   const [amount, setAmount] = useState("1000000000");
   const [copied, setCopied] = useState(false);
@@ -633,7 +660,7 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput()} />
-          <NeoBtn onClick={() => onFund(caller, Number(amount) || 0)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
+          <NeoBtn onClick={() => onFund(caller, amount)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
         </div>
     </div>
   );
@@ -644,10 +671,10 @@ function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
 function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onToggle, onStep, onEpoch, onEpochLen, onReset, onReplay, onSpeed }: {
   paused: boolean;
   speed: number;
-  info: { tick: number; epoch: number } | null;
+  info: EngineTickInfo | null;
   epochLen: number;
   pendingEpochLen: number;
-  onEpochLen: (ticks: number) => void;
+  onEpochLen: (typed: string) => void;
   onToggle: () => void;
   onStep: (n: number) => void;
   onEpoch: () => void;
@@ -656,8 +683,8 @@ function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onTogg
   onSpeed: (ticksPerSec: number) => void;
 }) {
   const tick = info?.tick ?? 0;
-  const within = epochLen > 0 ? tick % epochLen : 0;
-  const nextBoundary = tick + (epochLen > 0 ? epochLen - within : 1);
+  // the node's own epoch bounds: the first tick moves with every switch, so `tick % length` drifts.
+  const within = info ? Math.min(epochLen, tick - info.epochFirstTick) : 0;
   const pct = epochLen > 0 ? (within / epochLen) * 100 : 0;
   return (
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -678,8 +705,8 @@ function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onTogg
             type="number"
             min={1}
             value={pendingEpochLen}
-            onChange={(e) => onEpochLen(Number(e.target.value))}
-            title="Ticks per epoch. A short epoch reaches END_EPOCH without ticking three thousand times."
+            onChange={(e) => onEpochLen(e.target.value)}
+            title="Ticks per epoch. A short epoch reaches END_EPOCH without ticking thousands of times."
             style={{ width: 62, border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}
           />
           {pendingEpochLen !== epochLen && <span style={{ color: color.secondary }}>applies on ↺ reset</span>}
@@ -689,7 +716,7 @@ function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onTogg
           <NeoBtn onClick={onToggle} active={paused} title={paused ? "Resume auto-tick" : "Pause auto-tick"}>{paused ? "▶ run" : "⏸ pause"}</NeoBtn>
           <NeoBtn onClick={() => onStep(1)} title="Advance 1 tick">⏭ +1</NeoBtn>
           <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks"><span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#f5a623" }}><FastForward size={11} fill="#f5a623" /> +10</span></NeoBtn>
-          <NeoBtn onClick={onEpoch} accent={color.secondary} title={`Jump to tick ${nextBoundary} (the next epoch boundary) — fires END_EPOCH → BEGIN_EPOCH`}>⤓ epoch</NeoBtn>
+          <NeoBtn onClick={onEpoch} accent={color.secondary} title={`Jump into epoch ${(info?.epoch ?? 0) + 1} — fires END_EPOCH → BEGIN_EPOCH`}>⤓ epoch</NeoBtn>
           <NeoBtn onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset</NeoBtn>
           <NeoBtn onClick={onReplay} title="Replay every tx this session from genesis">↻ replay</NeoBtn>
           <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
@@ -708,11 +735,20 @@ function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onTogg
 
 // The deployed-contracts list (Remix's "Deployed Contracts") — each compile&deploy registers one; click
 // to drive its call form.
-function DeployedList({ deployed, selected, onSelect }: {
+function DeployedList({ deployed, selected, balances, onSelect }: {
   deployed: Record<string, DeployedContract>;
   selected: string | null;
+  balances: Record<string, string>;
   onSelect: (name: string) => void;
 }) {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyAddress = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(address);
+      setTimeout(() => setCopied(null), 1200);
+    } catch {}
+  };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {Object.values(deployed).map((d) => {
@@ -728,7 +764,15 @@ function DeployedList({ deployed, selected, onSelect }: {
               <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
               <span style={{ color: color.textGhostDk, fontSize: 10 }}>slot {d.slot}</span>
               <span style={{ marginLeft: "auto", color: color.textGhostDk, fontSize: 10 }}>{shortId(d.address)}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); void copyAddress(d.address); }}
+                title={copied === d.address ? "Copied!" : "Copy the contract's full 60-char address"}
+                style={{ flex: "none", display: "flex", alignItems: "center", border: "none", background: "transparent", color: copied === d.address ? color.accent : color.textGhostDk, cursor: "pointer", padding: 0 }}
+              >
+                {copied === d.address ? <Check size={11} /> : <Copy size={11} />}
+              </button>
             </div>
+            <div style={{ color: color.textGhostDk, fontSize: 10, paddingLeft: 14 }}>balance <span style={{ color: color.textMutedDk }}>{fmtQus(balances[d.address])}</span> qus</div>
             {d.calls && d.calls.length > 0 && (
               <div style={{ color: color.secondary, fontSize: 10, paddingLeft: 14 }}>→ calls {d.calls.join(", ")}</div>
             )}
@@ -856,7 +900,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [outputs, setOutputs] = useState<Record<string, string>>({});
   const [log, setLog] = useState<string[]>([]);
   const [pendingCall, setPendingCall] = useState<string | null>(null);
-  const [engineInfo, setEngineInfo] = useState<{ tick: number; epoch: number } | null>(null);
+  const [engineInfo, setEngineInfo] = useState<EngineTickInfo | null>(null);
+  const [fault, setFault] = useState<EngineFaultInfo | null>(null); // set while the chain is halted by a contract fault
   const [engineMemory, setEngineMemory] = useState<IdeMemoryUsage | null>(null);
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
   const [compilerStartup, setCompilerStartup] = useState<StartupTaskStatus>("loading");
@@ -881,8 +926,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
-  const [epochLen, setEpochLen] = useState(3000); // ticks per epoch the running chain uses
-  const [pendingEpochLen, setPendingEpochLen] = useState(3000); // what the next reset will build with
+  const [epochLen, setEpochLen] = useState(0); // ticks per epoch the running chain uses, read from the node
+  const [pendingEpochLen, setPendingEpochLen] = useState(0); // what the next reset will build with
   const { problems, setProblems, problemsOpen, setProblemsOpen, bottomTab, setBottomTab } = useProblemsPanel();
   const { explorerW, setExplorerW, engineW, setEngineW, consoleH, setConsoleH, leftHidden, rightHidden, setLeftHidden, setRightHidden, toggleLeft, toggleRight, collapsed, toggleSection } = useIdeLayout();
   const [openTabs, setOpenTabs] = useState<string[]>([]);
@@ -900,6 +945,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const consoleRef = useRef<HTMLDivElement | null>(null);
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
+  const faultRef = useRef<EngineFaultInfo | null>(null);
   const projectRef = useRef<Project | null>(null); // the loaded project doc (carries id/createdAt for save)
 
   // Auto-compile coordination (Remix-style background diagnostics). Refs so the debounce reads fresh
@@ -1596,10 +1642,39 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       return;
     }
     const next: Record<string, string> = {};
-    for (const a of accs) {
-      next[a.id] = (await eng.balanceOf(a.id)).toString();
+    for (const id of [...accs.map((a) => a.id), ...Object.values(deployedRef.current).map((d) => d.address)]) {
+      next[id] = (await eng.balanceOf(id)).toString();
     }
     setBalances(next);
+  };
+
+  // Who a fault belongs to, from what is deployed: the contract at the faulted slot, its entry's name, its file.
+  const describeFault = (halted: EngineFaultInfo): string => {
+    const d = Object.values(deployedRef.current).find((x) => x.slot === halted.slot);
+    const entries = halted.kind === 1 ? d?.idl.procedures : halted.kind === 0 ? d?.idl.functions : undefined;
+    const file = d && filesRef.current.find((f) => baseName(f.name) === d.name);
+    return faultLine(halted, { contract: d?.name, entry: entries?.[String(halted.entry)]?.name, file: file && fileLabel(file.name) });
+  };
+
+  const markFault = (halted: EngineFaultInfo | null) => {
+    faultRef.current = halted;
+    setFault(halted);
+  };
+
+  // An engine action that fails must say why in the console, never throw into the page: on a halted chain that is every button.
+  const guarded = async (label: string, run: () => Promise<void>): Promise<void> => {
+    try {
+      await run();
+    } catch (e) {
+      appendLog(failureLine(label, e, !!faultRef.current));
+    }
+  };
+
+  // Results on screen belong to the chain that produced them; a rebuilt chain starts with none.
+  const clearSession = () => {
+    setTxLog([]);
+    setTxDetail({});
+    setOutputs({});
   };
 
   const refreshState = async (name: string) => {
@@ -1628,7 +1703,15 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     if (!eng) {
       return;
     }
-    setEngineInfo(await eng.info());
+    const info = await eng.info();
+    setEngineInfo(info);
+    markFault(info.fault ?? null);
+    setEpochLen(eng.epochLength());
+    setPendingEpochLen(eng.pendingEpochLength());
+    setPaused(!eng.isRunning() && !info.fault);
+    if (info.fault) {
+      return; // a halted chain answers nothing else
+    }
     await refreshBalances(await eng.ensureAccounts());
     for (const name of Object.keys(deployedRef.current)) {
       await refreshState(name);
@@ -1652,76 +1735,81 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  const stepTicks = async (n: number) => {
+  const stepTicks = (n: number) => guarded(`+${n} tick${n === 1 ? "" : "s"}`, async () => {
     const eng = engineRef.current;
     if (!eng) {
       return;
     }
     await eng.step(n);
     await refreshEngineViews();
-  };
+  });
 
-  const advanceEpoch = async () => {
+  const advanceEpoch = () => guarded("epoch advance", async () => {
     const eng = engineRef.current;
     if (!eng) {
       return;
     }
     const info = await eng.advanceEpoch();
-    appendLog(`advanced to epoch ${info.epoch} — fired END_EPOCH → BEGIN_EPOCH`);
+    appendLog(`advanced to epoch ${info.epoch} at tick ${info.tick} — fired END_EPOCH → BEGIN_EPOCH`);
     await refreshEngineViews();
-  };
+  });
 
   // Staged rather than live: the chain rebuilds from genesis with the new length, so epoch 0 still starts
   // at tick 0 and the engine's epoch arithmetic stays true.
-  const changeEpochLength = (ticks: number) => {
+  const changeEpochLength = (typed: string) => {
     const eng = engineRef.current;
-    if (!eng || !Number.isFinite(ticks) || ticks < 1) {
+    if (!eng) {
       return;
     }
-    eng.setEpochLength(ticks);
+    if (!/^[1-9]\d*$/.test(typed.trim())) {
+      appendLog(`ticks/epoch must be a whole number of at least 1 (got '${typed}') — still ${eng.pendingEpochLength()}`);
+      return;
+    }
+    eng.setEpochLength(Number(typed));
     setPendingEpochLen(eng.pendingEpochLength());
   };
 
-  const resetChain = async () => {
+  const resetChain = () => guarded("reset", async () => {
     const eng = engineRef.current;
     if (!eng) {
       return;
     }
     await eng.reset(deployImages());
-    setEpochLen(eng.epochLength());
-    setPaused(false);
-    setTxLog([]);
+    clearSession();
     appendLog("chain reset to genesis — contracts re-deployed, INITIALIZE re-run");
     await refreshEngineViews();
-  };
+  });
 
-  const replayChain = async () => {
+  const replayChain = () => guarded("replay", async () => {
     const eng = engineRef.current;
     if (!eng) {
       return;
     }
     appendLog("replaying the session from genesis…");
-    setTxLog([]);
+    clearSession();
     await eng.replay(deployImages());
-    setPaused(false);
     appendLog("replay complete");
     await refreshEngineViews();
-  };
+  });
 
   const changeSpeed = (ticksPerSec: number) => {
     setSpeed(ticksPerSec);
     engineRef.current?.setSpeed(Math.round(1000 / ticksPerSec));
   };
 
-  const fundFromFaucet = async (id: string, qus: number) => {
+  const fundFromFaucet = (id: string, typed: string) => guarded("faucet", async () => {
     const eng = engineRef.current;
-    if (!eng || qus <= 0) {
+    if (!eng) {
       return;
     }
-    eng.fundAccount(id, BigInt(qus));
+    const qus = parseQu(typed, "faucet amount");
+    if (qus === 0n) {
+      throw new Error("faucet amount must be above 0");
+    }
+    eng.fundAccount(id, qus);
     appendLog(`faucet → ${shortId(id)} +${qus.toLocaleString("en-US")} qus`);
     await refreshBalances(await eng.ensureAccounts());
-  };
+  });
 
   // ---- scenario runner (saved contract tests built on reset/replay) ----
 
@@ -1747,7 +1835,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       input: inputToDraft(h.entry.inFields, h.input),
       callerSeed: h.caller.seed,
       callerLabel: acctLabel(h.caller.seed),
-      value: h.caller.amount,
+      value: h.caller.amount.toString(),
     }));
     const n = scenarios.filter((x) => x.contract === d.name).length + 1;
     const s: Scenario = { id: uid(), name: `${d.name} test ${n}`, contract: d.name, calls, asserts: [] };
@@ -1781,7 +1869,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           entry,
           input: buildInput(entry.inFields, c.input),
           key: `${d.name}:scenario:${c.procId}`,
-          caller: { seed: c.callerSeed, amount: c.value },
+          caller: { seed: c.callerSeed, amount: BigInt(c.value) },
           contract: { name: d.name, source: d.source },
         };
       });
@@ -1794,17 +1882,21 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           out.push({ ok: false, actual: "(no such function)" });
           continue;
         }
-        const res = await eng.callFunction(d.slot, a.fnId, entry, buildInput(entry.inFields, a.input));
-        const actual = res && typeof res === "object" ? (res as Record<string, unknown>)[a.field] : res;
-        out.push({ ok: compare(a.op, actual, a.expected), actual: actual === undefined ? "undefined" : String(actual) });
+        const res = nameOutput(entry, await eng.callFunction(d.slot, a.fnId, entry, buildInput(entry.inFields, a.input)));
+        if (!(a.field in res)) {
+          out.push({ ok: false, actual: `(no output field '${a.field}')` });
+          continue;
+        }
+        const actual = res[a.field];
+        out.push({ ok: compare(a.op, actual, a.expected), actual: outputText(actual) });
       }
       setScenResults((r) => ({ ...r, [s.id]: { results: out } }));
       appendLog(`scenario "${s.name}": ${out.filter((x) => x.ok).length}/${out.length} assertions passed`);
     } catch (e) {
-      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: (e as Error).message } }));
+      setScenResults((r) => ({ ...r, [s.id]: { results: [], error: failureLine("run", e, !!faultRef.current) } }));
     } finally {
       setRunningScen(null);
-      await refreshEngineViews();
+      await guarded("refresh", refreshEngineViews);
     }
   };
 
@@ -2378,20 +2470,39 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       eng.onLog = (e) => { if (active()) setEngineLog((l) => [...l.slice(-999), e]); }; // buffer the engine's diagnostic stream for the popup
       // A fault is terminal — the chain stops. Usually the contract trapping rather than a Qinit bug, so
       // this is a toast, not a crash report; the engine log carries it into one if a real crash follows.
-      eng.onFault = (f) => { if (active()) notify.error(`Virtual node faulted: ${f.message}`); };
-
-      eng.onTxProcessed = ({ key, name, tick, moneyFlew, detail }) => {
+      eng.onFault = (f) => {
         if (!active()) return;
-        setOutputs((o) => ({ ...o, [key]: `applied ✓ @ tick ${tick}${moneyFlew ? " · moneyFlew" : ""}` }));
-        appendLog(`${name}() processed @ tick ${tick}`);
-        setTxLog((l) => [{ key, name, tick, moneyFlew, contract: key.split(":")[0], detail }, ...l].slice(0, 300));
+        markFault(f);
+        const line = describeFault(f);
+        appendLog(line);
+        notify.error(line);
+      };
+
+      eng.onTxProcessed = ({ key, name, tick, moneyFlew, executed, detail }) => {
+        if (!active()) return;
+        // "not executed": the tick took the transaction but the procedure never ran, e.g. a transfer above the signer's balance.
+        setOutputs((o) => ({ ...o, [key]: executed ? `applied ✓ @ tick ${tick}${moneyFlew ? " · qu moved" : ""}` : `not executed @ tick ${tick} — the procedure did not run` }));
+        appendLog(executed ? `${name}() processed @ tick ${tick}` : `${name}() was included @ tick ${tick} but not executed`);
+        setTxLog((l) => [{ key, name, tick, moneyFlew, executed, contract: key.split(":")[0], detail }, ...l].slice(0, 300));
+        // always replace: a call with no trace of its own must not keep showing the one before it.
+        setTxDetail((t) => {
+          const next = { ...t };
+          if (detail) next[key] = detail;
+          else delete next[key];
+          return next;
+        });
         if (detail) {
-          setTxDetail((t) => ({ ...t, [key]: detail }));
           if (detail.caller !== "(none)") appendLog(`  caller ${shortId(detail.caller)}`);
           if (detail.in !== "(none)") appendLog(`  in ${detail.in}`);
           detail.diff.forEach((d) => appendLog(`  Δ ${d.label}: ${d.text}`));
           detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
           detail.logs.forEach((l) => appendLog(`  log ${l}`));
+          detail.callees.forEach((callee) => {
+            appendLog(`  ↳ ${callee.contract}.${callee.label}`);
+            callee.diff.forEach((d) => appendLog(`    Δ ${d.label}: ${d.text}`));
+            callee.logs.forEach((l) => appendLog(`    log ${l}`));
+          });
+          detail.prints.forEach((line) => appendLog(`  print ${line}`));
         }
         eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
         void refreshState(key.split(":")[0]);
@@ -2400,8 +2511,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       eng.start();
       requireActive();
       engineRef.current = eng;
-      setEpochLen(eng.epochLength());
-      setPendingEpochLen(eng.pendingEpochLength());
       const accs = await eng.ensureAccounts();
       requireActive();
       setAccounts(accs);
@@ -2410,6 +2519,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       const info = await eng.info();
       requireActive();
       setEngineInfo(info);
+      setEpochLen(eng.epochLength());
+      setPendingEpochLen(eng.pendingEpochLength());
       // Re-seed the project's chosen system contracts onto the fresh node (compiled by the backend, cached).
       for (const name of BACKEND_ENABLED ? projectRef.current?.systemContracts ?? [] : []) {
         requireActive();
@@ -2529,6 +2640,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
     try {
       const eng = await ensureEngine();
+
+      // A halted chain is rebuilt before the build, so the fixed contract can deploy. The contract that halted it is
+      // left out: its old build would halt the chain again, and this build puts it back when it is part of the graph.
+      const halted = faultRef.current;
+      if (halted) {
+        const culprit = Object.values(deployedRef.current).find((d) => d.slot === halted.slot);
+        if (culprit) {
+          const rest = { ...deployedRef.current };
+          delete rest[culprit.name];
+          deployedRef.current = rest;
+          setDeployed(rest);
+        }
+        await eng.reset(deployImages());
+        markFault(null);
+        clearSession();
+        appendLog(`chain was halted — reset to genesis before this build${culprit && culprit.name !== contractName ? `; ${culprit.name} halted it and is no longer deployed` : ""}`);
+      }
+
       await deployNode(eng, contractName, source);
 
       setDeployed(deployedRef.current);
@@ -2553,7 +2682,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       updateQinitTypes(); // refresh the ./.qinit client types for .ts test completion
     } catch (e) {
       setPhase("error");
-      appendLog("deploy failed: " + (e as Error).message);
+      appendLog(failureLine("deploy", e, !!faultRef.current));
     }
   };
 
@@ -2597,12 +2726,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     } catch (e) {
       setTestRun({ results: [{ name: "(runner)", ok: false, ms: 0, error: (e as Error).message, logs: [] }], running: false, title: ws.active });
     } finally {
-      void refreshEngineViews();
+      void guarded("refresh", refreshEngineViews);
     }
   };
-
-  const formatOut = (out: unknown): string =>
-    JSON.stringify(out, (_k, v) => (typeof v === "bigint" ? v.toString() : v)) ?? String(out);
 
   const sel = selected ? deployed[selected] : null;
 
@@ -2620,22 +2746,23 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         return next;
       });
       const result = await eng.callFunctionDetailed(sel.slot, id, entry, buildInput(entry.inFields, input));
-      const text = formatOut(result.output);
+      const text = outputText(nameOutput(entry, result.output));
       setOutputs((p) => ({ ...p, [key]: text }));
       appendLog(`${sel.name}.${entry.name}() → ${text}`);
       if (result.detail) {
         setTxDetail((current) => ({ ...current, [key]: result.detail! }));
         result.detail.hostCalls.forEach((h) => appendLog(`  host ${h}`));
         result.detail.logs.forEach((l) => appendLog(`  log ${l}`));
+        result.detail.prints.forEach((line) => appendLog(`  print ${line}`));
       }
     } catch (e) {
-      appendLog(`${entry.name} failed: ${(e as Error).message}`);
+      appendLog(failureLine(entry.name, e, !!faultRef.current));
     } finally {
       setPendingCall((current) => current === key ? null : current);
     }
   };
 
-  const runProcedure = async (id: string, entry: IdlEntry, input: InputDraft, value: number) => {
+  const runProcedure = async (id: string, entry: IdlEntry, input: InputDraft, typedValue: string) => {
     const eng = engineRef.current;
     if (!eng || !sel || pendingCall) {
       return;
@@ -2643,19 +2770,33 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const key = `${sel.name}:p:${id}`;
     setPendingCall(key);
     try {
-      setOutputs((o) => {
-        const next = { ...o };
+      // the row's result and detail both belong to the previous run of this procedure.
+      const drop = <T,>(current: Record<string, T>): Record<string, T> => {
+        const next = { ...current };
         delete next[key];
         return next;
-      });
-      const { targetTick } = await eng.submitProcedure(sel.slot, id, entry, buildInput(entry.inFields, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
-      appendLog(`${sel.name}.${entry.name}() from acct ${shortId(caller)}${value ? ` · ${value} qus` : ""} → applied @ tick ${targetTick}`);
+      };
+      setOutputs(drop);
+      setTxDetail(drop);
+
+      const value = parseQu(typedValue, "value");
+      // The node takes a transfer the balance cannot cover and drops it at tick assembly, so the procedure would never run.
+      const held = await eng.balanceOf(caller);
+      if (value > held) {
+        throw new Error(`acct ${shortId(caller)} holds ${held.toLocaleString("en-US")} qus, below the ${value.toLocaleString("en-US")} qus value — lower the value or fund the account`);
+      }
+
+      const sent = await eng.submitProcedure(sel.slot, id, entry, buildInput(entry.inFields, input), key, { seed: callerSeed(), amount: value }, { name: sel.name, source: sel.source });
+      appendLog(`${sel.name}.${entry.name}() from acct ${shortId(caller)}${value ? ` · ${value.toLocaleString("en-US")} qus` : ""} → ${sent.executed ? "applied" : "not executed"} @ tick ${sent.targetTick}`);
     } catch (e) {
-      appendLog(`${entry.name} failed: ${(e as Error).message}`);
+      appendLog(failureLine(entry.name, e, !!faultRef.current));
     } finally {
       setPendingCall((current) => current === key ? null : current);
     }
   };
+
+  // Give up on a call that will not come back; the engine fails it and rebuilds the node from the session's history.
+  const stopCall = () => engineRef.current?.cancelPending("stopped — the virtual node was restarted");
 
   const idl = sel?.idl ?? null;
   const procedures = idl ? Object.entries(idl.procedures) : [];
@@ -2918,6 +3059,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
               </Section>
             )}
 
+            {fault && (
+              <div role="alert" style={{ border: "1px solid #f85149", background: "#f8514914", padding: "8px 10px", fontFamily: font.mono, fontSize: 11.5, color: "#f85149", lineHeight: 1.6, wordBreak: "break-word", display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>● {describeFault(fault)}</span>
+                <span><NeoBtn onClick={() => void resetChain()} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset chain</NeoBtn></span>
+              </div>
+            )}
+
             {phase === "compiling" && (
               <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>
                 <span style={{ width: 7, height: 7, flex: "none", background: color.accent, animation: "nodePulse 1.4s ease-in-out infinite" }} />
@@ -2944,7 +3092,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             {Object.keys(deployed).length > 0 ? (
               <>
                 <Section label="DEPLOYED" accent={color.hair2} open={!collapsed.deployed} onToggle={() => toggleSection("deployed")}>
-                  <DeployedList deployed={deployed} selected={selected} onSelect={selectDeployed} />
+                  <DeployedList deployed={deployed} selected={selected} balances={balances} onSelect={selectDeployed} />
                 </Section>
 
                 {!sel && (
@@ -2986,6 +3134,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                             output={outputs[`${sel.name}:p:${selectedProcedure[0]}`]}
                             detail={txDetail[`${sel.name}:p:${selectedProcedure[0]}`]}
                             onRun={(input, value) => runProcedure(selectedProcedure[0], selectedProcedure[1], input, value)}
+                            onStop={stopCall}
                             onDebug={(steps, title) => setDebug({ steps, title })}
                           />
                         </>
@@ -3009,6 +3158,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                             output={outputs[`${sel.name}:f:${selectedFunction[0]}`]}
                             detail={txDetail[`${sel.name}:f:${selectedFunction[0]}`]}
                             onRun={(input) => runFunction(selectedFunction[0], selectedFunction[1], input)}
+                            onStop={stopCall}
                             onDebug={(steps, title) => setDebug({ steps, title })}
                           />
                         </>
@@ -3073,8 +3223,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
-        <span style={{ color: phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
-          ● {phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
+        <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
+          ● {fault ? "halted" : phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
         </span>
         <span>{contractName}</span>
         <span>C++ · qpi.h</span>

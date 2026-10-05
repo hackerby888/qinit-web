@@ -17,7 +17,7 @@ export interface CallStep {
   input: InputDraft;
   callerSeed: string;
   callerLabel: string;
-  value: number;
+  value: number | string; // qu as typed digits; older saves hold a number
 }
 
 // An expectation: call a function, read one output field, compare it.
@@ -196,7 +196,7 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
               <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingLeft: 16 }}>
                 {s.calls.map((c, i) => (
                   <div key={i} style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textMutedDk }}>
-                    <span style={{ color: color.secondary }}>call</span> {c.procName}({Object.entries(c.input).map(([k, v]) => `${k}=${v}`).join(", ")}){c.value ? ` · ${c.value} qus` : ""} <span style={{ color: color.textGhostDk }}>from {c.callerLabel}</span>
+                    <span style={{ color: color.secondary }}>call</span> {c.procName}({Object.entries(c.input).map(([k, v]) => `${k}=${v}`).join(", ")}){String(c.value) !== "0" ? ` · ${c.value} qus` : ""} <span style={{ color: color.textGhostDk }}>from {c.callerLabel}</span>
                   </div>
                 ))}
                 {s.asserts.map((a, i) => {
@@ -204,7 +204,7 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
                   return (
                     <div key={`a${i}`} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 10.5 }}>
                       <span style={{ color: color.accent }}>expect</span>
-                      <span style={{ color: color.textMutedDk }}>{a.fnName}().{a.field} {a.op} {a.expected}</span>
+                      <span style={{ color: color.textMutedDk }}>{a.fnName}({Object.entries(a.input).map(([k, v]) => `${k}=${v}`).join(", ")}).{a.field} {a.op} {a.expected}</span>
                       {ar && <span style={{ color: ar.ok ? color.accent : "#f85149" }}>{ar.ok ? "✓" : `✗ got ${ar.actual}`}</span>}
                       <button onClick={() => onDeleteAssert(s.id, i)} title="Remove" style={{ marginLeft: "auto", border: "none", background: "transparent", color: color.textGhostDk, cursor: "pointer", fontFamily: font.mono, fontSize: 12 }}>×</button>
                     </div>

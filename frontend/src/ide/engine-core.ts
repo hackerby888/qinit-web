@@ -5,10 +5,10 @@
 import { DEFAULT_EPOCH_LENGTH, VirtualNode, initK12, type AssetSnapshot, type EngineLogEvent } from "@qinit/engine";
 
 export type { EngineLogEvent } from "@qinit/engine";
-import { encodeInputFormat, encodeInputJson, decodeAbi, contractAddress } from "@qinit/proto";
-import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity, type EngineFaultInfo } from "@qinit/core";
+import { encodeInputFormat, encodeInputJson, decodeAbi, contractAddress, traceDescendants } from "@qinit/proto";
+import { buildSignedTx, deriveIdentity, identityToBytes, bytesToIdentity, type DebugEntry, type EngineFaultInfo } from "@qinit/core";
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
-import { describeTrace } from "@qinit/inspector";
+import { describeTrace, mergePrints, type DecodedCheat, type DecodedTrace } from "@qinit/inspector";
 import { readState } from "@qinit/inspector/state-read";
 import { jsonText } from "@qinit/inspector/state-format";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
@@ -25,6 +25,9 @@ export interface EngineMemoryUsage {
 export interface EngineTickInfo {
   tick: number;
   epoch: number;
+  // The running epoch's own bounds, so the panel never derives them from `tick % length`.
+  epochFirstTick: number;
+  epochLastTick: number;
   fault?: EngineFaultInfo;
 }
 
@@ -34,13 +37,6 @@ const randomSeed = (): string =>
 export interface Account {
   seed: string;
   id: string;
-}
-
-interface TxMeta {
-  name: string;
-  key: string;
-  contractName: string;
-  contractSource: string;
 }
 
 // One invocation in a transaction's call sequence — a user procedure, an inter-contract call, or a system
@@ -62,6 +58,7 @@ export interface DebugStep {
   prints: string[]; // CC_PRINT output — dev scaffolding, never a chain log
 }
 
+// The frame the developer invoked. `callees` are the frames it reached in other contracts; `prints` covers all of them, in run order.
 export interface TxDetail {
   in: string;
   out: string;
@@ -70,6 +67,7 @@ export interface TxDetail {
   hostCalls: string[];
   logs: string[];
   prints: string[]; // CC_PRINT output — dev scaffolding, never a chain log
+  callees: DebugStep[];
   steps: DebugStep[]; // the whole call sequence, for the step debugger
 }
 
@@ -107,9 +105,35 @@ export interface TxProcessed {
   key: string;
   name: string;
   tick: number;
+  txId?: string;
   moneyFlew: boolean;
+  // false when the tick included the transaction but the procedure never ran (the node drops a transfer the balance cannot cover).
+  executed: boolean;
   detail?: TxDetail;
 }
+
+export interface ProcedureResult {
+  targetTick: number;
+  txId?: string;
+  moneyFlew: boolean;
+  executed: boolean;
+}
+
+// qu on the wire is a 64-bit integer; a number only carries it exactly below 2^53.
+export type QuAmount = number | bigint;
+
+// One frame of a print, e.g. `Counter:28 "adding" 5`; the contract is named only when more than one printed.
+const printLine = (cheat: DecodedCheat): string => {
+  const blockRows = cheat.blocks
+    ? [...cheat.blocks.fields.map((field) => `${field.name} ${field.value}`), ...cheat.blocks.containers.flatMap((container) => container.lines.map((row) => `${row.label} ${row.text}`))]
+    : [];
+  return [`${cheat.contract ?? ""}:${cheat.line} ${cheat.text}`, ...blockRows.map((row) => `  ${row}`)].join("\n");
+};
+
+const TRACE_KIND_FUNCTION = 0;
+const TRACE_KIND_PROCEDURE = 1;
+// Enough for one call's frames plus the tick's system procedures on every deployed contract.
+const TRACE_WINDOW = 200;
 
 // One replayable write — the args of a submitProcedure call, kept so the whole session can be re-run
 // against a fresh chain (reset + replay), or saved into a scenario.
@@ -119,7 +143,7 @@ export interface ReplayStep {
   entry: IdlEntry;
   input: Record<string, unknown>;
   key: string;
-  caller: { seed: string; amount: number };
+  caller: { seed: string; amount: QuAmount };
   contract: { name: string; source: string };
 }
 
@@ -141,7 +165,7 @@ const IDE_ENGINE_OPTS = { mempool: true, verifySigs: false, fees: "off", liteTic
 export class IdeEngineCore {
   // Staged until the chain is next rebuilt — see setEpochLength.
   private epochLengthValue = DEFAULT_EPOCH_LENGTH;
-  private engine = new VirtualNode({ ...IDE_ENGINE_OPTS, epochLength: this.epochLengthValue });
+  private engine = this.freshNode();
   private seed: string | null = null;
   private k12Ready = false;
   private ticker: ReturnType<typeof setInterval> | null = null;
@@ -155,6 +179,14 @@ export class IdeEngineCore {
   onTxProcessed: ((e: TxProcessed) => void) | null = null;
   onLog: ((e: EngineLogEvent) => void) | null = null; // engine diagnostic-log stream -> the IDE's engine-log popup
   onFault: ((fault: EngineFaultInfo) => void) | null = null;
+
+  // Tracing is on from the first tick: a call's result, prints and "did it run" all come from its trace.
+  private freshNode(): VirtualNode {
+    const node = new VirtualNode({ ...IDE_ENGINE_OPTS, epochLength: this.epochLengthValue });
+    void node.setDebug(true);
+    node.onLog = (event) => this.onLog?.(event);
+    return node;
+  }
 
   private latchFault(fault: EngineFaultInfo): EngineFaultInfo {
     if (this.faultValue) {
@@ -193,8 +225,6 @@ export class IdeEngineCore {
     if (this.faultValue || this.ticker) {
       return;
     }
-    void this.engine.setDebug(true); // capture per-tx debug traces for the inspector
-    this.engine.onLog = (e) => this.onLog?.(e); // forward the engine's lifecycle/error log stream
     this.schedule();
   }
 
@@ -275,15 +305,11 @@ export class IdeEngineCore {
     this.epochLengthValue = Math.max(0, Math.trunc(ticks));
   }
 
-  // Jump to the next epoch: fast-forward ticks to the upcoming epoch boundary. The switch itself
-  // (END_EPOCH -> epoch++ -> BEGIN_EPOCH) is fired by the tick mechanism (sim.advance) as the tick crosses
-  // the boundary — same as the live network reaching the last tick of an epoch — not by hand.
-  async advanceEpoch(): Promise<{ tick: number; epoch: number }> {
-    const m = this.engine.sim.epochLength;
-    const cur = (await this.engine.tickInfo()).tick;
-    const target = m > 0 ? (Math.floor(cur / m) + 1) * m : cur + 1;
-    await this.step(target - cur);
-    const info = await this.engine.tickInfo();
+  // Jump into the next epoch with the node's own routine, which crosses the boundary (END_EPOCH -> epoch++ ->
+  // BEGIN_EPOCH); a tick target computed here once stopped on the epoch's last tick, one short of the switch.
+  async advanceEpoch(): Promise<EngineTickInfo> {
+    await this.runEngineOperation(() => this.engine.advanceEpoch());
+    const info = await this.info();
     this.onTick?.(info);
     return info;
   }
@@ -298,10 +324,8 @@ export class IdeEngineCore {
   async reset(images: DeployImage[]): Promise<void> {
     this.stop();
     await this.ensureK12();
-    this.engine = new VirtualNode({ ...IDE_ENGINE_OPTS, epochLength: this.epochLengthValue });
+    this.engine = this.freshNode();
     this.faultValue = null;
-    void this.engine.setDebug(true);
-    this.engine.onLog = (e) => this.onLog?.(e);
     this.history = [];
 
     await this.runEngineOperation(async () => {
@@ -348,7 +372,7 @@ export class IdeEngineCore {
   private async tickOnce(emit = true): Promise<void> {
     await this.runEngineOperation(async () => {
       this.engine.advanceTick(1);
-      const info = await this.engine.tickInfo();
+      const info = await this.tickInfo();
 
       if (info.fault) {
         this.latchFault(info.fault);
@@ -365,50 +389,75 @@ export class IdeEngineCore {
     this.contractSources.set(slot, { source, name });
   }
 
-  // Decode the just-processed tx (debug entries added since `base`) into the step debugger's call sequence —
-  // each invocation's decoded in/out, caller, named StateData diff, host-event timeline and logs. The
-  // inline tx detail reuses the primary (user-procedure) step. Reuses the CLI's trace decoder; never throws.
-  private async traceOf(base: number, t: TxMeta): Promise<TxDetail | undefined> {
+  // The newest trace sequence number: a call's own frames are the ones recorded after it. The ring drops old
+  // entries, so a position in the array says nothing once it has wrapped; the sequence keeps counting.
+  private async newestTraceSeq(): Promise<number> {
+    const newest = (await this.engine.debugTrace(0, 1)).entries;
+    return newest.length ? newest[newest.length - 1].seq : 0;
+  }
+
+  // A map entry's row is named by its key, which an update leaves untouched and so out of the diff; read it from the state the call just left.
+  private keyReader(slot: number): (off: number, size: number) => Promise<Uint8Array | undefined> {
+    return async (off, size) => {
+      const { hex } = await this.engine.stateRead(slot, off, size);
+      return Uint8Array.from(hex.match(/../g) ?? [], (byte) => parseInt(byte, 16));
+    };
+  }
+
+  private async decodeStep(entry: DebugEntry, fallback: { name: string; source: string }): Promise<{ step: DebugStep; view: DecodedTrace }> {
+    const src = this.contractSources.get(entry.index) ?? fallback;
+    // No IDL is passed on purpose: the tracer derives a full one from the source, which is what
+    // decodes the logs and the state diff — and it carries the cheat table too.
+    const view = await describeTrace(entry, src.source, src.name, undefined, undefined, undefined, this.keyReader(entry.index));
+    const step: DebugStep = {
+      seq: entry.seq,
+      slot: entry.index,
+      contract: src.name,
+      kind: entry.kind,
+      entry: entry.entry,
+      label: stepLabel(entry.kind, entry.entry),
+      ok: entry.ok,
+      caller: view.caller,
+      in: view.inDecoded,
+      out: view.outDecoded,
+      diff: view.stateDiff.filter((line) => !line.internal).map(({ label, text }) => ({ label, text })),
+      hostCalls: entry.hostCalls.map((h) => `${h.name} ${h.detail}`),
+      logs: view.logs.map(formatLog),
+      prints: view.cheats.map(printLine),
+    };
+    return { step, view };
+  }
+
+  // Decode what a call left in the trace after `sinceSeq`. The summary is the frame the developer invoked — the
+  // last one matching its slot, kind and entry, since a callee completes before its caller — and the debugger
+  // gets every frame. Undefined when that frame is absent: the call never ran. Never throws.
+  private async traceOf(sinceSeq: number, call: { slot: number; kind: number; entry: number }, fallback: { name: string; source: string }): Promise<TxDetail | undefined> {
     try {
-      const entries = (await this.engine.debugTrace()).entries.slice(base);
-      if (!entries.length) {
+      const entries = (await this.engine.debugTrace(sinceSeq, TRACE_WINDOW)).entries;
+      const top = [...entries].reverse().find((entry) => entry.index === call.slot && entry.kind === call.kind && entry.entry === call.entry);
+      if (!top) {
         return undefined;
       }
 
-      const steps: DebugStep[] = [];
-      for (const e of entries) {
-        const src = this.contractSources.get(e.index) ?? { source: t.contractSource, name: t.contractName };
-        // No IDL is passed on purpose: the tracer derives a full one from the source, which is what
-        // decodes the logs and the state diff — and it carries the cheat table too.
-        const tv = await describeTrace(e, src.source, src.name);
-        steps.push({
-          seq: e.seq,
-          slot: e.index,
-          contract: src.name,
-          kind: e.kind,
-          entry: e.entry,
-          label: stepLabel(e.kind, e.entry),
-          ok: e.ok,
-          caller: tv.caller,
-          in: tv.inDecoded,
-          out: tv.outDecoded,
-          diff: tv.stateDiff.filter((line) => !line.internal).map(({ label, text }) => ({ label, text })),
-          hostCalls: e.hostCalls.map((h) => `${h.name} ${h.detail}`),
-          logs: tv.logs.map(formatLog),
-          prints: tv.cheats.map((cheat) => `:${cheat.line} ${cheat.text}`),
-        });
+      const decoded = new Map<number, { step: DebugStep; view: DecodedTrace }>();
+      for (const entry of entries) {
+        decoded.set(entry.seq, await this.decodeStep(entry, fallback));
       }
 
-      const primary = steps.find((s) => s.kind === 1) ?? steps[steps.length - 1];
+      const own = decoded.get(top.seq)!;
+      const callees = traceDescendants(top, entries, sinceSeq).map(({ entry }) => decoded.get(entry.seq)!);
+      const prints = mergePrints([own, ...callees].map(({ step, view }) => ({ contract: step.contract, cheats: view.cheats })));
+
       return {
-        in: primary.in,
-        out: primary.out,
-        caller: primary.caller,
-        diff: primary.diff,
-        hostCalls: primary.hostCalls,
-        logs: primary.logs,
-        prints: primary.prints,
-        steps,
+        in: own.step.in,
+        out: own.step.out,
+        caller: own.step.caller,
+        diff: own.step.diff,
+        hostCalls: own.step.hostCalls,
+        logs: own.step.logs,
+        prints: prints.map(printLine),
+        callees: callees.map(({ step }) => step),
+        steps: entries.map((entry) => decoded.get(entry.seq)!.step),
       };
     } catch {
       return undefined;
@@ -451,16 +500,16 @@ export class IdeEngineCore {
   // remains output-only for generated clients and scenario assertions.
   async callFunctionDetailed(slot: number, fnId: string, entry: IdlEntry, input: Record<string, unknown>): Promise<FunctionCallResult> {
     const bytes = entry.inFields.length ? await encodeInputJson(entry.inFields, input) : await encodeInputFormat("");
-    const base = (await this.engine.debugTrace()).entries.length;
+    const sinceSeq = await this.newestTraceSeq();
     const out = await this.runEngineOperation(() => this.engine.querySmartContract(slot, Number(fnId), bytes));
     const src = this.contractSources.get(slot) ?? { name: `Contract ${slot}`, source: "" };
-    const detail = await this.traceOf(base, { name: entry.name, key: "", contractName: src.name, contractSource: src.source });
+    const detail = await this.traceOf(sinceSeq, { slot, kind: TRACE_KIND_FUNCTION, entry: Number(fnId) }, src);
     return { output: entry.out ? await decodeAbi(out, entry.out) : null, detail };
   }
 
   // Submit a signed procedure transaction for the next tick and advance to that tick before returning. This
   // keeps BEGIN_TICK -> transaction -> END_TICK / TickData ordering without a wall-clock mempool wait.
-  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }, contract: { name: string; source: string }): Promise<{ targetTick: number }> {
+  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: QuAmount }, contract: { name: string; source: string }): Promise<ProcedureResult> {
     // Freeze the wall-clock ticker while signing so the chosen next tick cannot become stale. A manually
     // paused engine stays paused; a running engine resumes after inclusion or rejection.
     const resumeTicker = this.isRunning();
@@ -481,32 +530,39 @@ export class IdeEngineCore {
           payload,
         });
 
-        const pending = { name: entry.name, key, contractName: contract.name, contractSource: contract.source };
-        const base = (await this.engine.debugTrace()).entries.length;
+        const sinceSeq = await this.newestTraceSeq();
         const result = await this.engine.broadcastTx(tx.bytes);
         if (!result.ok) {
           throw new Error(String(result.message ?? "transaction rejected"));
         }
 
         this.engine.advanceTick(1);
-        const included = await this.engine.tickInfo();
-        const detail = await this.traceOf(base, pending);
+        const included = await this.tickInfo();
+        const detail = await this.traceOf(sinceSeq, { slot, kind: TRACE_KIND_PROCEDURE, entry: Number(procId) }, contract);
         const status = result.transactionId ? await this.engine.txStatus(targetTick, result.transactionId) : null;
         const moneyFlew = status?.moneyFlew ?? !!result.moneyFlew;
+        // the procedure's own frame is the only proof it ran; a transfer the balance cannot cover is included and dropped.
+        const executed = detail !== undefined;
 
         this.history.push({ slot, procId, entry, input, key, caller, contract });
-        this.onTxProcessed?.({ key, name: entry.name, tick: included.tick, moneyFlew, detail });
+        this.onTxProcessed?.({ key, name: entry.name, tick: included.tick, txId: result.transactionId, moneyFlew, executed, detail });
         this.onTick?.(included);
-        return { targetTick: included.tick };
+        return { targetTick: included.tick, txId: result.transactionId, moneyFlew, executed };
       });
     } finally {
       if (resumeTicker && !this.faultValue) this.resume();
     }
   }
 
+  private async tickInfo(): Promise<EngineTickInfo> {
+    const info = await this.engine.tickInfo();
+    const epoch = this.engine.epochInfo();
+    return { ...info, epochFirstTick: epoch.initialTick, epochLastTick: epoch.epochLastTick };
+  }
+
   // Current in-process engine time (advances explicitly on invoke/advanceTick).
   async info(): Promise<EngineTickInfo> {
-    const info = await this.engine.tickInfo();
+    const info = await this.tickInfo();
     if (info.fault) {
       this.latchFault(info.fault);
     }

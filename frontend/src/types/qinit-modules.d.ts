@@ -12,6 +12,7 @@ declare module "monaco-editor/esm/vs/basic-languages/cpp/cpp.js" {
 
 declare module "@qinit/engine" {
   export const DEFAULT_EPOCH_LENGTH: number;
+  export const MAX_AMOUNT: bigint;
   export interface EngineLogEvent {
     level: "debug" | "info" | "warn" | "error";
     tick: number;
@@ -33,6 +34,8 @@ declare module "@qinit/engine" {
     broadcastTx(txBytes: Uint8Array): Promise<{ ok: boolean; transactionId?: string; code?: number; message?: string; moneyFlew?: boolean; queued?: boolean }>;
     txStatus(tick: number, txId: string): Promise<{ tick: number; currentTick: number; txId: string; found: boolean; moneyFlew: boolean; processed: boolean }>;
     advanceTick(n?: number): number;
+    advanceEpoch(): { fromEpoch: number; toEpoch: number; fromTick: number; tick: number; initialTick: number; switched: boolean };
+    epochInfo(): { epoch: number; tick: number; initialTick: number; epochLastTick: number; ticksLeft: number; duration: number };
     tickInfo(): Promise<{ tick: number; epoch: number; fault?: import("@qinit/core").EngineFaultInfo }>;
     faultInfo(): Promise<import("@qinit/core").EngineFaultInfo | null>;
     seedFaucet(amount?: bigint): Promise<void>;
@@ -41,7 +44,8 @@ declare module "@qinit/engine" {
     fund(id: Uint8Array, amount: bigint): void;
     stateRead(slot: number, off: number, len: number): Promise<{ hex: string; off: number; len: number; stateSize: number }>;
     setDebug(on: boolean): Promise<{ enabled: boolean }>;
-    debugTrace(): Promise<DebugTrace>;
+    // entries with seq > since, the newest `limit` of them.
+    debugTrace(since?: number, limit?: number): Promise<DebugTrace>;
     assetUniverse(): AssetSnapshot[];
   }
   export interface AssetSnapshot {
@@ -52,24 +56,8 @@ declare module "@qinit/engine" {
     totalShares: string;
     holdings: { owner: string; possessor: string; ownMgmt: number; posMgmt: number; shares: string }[];
   }
-  export interface DebugEntry {
-    seq: number;
-    tick: number;
-    index: number;
-    entry: number;
-    kind: number;
-    ok: boolean;
-    inHex: string;
-    outHex: string;
-    invocator: string;
-    stateDiff: { off: number; before: string; after: string }[];
-    logs: { type: number; size: number; hex: string }[];
-    hostCalls: { name: string; detail: string }[];
-  }
-  export interface DebugTrace {
-    enabled: boolean;
-    entries: DebugEntry[];
-  }
+  export type DebugEntry = import("@qinit/core").DebugEntry;
+  export type DebugTrace = import("@qinit/core").DebugTrace;
   export function initK12(): Promise<void>;
 }
 
@@ -125,7 +113,11 @@ declare module "@qinit/inspector" {
   export interface DecodedCheat {
     line: number;
     text: string;
+    blocks?: { fields: { name: string; value: string }[]; containers: { lines: StateLine[] }[] };
+    ord?: number;
+    contract?: string;
   }
+  export function mergePrints(frames: readonly { contract: string; cheats: readonly DecodedCheat[] }[]): DecodedCheat[];
   export interface DecodedTrace {
     inDecoded: string;
     outDecoded: string;
@@ -140,7 +132,10 @@ declare module "@qinit/inspector" {
     source: string | undefined,
     name: string,
     qpiHeader?: string,
-    contractIdl?: ContractIdl,
+    contractIdl?: import("@qinit/compiler/browser").ContractIdl,
+    calleeSources?: readonly { name: string; source: string; slot?: number }[],
+    // reads a map key the diff does not carry; pass it only while the trace still describes current state.
+    readKey?: (off: number, size: number) => Promise<Uint8Array | undefined>,
   ): Promise<DecodedTrace>;
 }
 
@@ -149,9 +144,35 @@ declare module "@qinit/proto" {
   export function encodeInputJson(fields: { name: string; type: string }[], json: unknown): Promise<Uint8Array>;
   export function decodeAbi(bytes: Uint8Array, type: string): Promise<unknown>;
   export function contractAddress(contractIndex: number): Uint8Array;
+  export function traceDescendants<T extends { seq: number; tick: number; kind: number; children?: number[] }>(parent: T, entries: readonly T[], sinceSeq: number, depth?: number): { entry: T; depth: number }[];
+  export interface StateLayoutView {
+    state?: { size: number; format: string };
+    migration?: { oldState: { size: number } };
+  }
+  export function stateCarryoverRejection(name: string, previous: StateLayoutView, next: StateLayoutView, recovery?: string): string | null;
 }
 
 declare module "@qinit/core" {
+  export interface DebugEntry {
+    seq: number;
+    tick: number;
+    index: number;
+    entry: number;
+    kind: number;
+    ok: boolean;
+    inHex: string;
+    outHex: string;
+    invocator: string;
+    stateDiff: { off: number; before: string; after: string }[];
+    logs: { type: number; size: number; hex: string }[];
+    hostCalls: { name: string; detail: string }[];
+    // sequence numbers of the frames this dispatch called directly, in completion order.
+    children?: number[];
+  }
+  export interface DebugTrace {
+    enabled: boolean;
+    entries: DebugEntry[];
+  }
   export interface EngineFaultInfo {
     message: string;
     phase: string;
@@ -166,7 +187,7 @@ declare module "@qinit/core" {
   }
   export interface TxInput {
     destination?: string | Uint8Array;
-    amount?: number;
+    amount?: number | bigint;
     tick: number;
     inputType: number;
     payload: Uint8Array;
@@ -181,6 +202,8 @@ declare module "@qinit/core" {
   export function bytesToIdentity(bytes: Uint8Array): Promise<string>;
   export function initK12(): Promise<void>;
   export function k12Sync(bytes: Uint8Array): Uint8Array;
+  export function describeContractError(message: string): string;
+  export function assertLine(message: string): number | undefined;
 }
 
 declare module "@qinit/compiler/browser" {

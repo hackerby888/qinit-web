@@ -112,8 +112,8 @@ test("a semantic fault stops the session without restarting its worker", async (
   expect(faults).toEqual([fault]);
   expect(await engine.faultInfo()).toEqual(fault);
   expect(worker.calls.some((call) => call.method === "resume")).toBe(false);
-  expect(() => engine.fundAccount("A".repeat(60), 1n)).toThrow("virtual node faulted");
-  await expect(engine.replay([])).rejects.toThrow("virtual node faulted");
+  expect(() => engine.fundAccount("A".repeat(60), 1n)).toThrow("the chain is halted (integer divide by zero at tick 9)");
+  await expect(engine.replay([])).rejects.toThrow("press ↺ reset or ▶ Compile & Run to restart it");
   expect(worker.terminated).toBe(false);
 
   await engine.reset([]);

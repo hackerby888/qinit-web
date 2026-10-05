@@ -210,6 +210,7 @@ export async function runTests(source: string, deps: TestDeps): Promise<TestResu
   // advancement is deterministic.
   const images: DeployImage[] = Object.values(deps.contracts).map((c) => ({ slot: c.slot, wasm: c.wasm, name: c.name }));
   const results: TestResult[] = [];
+  const wasRunning = deps.eng.isRunning();
   deps.eng.pause();
   try {
     await deps.eng.reset(images);
@@ -233,7 +234,8 @@ export async function runTests(source: string, deps: TestDeps): Promise<TestResu
       }
     }
   } finally {
-    deps.eng.resume();
+    // a chain the developer paused stays paused.
+    if (wasRunning) deps.eng.resume();
   }
 
   return results;

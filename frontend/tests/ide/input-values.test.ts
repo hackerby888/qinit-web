@@ -1,10 +1,12 @@
 import { test, expect } from "bun:test";
 import type { FieldView as Field } from "../../src/ide/idl-view";
 import {
+  MAX_QU,
   ZERO_IDENTITY,
   buildInput,
   inputHint,
   inputToDraft,
+  parseQu,
   type InputDraft,
 } from "../../src/ide/input-values";
 
@@ -70,7 +72,36 @@ test("scalar array JSON is checked and wide integers remain lossless strings", (
   expect(buildInput(fields, { values: '["18446744073709551615",2]' })).toEqual({
     values: ["18446744073709551615", "2"],
   });
-  expect(() => buildInput(fields, { values: "[9007199254740993,2]" })).toThrow(/quote wide integer/);
+  // unquoted, as the field's own placeholder shows it: the digits typed are the digits sent.
+  expect(buildInput(fields, { values: "[9007199254740993, 18446744073709551615]" })).toEqual({
+    values: ["9007199254740993", "18446744073709551615"],
+  });
+  expect(() => buildInput(fields, { values: "[1.5,2]" })).toThrow("values must be a JSON array");
+  expect(() => buildInput(fields, { values: "[1e3,2]" })).toThrow("values must be a JSON array");
+});
+
+test("0 is the zero identity; any other short text is refused", () => {
+  const who: Field[] = [{ name: "who", type: "id" }];
+  expect(buildInput(who, { who: "0" })).toEqual({ who: ZERO_IDENTITY });
+  expect(buildInput(who, {})).toEqual({ who: ZERO_IDENTITY });
+  expect(() => buildInput(who, { who: "1" })).toThrow("id must be a 60-character uppercase Qubic identity, or 0");
+});
+
+test("a qu amount is digits only, exact, and capped at what one transfer can carry", () => {
+  expect(parseQu("", "value")).toBe(0n);
+  expect(parseQu(" 100 ", "value")).toBe(100n);
+  expect(parseQu(MAX_QU.toString(), "value")).toBe(MAX_QU);
+
+  for (const typed of ["abc", "1e3", "0x10", "1.5", "-5", "1,000"]) {
+    expect(() => parseQu(typed, "value")).toThrow(`value must be a whole number of qu (got '${typed}')`);
+  }
+  expect(() => parseQu("9007199254740993", "value")).toThrow("value 9007199254740993 is above the most one transfer can carry");
+  expect(() => parseQu("99999999999999999999999", "faucet amount")).toThrow("faucet amount 99999999999999999999999 is above the most one transfer can carry (1,000,000,000,000,000 qu)");
+});
+
+// the literal exists so this module loads without the engine; it must not drift from the node's.
+test("MAX_QU is the node's MAX_AMOUNT", async () => {
+  expect(MAX_QU).toBe((await import("@qinit/engine")).MAX_AMOUNT);
 });
 
 test("blank controls use the displayed zero-value hints", () => {

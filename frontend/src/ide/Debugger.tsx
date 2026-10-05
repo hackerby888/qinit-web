@@ -146,6 +146,12 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
                   <div key={k} style={{ ...line, color: color.secondary }}>{l}</div>
                 ))}
               </Group>
+
+              <Group title="PRINTS" accent={color.yellow} empty={cur.prints.length === 0}>
+                {cur.prints.map((text, k) => (
+                  <div key={k} style={{ ...line, color: color.yellow, whiteSpace: "pre-wrap" }}>{text}</div>
+                ))}
+              </Group>
             </div>
           </div>
         </Card>

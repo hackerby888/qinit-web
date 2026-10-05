@@ -4,8 +4,24 @@ export const ZERO_IDENTITY = "A".repeat(60);
 
 export type InputDraft = Record<string, string>;
 
+// The most qu one transfer may carry (MAX_AMOUNT in the node). Kept here as a literal so this module loads without the engine.
+export const MAX_QU = 1_000_000_000_000_000n;
+
+// A qu amount typed into a field: digits only, so `1e3`, `0x10`, `1.5` and `abc` are refused instead of reshaped. Blank is 0.
+export function parseQu(text: string, field: string): bigint {
+  const typed = text.trim();
+  if (typed === "") return 0n;
+  if (!/^\d+$/.test(typed)) throw new Error(`${field} must be a whole number of qu (got '${typed}')`);
+  const amount = BigInt(typed);
+  if (amount > MAX_QU) throw new Error(`${field} ${typed} is above the most one transfer can carry (${MAX_QU.toLocaleString("en-US")} qu)`);
+  return amount;
+}
+
+// `[1, 18446744073709551615]` as typed: JSON.parse would round the wide one, so every bare integer is quoted first and read back as text.
+const parseIntegerArray = (text: string): unknown =>
+  JSON.parse(text.replace(/"[^"]*"|-?\d+(?![\d.eE])/g, (token) => (token.startsWith('"') ? token : `"${token}"`)));
+
 const INTEGER = /^(?:uint(?:8|16|32|64|128)|sint(?:8|16|32|64))$/;
-const WIDE_INTEGER = /^(?:uint64|sint64|uint128)$/;
 
 const splitTop = (text: string): string[] => {
   const out: string[] = [];
@@ -82,7 +98,9 @@ const normalizeValue = (type: string, value: unknown): unknown => {
   if (t === "sint128") throw new Error("sint128 is not a QPI type");
   if (t === "id") {
     const identity = String(value).trim();
-    if (!/^[A-Z]{60}$/.test(identity)) throw new Error("id must be a 60-character uppercase Qubic identity");
+    // `0` is the zero identity, as in the CLI and the test runner.
+    if (identity === "0") return ZERO_IDENTITY;
+    if (!/^[A-Z]{60}$/.test(identity)) throw new Error("id must be a 60-character uppercase Qubic identity, or 0");
     return identity;
   }
   if (t === "bit") {
@@ -92,10 +110,7 @@ const normalizeValue = (type: string, value: unknown): unknown => {
   }
   if (INTEGER.test(t)) {
     if (typeof value === "number") {
-      if (!Number.isSafeInteger(value)) {
-        const extra = WIDE_INTEGER.test(t) ? "; quote wide integer values in arrays" : "";
-        throw new Error(`${t} must be an exact integer${extra}`);
-      }
+      if (!Number.isSafeInteger(value)) throw new Error(`${t} must be an exact integer`);
       return String(value);
     }
     const text = String(value).trim();
@@ -136,7 +151,7 @@ const fieldValue = (field: Field, draft: InputDraft, path: Array<string | number
     const text = raw || defaultText(field.type);
     let parsed: unknown;
     try {
-      parsed = JSON.parse(text);
+      parsed = parseIntegerArray(text);
     } catch {
       throw new Error(`${field.name} must be a JSON array`);
     }

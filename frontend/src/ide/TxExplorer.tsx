@@ -11,6 +11,7 @@ export interface TxRow {
   name: string;
   tick: number;
   moneyFlew: boolean;
+  executed: boolean;
   contract: string;
   detail?: TxDetail;
 }
@@ -71,13 +72,15 @@ export function TxExplorer({ txs, onClose, onDebug }: { txs: TxRow[]; onClose: (
                     <div
                       key={t.key}
                       onClick={() => steps.length && onDebug(steps, `${t.name}()`)}
-                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px", cursor: steps.length ? "pointer" : "default", borderLeft: `3px solid ${color.accent}` }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 16px", cursor: steps.length ? "pointer" : "default", borderLeft: `3px solid ${t.executed ? color.accent : "#f85149"}` }}
                     >
                       <span style={{ ...line, color: color.textLight, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.contract}.{t.name}</span>
                       <span style={{ ...line, color: color.textGhostDk, flex: "none" }}>{shortId(t.detail?.caller ?? "")}</span>
                       <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
                         {diffN > 0 && <span style={{ ...line, color: color.secondary }}>Δ{diffN}</span>}
-                        <span style={{ ...line, color: t.moneyFlew ? color.accent : color.textGhostDk }}>{t.moneyFlew ? "moneyFlew" : "no flow"}</span>
+                        {t.executed
+                          ? <span style={{ ...line, color: t.moneyFlew ? color.accent : color.textGhostDk }}>{t.moneyFlew ? "qu moved" : "no qu moved"}</span>
+                          : <span style={{ ...line, color: "#f85149" }}>not executed</span>}
                         {steps.length > 0 && <span style={{ ...line, color: color.accent }}>🐞</span>}
                       </span>
                     </div>

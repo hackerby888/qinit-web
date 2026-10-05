@@ -4,6 +4,7 @@
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
 import type { EngineLogEvent } from "@qinit/engine";
 import type { EngineFaultInfo } from "@qinit/core";
+import { describeContractError } from "@qinit/core";
 import { reportCrash } from "./crash";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import type {
@@ -13,6 +14,8 @@ import type {
   EngineMemoryUsage,
   EngineTickInfo,
   IdeEngineCore,
+  ProcedureResult,
+  QuAmount,
   ReplayStep,
   TxProcessed,
   FunctionCallResult,
@@ -21,7 +24,7 @@ import type { EngineEvent, EngineMethod, EngineRequest, EngineWorkerMessage } fr
 
 export type { EngineLogEvent } from "@qinit/engine";
 export type { EngineFaultInfo } from "@qinit/core";
-export type { Account, AssetView, DebugStep, DeployImage, EngineMemoryUsage, EngineTickInfo, FunctionCallResult, ReplayStep, TxDetail, TxProcessed } from "./engine-core";
+export type { Account, AssetView, DebugStep, DeployImage, EngineMemoryUsage, EngineTickInfo, FunctionCallResult, ProcedureResult, QuAmount, ReplayStep, TxDetail, TxProcessed } from "./engine-core";
 
 interface PendingCall {
   resolve: (value: unknown) => void;
@@ -57,9 +60,10 @@ export class IdeEngine {
   private faultValue: EngineFaultInfo | null = null;
 
   private running = false;
+  private pausedByUser = false; // survives a reset, replay or test run: a developer who paused to inspect stays paused
   private speedMs = 1000;
-  private epochLengthValue = 3000; // what the running chain uses
-  private pendingEpochLengthValue = 3000; // what the next reset will build with
+  private epochLengthValue = 0; // what the running chain uses; read from the node, never assumed
+  private pendingEpochLengthValue: number | null = null; // what the next reset will build with, once the developer set one
   private assetsValue: AssetView[] = [];
   private memoryValue: EngineMemoryUsage = { linearMemoryBytes: 0, stateBytes: 0, contractCount: 0 };
   private accountsValue: Account[] = [];
@@ -179,7 +183,7 @@ export class IdeEngine {
     this.recoveringNow = true;
     try {
       this.spawnWorker();
-      await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
+      if (this.pendingEpochLengthValue !== null) await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
       if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
       for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
 
@@ -235,9 +239,17 @@ export class IdeEngine {
     void this.call(method, args).catch((error) => this.onLog?.({ level: "error", tick: 0, cat: "worker", msg: error.message }));
   }
 
+  // A halted chain refuses every call the way a halted node does; the message says so and names the way out.
   private assertOperational(): void {
     if (this.faultValue) {
-      throw new Error(`virtual node faulted: ${this.faultValue.message}`);
+      throw new Error(`the chain is halted (${describeContractError(this.faultValue.message)} at tick ${this.faultValue.failedTick}) — press ↺ reset or ▶ Compile & Run to restart it`);
+    }
+  }
+
+  // Abandon whatever the worker is doing: pending calls fail with `reason` and the node is rebuilt from the session's history.
+  cancelPending(reason: string): void {
+    if (this.workerMode && this.pending.size > 0) {
+      this.failWorker(new Error(reason));
     }
   }
 
@@ -251,16 +263,26 @@ export class IdeEngine {
   start(): void {
     if (!this.faultValue) {
       this.running = true;
+      this.pausedByUser = false;
       this.fire("start", []);
     }
   }
   stop(): void { this.running = false; this.fire("stop", []); }
   isRunning(): boolean { return this.running; }
-  pause(): void { this.running = false; this.fire("pause", []); }
+  pause(): void { this.running = false; this.pausedByUser = true; this.fire("pause", []); }
   resume(): void {
     if (!this.faultValue) {
       this.running = true;
+      this.pausedByUser = false;
       this.fire("resume", []);
+    }
+  }
+
+  // The worker's reset restarts its ticker; put a paused chain back the way the developer left it.
+  private async restorePause(): Promise<void> {
+    this.running = !this.pausedByUser;
+    if (this.pausedByUser) {
+      await this.call("pause", []);
     }
   }
   setSpeed(ms: number): void { this.speedMs = Math.max(50, ms); this.fire("setSpeed", [this.speedMs]); }
@@ -271,7 +293,7 @@ export class IdeEngine {
     await this.call("step", [n]);
   }
   epochLength(): number { return this.epochLengthValue; }
-  pendingEpochLength(): number { return this.pendingEpochLengthValue; }
+  pendingEpochLength(): number { return this.pendingEpochLengthValue ?? this.epochLengthValue; }
 
   // Staged, not live — the worker applies it when the chain is next rebuilt, so an epoch never reports a
   // last tick that the chain has already passed. Callers pair this with reset().
@@ -280,7 +302,7 @@ export class IdeEngine {
     this.fire("setEpochLength", [this.pendingEpochLengthValue]);
   }
 
-  async advanceEpoch(): Promise<{ tick: number; epoch: number }> {
+  async advanceEpoch(): Promise<EngineTickInfo> {
     this.assertOperational();
     return this.call("advanceEpoch", []);
   }
@@ -296,7 +318,7 @@ export class IdeEngine {
     this.running = false;
     if (this.workerMode && !this.worker) {
       this.spawnWorker();
-      await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
+      if (this.pendingEpochLengthValue !== null) await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
       if (this.accountsValue.length) await this.workerCallRaw("restoreAccounts", [this.accountsValue]);
       for (const [slot, source] of this.sources) await this.workerCallRaw("registerSource", [slot, source.source, source.name]);
     }
@@ -305,8 +327,8 @@ export class IdeEngine {
     this.historyValue = [];
     this.extraFunds.clear();
     await this.call("reset", [images.map((image) => ({ ...image, wasm: image.wasm.slice() }))]);
-    this.epochLengthValue = this.pendingEpochLengthValue; // the fresh chain is the one built with it
-    this.running = true;
+    await this.restorePause();
+    await this.info(); // the fresh chain's epoch length
     this.assetsValue = await this.call("assets", []);
   }
 
@@ -314,7 +336,7 @@ export class IdeEngine {
     this.assertOperational();
     this.extraFunds.clear();
     await this.call("replay", [images.map((image) => ({ ...image, wasm: image.wasm.slice() }))]);
-    this.running = true;
+    await this.restorePause();
   }
 
   async runSteps(images: DeployImage[], steps: ReplayStep[]): Promise<void> {
@@ -322,7 +344,7 @@ export class IdeEngine {
     this.extraFunds.clear();
     await this.call("runSteps", [images.map((image) => ({ ...image, wasm: image.wasm.slice() })), steps]);
     this.historyValue = steps.map((step) => ({ ...step }));
-    this.running = true;
+    await this.restorePause();
   }
 
   exportHistory(): ReplayStep[] { return this.historyValue.map((step) => ({ ...step })); }
@@ -349,14 +371,18 @@ export class IdeEngine {
     return this.call("callFunctionDetailed", [slot, fnId, entry, input]);
   }
 
-  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: number }, contract: { name: string; source: string }): Promise<{ targetTick: number }> {
+  async submitProcedure(slot: number, procId: string, entry: IdlEntry, input: Record<string, unknown>, key: string, caller: { seed: string; amount: QuAmount }, contract: { name: string; source: string }): Promise<ProcedureResult> {
     this.assertOperational();
-    const result = await this.call<{ targetTick: number }>("submitProcedure", [slot, procId, entry, input, key, caller, contract]);
+    const result = await this.call<ProcedureResult>("submitProcedure", [slot, procId, entry, input, key, caller, contract]);
     this.historyValue.push({ slot, procId, entry, input, key, caller, contract });
     return result;
   }
 
-  async info(): Promise<EngineTickInfo> { return this.call("info", []); }
+  async info(): Promise<EngineTickInfo> {
+    const info = await this.call<EngineTickInfo>("info", []);
+    this.epochLengthValue = info.epochLastTick - info.epochFirstTick + 1;
+    return info;
+  }
 
   async faultInfo(): Promise<EngineFaultInfo | null> {
     return this.faultValue ?? this.call("faultInfo", []);

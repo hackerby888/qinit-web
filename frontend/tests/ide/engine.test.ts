@@ -3,6 +3,7 @@
 // from the sibling monorepo via the bun-test alias shim) against a current compiler artifact.
 import { test, expect } from "bun:test";
 import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";
+import { DEFAULT_EPOCH_LENGTH } from "@qinit/engine";
 import { IdeEngine } from "../../src/ide/engine";
 import { extractContractIdlView as extractIdl } from "../../src/ide/idl-view";
 
@@ -396,7 +397,7 @@ test("IdeEngine: a contract trap stops the session until an explicit reset", asy
       { seed: caller.seed, amount: 0 },
       { name: "Trap", source: TRAP_SRC },
     ),
-  ).rejects.toThrow("virtual node faulted");
+  ).rejects.toThrow("the chain is halted (Division by zero at tick 1) — press ↺ reset or ▶ Compile & Run to restart it");
 
   await e.reset([{ slot: SLOT, wasm, name: "Trap" }]);
   e.stop();
@@ -441,19 +442,21 @@ test("IdeEngine: a nested callee trap keeps the session ticking", async () => {
   }
 });
 
-// Ticks per epoch was fixed at 3000, so reaching END_EPOCH in the IDE meant a three-thousand-tick jump.
+// Ticks per epoch was fixed, so reaching END_EPOCH in the IDE meant a jump of thousands of ticks.
 // The value is staged rather than live: applying it mid-chain would leave the epoch reporting a last tick
 // the chain had already passed, so the rebuild from genesis is what puts it into effect.
 test("IdeEngine: a new epoch length is staged, then applied by the next reset", async () => {
   const e = new IdeEngine();
   await e.deploy(SLOT, await counterWasm(), idl);
 
-  expect(e.epochLength()).toBe(3000);
-  expect(e.pendingEpochLength()).toBe(3000);
+  // the length is the node's own, read with the first tick info; the panel once showed a literal the node did not use.
+  await e.info();
+  expect(e.epochLength()).toBe(DEFAULT_EPOCH_LENGTH);
+  expect(e.pendingEpochLength()).toBe(DEFAULT_EPOCH_LENGTH);
 
   e.setEpochLength(10);
   expect(e.pendingEpochLength()).toBe(10);
-  expect(e.epochLength()).toBe(3000); // the running chain is untouched
+  expect(e.epochLength()).toBe(DEFAULT_EPOCH_LENGTH); // the running chain is untouched
 
   await e.reset([{ slot: SLOT, wasm: await counterWasm(), name: "Counter" }]);
   expect(e.epochLength()).toBe(10);
@@ -462,7 +465,7 @@ test("IdeEngine: a new epoch length is staged, then applied by the next reset", 
   await e.step(10);
   expect((await e.info()).epoch).toBe(0);
   await e.step(1);
-  expect((await e.info()).epoch).toBe(1); // boundary after tick 10, not 3000
+  expect((await e.info()).epoch).toBe(1); // boundary after tick 10, not the default length
 });
 
 test("IdeEngine: a short epoch keeps rolling over at its own length", async () => {
