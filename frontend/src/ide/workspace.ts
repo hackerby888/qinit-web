@@ -168,8 +168,11 @@ function clearShareFromLocation(): void {
 // project). Clears the hash so a reload doesn't re-import.
 export function decodeSharedWorkspace(): Workspace | null {
   const ws = decodeShareFromLocation();
-  if (ws) {
+  if (ws || sharedLinkPresent()) {
     clearShareFromLocation();
   }
   return ws;
 }
+
+// Whether the address carries a share link at all — one that then fails to decode is damaged, and the gallery says so.
+export const sharedLinkPresent = (): boolean => /[#&]p=/.test(location.hash);

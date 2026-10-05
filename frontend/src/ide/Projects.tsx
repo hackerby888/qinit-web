@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSPro
 import { Link, useNavigate } from "react-router-dom";
 import { color, font } from "../landing/tokens";
 import { PixelQMark, KEYFRAMES } from "../landing/components";
-import { Card, NeoBtn } from "./ui";
+import { Card, ConfirmModal, NeoBtn } from "./ui";
 import { SplashScreen, type SplashStep } from "./Splash";
 import { isIdeModuleLoaded, loadIdeModule } from "./load";
 import { getStore, getLocalStore } from "./projects/store";
@@ -14,7 +14,7 @@ import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } f
 import { BACKEND_ENABLED } from "./backend";
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
-import { decodeSharedWorkspace } from "./workspace";
+import { decodeSharedWorkspace, sharedLinkPresent } from "./workspace";
 import { STARTER } from "./examples";
 import { Toasts } from "./Toasts";
 import { OfflineBanner } from "./OfflineBanner";
@@ -63,6 +63,7 @@ export default function Projects() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [importPrompt, setImportPrompt] = useState<ProjectMeta[] | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ message: string; onYes: () => void } | null>(null);
   const [draft, setDraft] = useState("");
   const [splash, setSplash] = useState<{ label: string; steps: SplashStep[] } | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -142,7 +143,11 @@ export default function Projects() {
       }
 
       // A `#p=` share URL lands here — import it as a new project and open it.
+      const linked = sharedLinkPresent();
       const shared = decodeSharedWorkspace();
+      if (!shared && linked) {
+        notify.error("That share link is damaged or cut short — nothing was imported. Ask for the link again.");
+      }
       if (shared) {
         const p = await getStore().create("Shared project", shared.files);
         if (shared.active && shared.files.some((f) => f.name === shared.active)) {
@@ -242,15 +247,18 @@ export default function Projects() {
     }
   };
 
-  const del = async (id: string, name: string) => {
-    if (window.confirm(`Delete "${name}"? This can't be undone.`)) {
-      try {
-        await getStore().remove(id);
-        await reload();
-      } catch (e) {
-        notify.error(errorMessage(e, "Couldn't delete the project"));
-      }
-    }
+  const del = (id: string, name: string) => {
+    setConfirm({
+      message: `Delete "${name}"? This can't be undone.`,
+      onYes: async () => {
+        try {
+          await getStore().remove(id);
+          await reload();
+        } catch (e) {
+          notify.error(errorMessage(e, "Couldn't delete the project"));
+        }
+      },
+    });
   };
 
   const startRename = (m: ProjectMeta) => {
@@ -292,7 +300,7 @@ export default function Projects() {
       await importProjectFile(file);
       await reload();
     } catch (err) {
-      window.alert(`Import failed: ${(err as Error).message}`);
+      notify.error(errorMessage(err, "Import failed"));
     }
   };
 
@@ -301,6 +309,7 @@ export default function Projects() {
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
       <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}` }} />
       <Toasts />
+      {confirm && <ConfirmModal message={confirm.message} onYes={() => { setConfirm(null); confirm.onYes(); }} onCancel={() => setConfirm(null)} />}
       <OfflineBanner />
       {splash && <SplashScreen label={splash.label} steps={splash.steps} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}

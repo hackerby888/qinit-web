@@ -16,7 +16,7 @@ const loc = { origin: "https://ide.test", hash: "", pathname: "/ide", search: ""
 (globalThis as Record<string, unknown>).location = loc;
 (globalThis as Record<string, unknown>).history = { replaceState: (_s: unknown, _t: string, url: string) => { loc.hash = ""; void url; } };
 
-const { baseName, contractFile, fileKind, newFileSource, loadWorkspace, saveWorkspace, resetWorkspace, shareUrl, decodeSharedWorkspace } = await import("../../src/ide/workspace");
+const { baseName, contractFile, fileKind, newFileSource, loadWorkspace, saveWorkspace, resetWorkspace, shareUrl, decodeSharedWorkspace, sharedLinkPresent } = await import("../../src/ide/workspace");
 
 beforeEach(() => {
   (globalThis as { localStorage: MemStore }).localStorage.clear();
@@ -80,6 +80,17 @@ test("shareUrl + decodeSharedWorkspace round-trips utf8 source through base64", 
   const decoded = decodeSharedWorkspace();
   expect(decoded).toEqual(ws);
   expect(loc.hash).toBe(""); // consuming a share clears the hash so a reload doesn't re-import
+});
+
+// W-s20: a truncated link did nothing and stayed in the address, to fail again on the next load.
+test("a damaged share link decodes to nothing, is reported as present, and is cleared", () => {
+  const url = shareUrl({ files: [{ name: "A.h", source: "x" }], active: "A.h" });
+  loc.hash = url.slice(url.indexOf("#"), -9);
+
+  expect(sharedLinkPresent()).toBe(true);
+  expect(decodeSharedWorkspace()).toBeNull();
+  expect(loc.hash).toBe("");
+  expect(sharedLinkPresent()).toBe(false);
 });
 
 test("decodeSharedWorkspace returns null when no share hash is present", () => {

@@ -60,7 +60,7 @@ import { InputFields } from "./InputFields";
 import { buildInput, inputToDraft, parseQu, type InputDraft } from "./input-values";
 import { nameOutput, outputText } from "./output-values";
 import { failureLine, faultLine } from "./fault";
-import { getStore } from "./projects/store";
+import { getStore, projectStorageKey, StaleProjectError } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import "../landing/pixel.css";
@@ -73,7 +73,12 @@ const hair = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
 
 const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 const RAIL = 22;      // collapsed-panel rail width (px) — a thin clickable spine at the screen edge
+const EDITOR_MIN_WIDTH = 320; // below this the body scrolls sideways; a narrow window once squeezed the editor to nothing
 const MOD = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl"; // shortcut hint
+
+// The part of a project two tabs can disagree about. The active file and open tabs are each tab's own view.
+const contentOf = (p: { name: string; files: WorkspaceFile[]; scenarios?: unknown[]; systemContracts?: string[] }): string =>
+  JSON.stringify([p.name, p.files, p.scenarios ?? [], p.systemContracts ?? []]);
 
 type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array; calls?: string[] };
 
@@ -138,6 +143,14 @@ function CollabBar({ status, peers, mode, selfName, selfColor }: { status: Colla
     </div>
   );
 }
+
+// A box with a heavier left edge, one explicit border per side: mixing `border` with `borderLeftWidth` made React warn on every rerender.
+const edged = (edge: string, frameColor: string): CSSProperties => ({
+  borderTop: `1px solid ${frameColor}`,
+  borderRight: `1px solid ${frameColor}`,
+  borderBottom: `1px solid ${frameColor}`,
+  borderLeft: `3px solid ${edge}`,
+});
 
 const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
 const fmtQus = (b?: string): string => (b === undefined ? "…" : BigInt(b).toLocaleString("en-US"));
@@ -492,7 +505,7 @@ function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onSto
   }, [busy]);
 
   return (
-    <div style={{ borderLeft: `3px solid ${accent}`, border: `1px solid ${color.hair}`, borderLeftWidth: 3, background: color.panel, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+    <div style={{ ...edged(accent, color.hair), background: color.panel, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 7, height: 7, background: accent, flex: "none" }} />
         <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
@@ -614,8 +627,8 @@ function AssetsPanel({ assets, slotName, fmtHolder }: { assets: AssetView[]; slo
 function PanelHint() {
   return (
     <div style={{ fontFamily: font.body, fontSize: 13, lineHeight: 1.6, color: color.textMutedDk }}>
-      The Qubic SC engine runs in this page. Hit <span style={{ color: color.accent }}>Compile</span> to build your
-      contract to wasm and deploy it in-browser — byte-identical to the node, feeless, instant.
+      The Qubic contract engine runs in this page. Hit <span style={{ color: color.accent }}>▶ Compile &amp; Run</span> to build your
+      contract to Wasm and deploy it on a chain inside this tab.
     </div>
   );
 }
@@ -769,7 +782,7 @@ function DeployedList({ deployed, selected, balances, onSelect }: {
           <div
             key={d.name}
             onClick={() => onSelect(d.name)}
-            style={{ display: "flex", flexDirection: "column", gap: 3, padding: "6px 9px", cursor: "pointer", borderLeft: `3px solid ${on ? color.accent : color.hair2}`, border: `1px solid ${on ? color.accent : color.hair}`, borderLeftWidth: 3, background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
+            style={{ display: "flex", flexDirection: "column", gap: 3, padding: "6px 9px", cursor: "pointer", ...edged(on ? color.accent : color.hair2, on ? color.accent : color.hair), background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
               <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
@@ -916,6 +929,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [fault, setFault] = useState<EngineFaultInfo | null>(null); // set while the chain is halted by a contract fault
   const [layoutRefusal, setLayoutRefusal] = useState<string | null>(null); // the contract whose changed StateData a build refused to deploy over live state
   const [newFileSignal, setNewFileSignal] = useState(0); // bumped to open the explorer's new-file input
+  const [conflict, setConflict] = useState<Project | null>(null); // another tab's newer version of this project, while this tab has edits of its own
+  const [builtName, setBuiltName] = useState(""); // the contract the footer's build phase is about
   const [engineMemory, setEngineMemory] = useState<IdeMemoryUsage | null>(null);
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
   const [compilerStartup, setCompilerStartup] = useState<StartupTaskStatus>("loading");
@@ -1127,6 +1142,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         return;
       }
       projectRef.current = p;
+      savedRef.current = { content: contentOf(p), ui: JSON.stringify([p.active, p.openTabs ?? []]) };
       setWs({ files: p.files, active: p.active });
       setScenarios(p.scenarios ?? []);
       setSysSel(p.systemContracts ?? []);
@@ -1140,14 +1156,37 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     };
   }, [id, navigate, collab]);
 
+  // What this tab last read from or wrote to storage: the project's content, and this tab's own view of it (active file, tabs).
+  // Content is what two tabs can disagree about; the view is per tab and never a reason to take or refuse the other's work.
+  const savedRef = useRef({ content: "", ui: "" });
+  const conflictRef = useRef<Project | null>(null);
+  conflictRef.current = conflict;
+
+  // Take another tab's version of the project into this one, keeping this tab's own open file where it still exists.
+  const adoptProject = (theirs: Project) => {
+    projectRef.current = { ...theirs };
+    savedRef.current = { ...savedRef.current, content: contentOf(theirs) };
+    setWs((w) => ({ files: theirs.files, active: theirs.files.some((f) => f.name === w.active) ? w.active : theirs.active }));
+    setScenarios(theirs.scenarios ?? []);
+    setSysSel(theirs.systemContracts ?? []);
+    setProjectName(theirs.name);
+    appendLog("this project was changed in another tab — loaded that version");
+  };
+
   // Write the current editor state into the loaded project document and persist it. Shared by the debounced
-  // auto-save and the Ctrl+S handler.
+  // auto-save, the Ctrl+S handler and the flush when the tab is hidden. Nothing changed means nothing written,
+  // so opening a project does not touch it.
   const persistProject = useCallback((): void => {
     if (collab) {
       return; // in collab the server is the sole cloud writer (avoids double-write clobber)
     }
     const p = projectRef.current;
-    if (!p) {
+    if (!p || conflictRef.current) {
+      return; // a conflict waits for the developer's choice; saving now would pick for them
+    }
+    const content = contentOf({ name: projectName, files: ws.files, scenarios, systemContracts: sysSel });
+    const ui = JSON.stringify([ws.active, openTabs]);
+    if (content === savedRef.current.content && ui === savedRef.current.ui) {
       return;
     }
     p.files = ws.files;
@@ -1156,7 +1195,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     p.scenarios = scenarios;
     p.systemContracts = sysSel;
     p.name = projectName;
-    void getStore().save(p).catch((e) => notify.error(errorMessage(e, "Auto-save failed — your latest changes aren't saved")));
+    void getStore().save(p).then(
+      () => {
+        savedRef.current = { content, ui };
+      },
+      (e) => {
+        if (!(e instanceof StaleProjectError)) {
+          notify.error(errorMessage(e, "Auto-save failed — your latest changes aren't saved"));
+          return;
+        }
+        // Another tab saved first. The same content means only its view differs: take its timestamp and save ours.
+        if (contentOf(e.stored) === content || content === savedRef.current.content) {
+          p.updatedAt = e.stored.updatedAt;
+          if (contentOf(e.stored) !== content) adoptProject(e.stored);
+          return;
+        }
+        setConflict(e.stored);
+      },
+    );
   }, [ws, openTabs, scenarios, sysSel, projectName, collab]);
 
   // Persist the whole project document (debounced) whenever its contents change.
@@ -1173,6 +1229,68 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // latest closure.
   const persistRef = useRef(persistProject);
   persistRef.current = persistProject;
+
+  // The debounce leaves a 400 ms window in which a reload or a closed tab lost the last keystrokes: save when the page goes away.
+  useEffect(() => {
+    const flush = () => persistRef.current();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // The same project open in another tab: when that tab saves, take its version if this tab has nothing unsaved,
+  // and ask when both have changes. Before this the last tab to save silently overwrote the other.
+  const latestContentRef = useRef("");
+  latestContentRef.current = contentOf({ name: projectName, files: ws.files, scenarios, systemContracts: sysSel });
+  useEffect(() => {
+    if (collab || !id) {
+      return;
+    }
+    const onStorage = (event: StorageEvent) => {
+      const mine = projectRef.current;
+      if (event.key !== projectStorageKey(id) || !event.newValue || !mine) {
+        return;
+      }
+      let theirs: Project;
+      try {
+        theirs = JSON.parse(event.newValue) as Project;
+      } catch {
+        return;
+      }
+      if (contentOf(theirs) === latestContentRef.current) {
+        mine.updatedAt = theirs.updatedAt; // only the other tab's view changed; stay in step so the next save is not refused
+      } else if (latestContentRef.current === savedRef.current.content) {
+        adoptProject(theirs);
+      } else {
+        setConflict(theirs);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reads refs; adoptProject only calls stable setters
+  }, [id, collab]);
+
+  const resolveConflict = (choice: "theirs" | "mine") => {
+    const theirs = conflictRef.current;
+    const mine = projectRef.current;
+    if (!theirs || !mine) {
+      return;
+    }
+    conflictRef.current = null;
+    setConflict(null);
+    if (choice === "theirs") {
+      adoptProject(theirs);
+    } else {
+      mine.updatedAt = theirs.updatedAt; // this copy now knowingly replaces theirs
+      persistRef.current();
+    }
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "s" || e.key === "S")) {
@@ -2640,6 +2758,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
     setPhase("compiling");
     setLayoutRefusal(null);
+    setBuiltName(contractName);
 
     const done = new Map<string, number>(); // name -> slot deployed this pass
     const visiting = new Set<string>(); // cycle guard
@@ -2969,11 +3088,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: color.void, color: color.textLight, fontFamily: font.body, overflow: "hidden" }}>
       {showStartup && <SplashScreen label="Preparing editor" steps={startupSteps} />}
       <style dangerouslySetInnerHTML={{ __html: KEYFRAMES }} />
-      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-rail{transition:background .1s,color .1s}.pix-rail:hover{background:${color.panel};color:${color.textLight}}.pix-collapse{opacity:0;transition:opacity .1s}.pix-resizer:hover .pix-collapse{opacity:1}.pix-collapse:hover{color:${color.accent} !important;border-color:${color.accent} !important}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
+      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar{width:11px;height:11px}::-webkit-scrollbar-track{background:${color.void}}::-webkit-scrollbar-thumb{background:${color.hair2};border:3px solid ${color.void}}::-webkit-scrollbar-thumb:hover{background:${color.accent}}::-webkit-scrollbar-corner{background:${color.void}}*{scrollbar-width:thin;scrollbar-color:${color.hair2} ${color.void}}.pix-resizer{transition:background .1s}.pix-resizer:hover{background:${color.accent}66}.pix-rail{transition:background .1s,color .1s}.pix-rail:hover{background:${color.panel};color:${color.textLight}}.pix-collapse{opacity:0;transition:opacity .1s}.pix-resizer:hover .pix-collapse{opacity:1}.pix-collapse:hover{color:${color.accent} !important;border-color:${color.accent} !important}.pix-problem-row:hover{background:#ffffff0a}.pix-tabs::-webkit-scrollbar,.pix-topbar::-webkit-scrollbar{height:0}.pix-tab:hover{background:#ffffff08}.pix-tab-x{opacity:0;transition:opacity .1s}.pix-tab:hover .pix-tab-x{opacity:1}.pix-tab:hover .pix-tab-dot{opacity:0}` }} />
       <Toasts />
       <OfflineBanner />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none" }}>
+      <div className="pix-topbar" style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none", overflowX: "auto", overflowY: "hidden", whiteSpace: "nowrap" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
           <PixelQMark size={22} />
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
@@ -2983,7 +3102,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <span style={{ width: 8, height: 8, background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>{projectName || "…"}</span>
         {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.accent }}>✓ saved</span>}
-        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
           {activeKind === "test" ? (
             <ToolButton variant="accent" onClick={() => void runTestFile()} disabled={!!testRun?.running}>
               {testRun?.running ? "Running…" : "▶ Run tests"}
@@ -3011,9 +3130,17 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: hair(), background: color.panel, flex: "none" }}>
+      {conflict && (
+        <div role="alert" style={{ display: "flex", alignItems: "center", gap: 12, padding: "7px 16px", borderBottom: hair(), background: "#f8514914", color: "#f85149", fontFamily: font.mono, fontSize: 12, flex: "none" }}>
+          <span>This project was changed in another tab, and this tab has changes of its own. Saving is paused until you choose.</span>
+          <NeoBtn onClick={() => resolveConflict("theirs")} title="Replace this tab's files with the other tab's version — this tab's unsaved changes are dropped">Load theirs</NeoBtn>
+          <NeoBtn onClick={() => resolveConflict("mine")} title="Save this tab's version over the other tab's">Keep mine</NeoBtn>
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: hair(), background: color.panel, flex: "none", overflowX: "auto" }}>
         <TrafficLights />
-        <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textFaintDk, marginLeft: 6 }}>qinit ide — my-contract</span>
+        <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textFaintDk, marginLeft: 6, flex: "none" }}>qinit ide — {projectName || "…"}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
           <button
             onClick={() => setSearchOpen(true)}
@@ -3042,7 +3169,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         </div>
       </div>
 
-      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${leftHidden ? RAIL : explorerW}px ${leftHidden ? 0 : 5}px 1fr ${rightHidden ? 0 : 5}px ${rightHidden ? RAIL : engineW}px`, minHeight: 0 }}>
+      <div className="pix-ide-body" style={{ flex: 1, display: "grid", gridTemplateColumns: `${leftHidden ? RAIL : explorerW}px ${leftHidden ? 0 : 5}px minmax(${EDITOR_MIN_WIDTH}px, 1fr) ${rightHidden ? 0 : 5}px ${rightHidden ? RAIL : engineW}px`, minHeight: 0, overflowX: "auto" }}>
         {/* Explorer column: the file tree, or — when collapsed — a thin rail spine to bring it back. Stays a
             grid item either way so the editor keeps its column. */}
         <div style={{ minWidth: 0, overflow: "hidden", display: leftHidden ? "flex" : "grid" }}>
@@ -3054,6 +3181,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
               active={ws.active}
               source={source}
               newFileSignal={newFileSignal}
+              projectName={projectName}
               onSelect={selectFile}
               onCreate={createFile}
               onRename={renameFile}
@@ -3078,7 +3206,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ flex: 1, minHeight: 120 }}>
             <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme, theme)} onChange={editSource} onMount={onEditorMount} />
           </div>
 
@@ -3338,13 +3466,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
         <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
-          ● {fault ? "halted" : phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
+          ● {fault ? "halted" : phase === "ready" ? `deployed ${builtName}` : phase === "compiling" ? `building ${builtName}` : phase === "error" ? `build of ${builtName} failed` : "ready"}
         </span>
         <span>{fileLabel(ws.active)}</span>
         <span>{KIND_LABEL[activeKind]}</span>
-        {diag.state !== "idle" && (
+        {diag.state !== "idle" && activeKind === "contract" && (
           <span style={{ color: diag.state === "error" ? "#f85149" : diag.state === "ok" ? color.accent : color.textMutedDk }}>
-            {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ no errors" : `✕ ${diag.count} error${diag.count === 1 ? "" : "s"}`}
+            {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ compiles" : `✕ ${diag.count} compile error${diag.count === 1 ? "" : "s"}`}
           </span>
         )}
         {result?.hash && <span>hash {result.hash.slice(0, 12)}</span>}

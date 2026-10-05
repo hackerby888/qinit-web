@@ -3,7 +3,7 @@
 // click); mouse hover syncs the selection. Search state is owned by the parent so it persists across opens.
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { color, font } from "../landing/tokens";
-import { searchWorkspace } from "./search";
+import { searchError, searchWorkspace } from "./search";
 
 const overlay: CSSProperties = {
   position: "fixed",
@@ -47,6 +47,7 @@ export function SearchPanel({ files, query, caseSensitive, regex, onQuery, onCas
   const flat = useMemo(() => results.flatMap((r) => r.matches.map((m) => ({ name: r.name, line: m.line, col: m.col, preview: m.preview }))), [results]);
   const counts = useMemo(() => new Map(results.map((r) => [r.name, r.matches.length])), [results]);
   const total = flat.length;
+  const invalid = searchError(query.trim(), { regex });
 
   // Reset the highlight whenever the result set changes.
   useEffect(() => {
@@ -100,7 +101,9 @@ export function SearchPanel({ files, query, caseSensitive, regex, onQuery, onCas
         </div>
 
         <div style={{ padding: "5px 12px", fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk, borderBottom: `1px solid ${color.hair}` }}>
-          {query.trim() ? `${total} match${total === 1 ? "" : "es"} in ${results.length} file${results.length === 1 ? "" : "s"} · ↑↓ Enter` : "type to search the workspace"}
+          {invalid
+            ? <span style={{ color: "#f85149" }}>{invalid}</span>
+            : query.trim() ? `${total} match${total === 1 ? "" : "es"} in ${results.length} file${results.length === 1 ? "" : "s"} · ↑↓ Enter` : "type to search the workspace"}
         </div>
 
         <div style={{ overflowY: "auto", minHeight: 0 }}>

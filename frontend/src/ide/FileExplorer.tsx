@@ -6,6 +6,7 @@ import { Crosshair, ChevronsDownUp, ChevronRight, ChevronDown, Folder, FolderOpe
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
+import { ConfirmModal } from "./ui";
 import { buildFileTree, newFileName, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
 
@@ -17,12 +18,13 @@ interface MenuItem {
   sep?: boolean;
 }
 
-export function FileExplorer({ files, active, source, newFileSignal, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onMovePaths, onCopyPaths, onDeletePaths, onJump }: {
+export function FileExplorer({ files, active, source, newFileSignal, projectName, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onMovePaths, onCopyPaths, onDeletePaths, onJump }: {
   files: WorkspaceFile[];
   active: string;
   source: string;
   // bumped by the shell to open the new-file input from outside (the command palette's "New file…").
   newFileSignal?: number;
+  projectName?: string;
   onSelect: (name: string) => void;
   onCreate: (name: string) => void;
   onRename: (oldName: string, newName: string) => void;
@@ -624,7 +626,7 @@ export function FileExplorer({ files, active, source, newFileSignal, onSelect, o
         title="Drop here to move to the project root"
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 14px 6px", color: color.textMutedDk, background: dragOver === "" ? DROP : "transparent" }}
       >
-        <span style={{ width: 8, height: 8, background: color.textGhostDk, flex: "none" }} />my-contract
+        <span style={{ width: 8, height: 8, background: color.textGhostDk, flex: "none" }} />{projectName || "project"}
       </div>
 
       {mkdir && mkdirPrefix === "" && inputRow("mkdir", 0, dirInput)}
@@ -637,7 +639,7 @@ export function FileExplorer({ files, active, source, newFileSignal, onSelect, o
       {SHOW_SPONSOR_SLOT && <AdSlot />}
 
       {confirm && (
-        <ConfirmDialog
+        <ConfirmModal
           message={confirm.message}
           onYes={() => { confirm.onYes(); setConfirm(null); }}
           onCancel={() => setConfirm(null)}
@@ -701,26 +703,6 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Me
             </button>
           ),
         )}
-      </div>
-    </div>
-  );
-}
-
-// In-app delete confirm — replaces the browser's window.confirm so it matches the IDE's look. Enter (the
-// focused Delete button) confirms, Esc or a backdrop click cancels.
-function ConfirmDialog({ message, onYes, onCancel }: { message: string; onYes: () => void; onCancel: () => void }) {
-  return (
-    <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "#000000A0", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Escape") { onCancel(); } }}
-        style={{ width: 330, maxWidth: "90%", background: color.panelDeep, border: `1px solid ${color.hair2}`, boxShadow: "6px 6px 0 #000", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}
-      >
-        <span style={{ fontFamily: font.mono, fontSize: 13, color: color.textLight, lineHeight: 1.5 }}>{message}</span>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-          <button onClick={onCancel} style={{ border: `1px solid ${color.hair2}`, background: "transparent", color: color.textLight, fontFamily: font.mono, fontSize: 12, padding: "6px 14px", cursor: "pointer" }}>Cancel</button>
-          <button autoFocus onClick={onYes} style={{ border: "1px solid #f85149", background: "#f85149", color: color.void, fontFamily: font.mono, fontSize: 12, padding: "6px 14px", cursor: "pointer" }}>Delete</button>
-        </div>
       </div>
     </div>
   );

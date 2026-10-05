@@ -10,7 +10,20 @@ import { CloudProjectStore } from "./cloudStore";
 
 const INDEX_KEY = "ide.projects.index";
 const CURRENT_KEY = "ide.project.current";
-const projectKey = (id: string): string => `ide.project.${id}`;
+const PROJECT_PREFIX = "ide.project.";
+const projectKey = (id: string): string => `${PROJECT_PREFIX}${id}`;
+
+// The storage key a project lives under, for a tab that watches it change in another tab.
+export const projectStorageKey = projectKey;
+
+// A save was refused because the stored project is newer than the copy being saved: another tab wrote it.
+// Saving anyway would silently drop that tab's work; `stored` is what it wrote.
+export class StaleProjectError extends Error {
+  constructor(readonly stored: Project) {
+    super("this project was changed in another tab");
+    this.name = "StaleProjectError";
+  }
+}
 
 // Legacy single-workspace keys — migrated into a default project the first time the gallery loads.
 const LEGACY_WS = "qinit-ide-workspace.v1";
@@ -53,10 +66,34 @@ class LocalProjectStore implements ProjectStore {
   private readIndex(): ProjectMeta[] {
     try {
       const a = JSON.parse(localStorage.getItem(INDEX_KEY) ?? "[]");
-      return Array.isArray(a) ? (a as ProjectMeta[]) : [];
+      if (Array.isArray(a)) {
+        return a as ProjectMeta[];
+      }
     } catch {
-      return [];
+      // damaged — rebuilt below
     }
+    return this.rebuildIndex();
+  }
+
+  // The index is derived: every row comes from a project record. A damaged index once showed "0 projects" over records that were all still there.
+  private rebuildIndex(): ProjectMeta[] {
+    const metas: ProjectMeta[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith(PROJECT_PREFIX) || key === CURRENT_KEY) {
+        continue;
+      }
+      try {
+        const p = JSON.parse(localStorage.getItem(key) ?? "") as Project;
+        if (p && typeof p.id === "string" && Array.isArray(p.files)) {
+          metas.push(metaOf(p));
+        }
+      } catch {
+        // an unreadable record is not a project
+      }
+    }
+    this.writeIndex(metas);
+    return metas;
   }
 
   private writeIndex(metas: ProjectMeta[]): void {
@@ -135,8 +172,13 @@ class LocalProjectStore implements ProjectStore {
     }
   }
 
+  // `p.updatedAt` is when this copy was read or last saved. A stored record newer than that was written by another tab.
   async save(p: Project): Promise<void> {
-    p.updatedAt = now();
+    const stored = await this.load(p.id);
+    if (stored && stored.updatedAt > p.updatedAt) {
+      throw new StaleProjectError(stored);
+    }
+    p.updatedAt = Math.max(now(), (stored?.updatedAt ?? 0) + 1);
     localStorage.setItem(projectKey(p.id), JSON.stringify(p));
     this.upsertMeta(p);
   }

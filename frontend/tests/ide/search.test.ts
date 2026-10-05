@@ -1,6 +1,6 @@
 // Workspace search: substring + regex, case toggle, line/col results.
 import { test, expect, describe } from "bun:test";
-import { searchWorkspace } from "../../src/ide/search";
+import { searchError, searchWorkspace } from "../../src/ide/search";
 
 const files = [
   { name: "a.h", source: "hello world\nfoo bar\nHELLO again" },
@@ -35,5 +35,14 @@ describe("searchWorkspace", () => {
   test("empty query and invalid regex return nothing", () => {
     expect(searchWorkspace(files, "")).toEqual([]);
     expect(searchWorkspace(files, "(", { regex: true })).toEqual([]);
+  });
+
+  // W-s21: an invalid pattern kept the previous count on screen and said nothing.
+  test("an invalid regex says why; a valid one, plain text and an empty query do not", () => {
+    expect(searchError("(", { regex: true })).toMatch(/^invalid pattern — /);
+    expect(searchError("[a-", { regex: true })).toMatch(/^invalid pattern — /);
+    expect(searchError("a.*b", { regex: true })).toBeNull();
+    expect(searchError("(", { regex: false })).toBeNull();
+    expect(searchError("", { regex: true })).toBeNull();
   });
 });

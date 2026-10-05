@@ -11,6 +11,8 @@ import {
   describeError,
   dismissCrash,
   installCrashHandlers,
+  isBrowserNotice,
+  isCancellation,
   redactUrl,
   registerDiagnostic,
   reportCrash,
@@ -379,5 +381,26 @@ describe("boundary", () => {
     const html = renderToStaticMarkup(boundary.render() as ReactElement);
     expect(html).toContain("unexpected error");
     expect(html).toContain("reload page");
+  });
+});
+
+// W30: Monaco rejects a pending task with "Canceled" when a model is swapped; the hook reported it as a crash.
+describe("editor cancellations", () => {
+  const canceled = Object.assign(new Error("Canceled"), { name: "Canceled" });
+
+  test("Monaco's cancellation is recognised; a real error that merely says so is not", () => {
+    expect(isCancellation(canceled)).toBe(true);
+    expect(isCancellation(new Error("Canceled"))).toBe(false);
+    expect(isCancellation(Object.assign(new Error("request canceled by the node"), { name: "Canceled" }))).toBe(false);
+    expect(isCancellation("Canceled")).toBe(false);
+    expect(isCancellation(undefined)).toBe(false);
+  });
+
+  // resizing the window to a narrow width put the crash dialog over the page for the editor's own layout pass.
+  test("a resize observer's loop notice is the browser talking, not a crash", () => {
+    expect(isBrowserNotice("ResizeObserver loop completed with undelivered notifications.")).toBe(true);
+    expect(isBrowserNotice("ResizeObserver loop limit exceeded")).toBe(true);
+    expect(isBrowserNotice("Uncaught TypeError: x is not a function")).toBe(false);
+    expect(isBrowserNotice(undefined)).toBe(false);
   });
 });

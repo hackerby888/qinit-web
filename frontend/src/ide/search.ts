@@ -28,6 +28,19 @@ function buildRegex(query: string, opts: SearchOpts): RegExp | null {
   }
 }
 
+// Why a regex query cannot run, or null when it can: an invalid pattern once just kept the previous count on screen.
+export function searchError(query: string, opts: SearchOpts = {}): string | null {
+  if (!query || !opts.regex) {
+    return null;
+  }
+  try {
+    new RegExp(query);
+    return null;
+  } catch (error) {
+    return `invalid pattern — ${(error as Error).message}`;
+  }
+}
+
 export function searchWorkspace(files: { name: string; source: string }[], query: string, opts: SearchOpts = {}): FileResult[] {
   if (!query) {
     return [];

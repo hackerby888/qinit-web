@@ -274,6 +274,18 @@ export function buildReportText(includeSensitive: boolean): string {
 
 // ---- install --------------------------------------------------------------
 
+// The browser delivers this as an error event when a resize observer (the editor's auto-layout) could not finish
+// in one frame. Layout catches up on the next frame; nothing in the app failed.
+export function isBrowserNotice(message: string | undefined): boolean {
+  return /^ResizeObserver loop /.test(message ?? "");
+}
+
+// Monaco rejects a pending task with an error named and worded "Canceled" when a model is swapped or disposed.
+// Nothing went wrong; reporting it put the crash dialog over the page for switching files.
+export function isCancellation(reason: unknown): boolean {
+  return reason instanceof Error && reason.name === "Canceled" && reason.message === "Canceled";
+}
+
 let installed = false;
 
 // Called before createRoot so the first render is covered. Idempotent: StrictMode-safe and test-callable.
@@ -285,11 +297,16 @@ export function installCrashHandlers(): void {
   // Non-capture only: the capture phase also fires for failed <img>/<script> resource loads, which are not
   // app crashes. Never preventDefault() — the browser should still log to the console.
   window.addEventListener("error", (ev: ErrorEvent) => {
+    if (isBrowserNotice(ev.message)) {
+      return;
+    }
     // ev.error is null for cross-origin script errors ("Script error.").
     reportCrash(ev.error ?? `${ev.message} (${ev.filename}:${ev.lineno}:${ev.colno})`, "error");
   });
   window.addEventListener("unhandledrejection", (ev: PromiseRejectionEvent) => {
-    reportCrash(ev.reason, "unhandledrejection");
+    if (!isCancellation(ev.reason)) {
+      reportCrash(ev.reason, "unhandledrejection");
+    }
   });
 }
 
