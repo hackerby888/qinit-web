@@ -7,12 +7,13 @@ import type { TestResult } from "./runner";
 
 const mono: CSSProperties = { fontFamily: font.mono, fontSize: 11.5 };
 
-export function TestPanel({ results, running, title, onClose, onRerun }: {
+export function TestPanel({ results, running, title, onClose, onRerun, onStop }: {
   results: TestResult[];
   running: boolean;
   title?: string;
   onClose: () => void;
   onRerun: () => void;
+  onStop: () => void;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -40,14 +41,16 @@ export function TestPanel({ results, running, title, onClose, onRerun }: {
               <span style={{ ...mono, color: allOk ? color.accent : "#f85149" }}>{allOk ? "✓" : "✗"} {pass}/{total} passed</span>
             )}
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-              <button onClick={onRerun} disabled={running} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: running ? color.textFaintDk : color.accent, ...mono, padding: "2px 10px", cursor: running ? "default" : "pointer" }}>{running ? "running…" : "▶ re-run"}</button>
+              {running
+                ? <button onClick={onStop} title="Stop this run — the test in flight is reported as stopped" style={{ border: "1px solid #f85149", background: color.void, color: "#f85149", ...mono, padding: "2px 10px", cursor: "pointer" }}>■ stop</button>
+                : <button onClick={onRerun} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: color.accent, ...mono, padding: "2px 10px", cursor: "pointer" }}>▶ re-run</button>}
               <button onClick={onClose} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, ...mono, padding: "2px 8px", cursor: "pointer" }}>✕</button>
             </span>
           </div>
 
           <div style={{ overflowY: "auto", padding: "8px 0" }}>
-            {running && results.length === 0 && (
-              <div style={{ ...mono, color: color.textGhostDk, padding: "10px 16px" }}>transpiling + running on the in-page engine…</div>
+            {running && (
+              <div style={{ ...mono, color: color.textGhostDk, padding: "10px 16px" }}>running on the in-page engine{results.length ? ` — ${results.length} done` : ""}…</div>
             )}
 
             {results.map((r, i) => (

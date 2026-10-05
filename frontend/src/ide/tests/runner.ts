@@ -1,19 +1,14 @@
-// In-browser .ts test runner — runs the SAME test file the qinit CLI runs under `bun test`, but in this page
-// against the in-page engine. A qinit test imports `{ test, expect, … }` from "bun:test" and the generated
-// typed clients `{ Counter, provider }` from "./.qinit"; here those imports are stripped and the same names
-// are injected as globals: the bun:test lifecycle fns, a `provider()`, and a class per deployed contract with
-// the same method shapes as `generateClient` (functions read, procedures synchronously include their signed
-// transaction in the next tick). The chain is reset once at the start, then tests run in order.
-import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "../idl-view";
+// In-browser .ts test runner — runs the SAME test file the qinit CLI runs under `bun test`, against the in-page
+// engine. A qinit test imports `{ test, expect, … }` from "bun:test" and the generated typed clients
+// `{ Counter, provider }` from "./.qinit"; here those imports are stripped and the same names are injected.
+// The test body runs in a worker (./sandbox.ts, ./test-worker.ts); this side transpiles the file, serves the
+// worker's chain calls from the engine, and stops a run that outlives its time or that the developer stops.
+import type { ContractIdlView as ContractIdl } from "../idl-view";
 import type { IdeEngine, Account, DeployImage } from "../engine";
+import { nameOutput } from "../output-values";
+import type { ProcedureOptions, ProcedureOutcome, SandboxBridge, SandboxContract, SandboxEvent, TestResult } from "./sandbox";
 
-export interface TestResult {
-  name: string;
-  ok: boolean;
-  ms: number;
-  error?: string;
-  logs: string[];
-}
+export type { TestResult } from "./sandbox";
 
 export interface TestContract {
   name: string;
@@ -27,216 +22,154 @@ export interface TestDeps {
   eng: IdeEngine;
   contracts: Record<string, TestContract>;
   accounts: Account[];
+  // called once the run has replaced the chain, so the shell can drop what it showed of the old one.
+  onChainReset?: () => void;
 }
 
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (...args: string[]) => (...a: unknown[]) => Promise<unknown>;
-
-function fmt(v: unknown): string {
-  if (typeof v === "bigint") {
-    return `${v}n`;
-  }
-  if (typeof v === "object" && v !== null) {
-    return JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? `${x}n` : x));
-  }
-  return String(v);
+export interface RunControl {
+  timeoutMs?: number;
+  // aborting stops the run; the test in flight is reported as stopped.
+  signal?: AbortSignal;
+  onProgress?: (results: TestResult[]) => void;
 }
 
-function looseEq(a: unknown, b: unknown): boolean {
-  if (a === b) {
-    return true;
-  }
-  if (typeof a === "bigint" || typeof b === "bigint") {
-    try {
-      return BigInt(a as never) === BigInt(b as never);
-    } catch {
-      return false;
-    }
-  }
-  return false;
-}
+// A whole file gets this long. A test that spins forever once froze the tab for good.
+export const TEST_FILE_TIMEOUT_MS = 60_000;
 
-function deepEq(a: unknown, b: unknown): boolean {
-  if (looseEq(a, b)) {
-    return true;
-  }
-  if (typeof a !== "object" || typeof b !== "object" || !a || !b) {
-    return false;
-  }
-  const ka = Object.keys(a as object);
-  const kb = Object.keys(b as object);
-  if (ka.length !== kb.length) {
-    return false;
-  }
-  return ka.every((k) => deepEq((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
-}
+export type TestWorkerRequest = { kind: "call"; id: number; method: keyof SandboxBridge; args: unknown[] } | { kind: "event"; event: SandboxEvent };
+export type TestWorkerReply = { kind: "run"; js: string; contracts: SandboxContract[] } | { kind: "reply"; id: number; ok: boolean; value?: unknown; error?: string };
 
-// Minimal bun:test/jest matcher.
-function makeExpect() {
-  return (actual: unknown) => ({
-    toBe(expected: unknown) {
-      if (!looseEq(actual, expected)) {
-        throw new Error(`expected ${fmt(actual)} to be ${fmt(expected)}`);
-      }
-    },
-    toEqual(expected: unknown) {
-      if (!deepEq(actual, expected)) {
-        throw new Error(`expected ${fmt(actual)} to equal ${fmt(expected)}`);
-      }
-    },
-    toBeGreaterThan(expected: unknown) {
-      if (!(BigInt(actual as never) > BigInt(expected as never))) {
-        throw new Error(`expected ${fmt(actual)} > ${fmt(expected)}`);
-      }
-    },
-    toBeLessThan(expected: unknown) {
-      if (!(BigInt(actual as never) < BigInt(expected as never))) {
-        throw new Error(`expected ${fmt(actual)} < ${fmt(expected)}`);
-      }
-    },
-    toBeTruthy() {
-      if (!actual) {
-        throw new Error(`expected ${fmt(actual)} to be truthy`);
-      }
-    },
-    toBeFalsy() {
-      if (actual) {
-        throw new Error(`expected ${fmt(actual)} to be falsy`);
-      }
-    },
-  });
-}
-
-// The engine decodes a function output positionally (by format, no names); re-attach the IDL field names so a
-// test reads `(await c.Get()).value` — matching the generated client's typed output interface.
-function nameOutput(entry: IdlEntry, raw: unknown): unknown {
-  const fields = entry.outFields ?? [];
-  if (fields.length === 0) {
-    return raw;
-  }
-  if (fields.length === 1) {
-    return { [fields[0].name]: raw };
-  }
-  if (raw && typeof raw === "object" && !Array.isArray(raw) && fields.every((f) => f.name in (raw as object))) {
-    return raw;
-  }
-  const arr = Array.isArray(raw) ? raw : [raw];
-  const obj: Record<string, unknown> = {};
-  fields.forEach((f, i) => {
-    obj[f.name] = arr[i];
-  });
-  return obj;
-}
-
-interface ProcOpts {
-  seed?: string;
-  amount?: number;
-  confirm?: boolean;
-}
-
-// Build a constructable client class for a contract, mirroring `generateClient`'s shape: `new Counter(opts)`,
-// functions return the named output, procedures take `(args?, { amount, seed }?)` and resolve once processed.
-function makeContractClass(c: TestContract, eng: IdeEngine, accounts: Account[]): new (opts?: unknown) => Record<string, unknown> {
-  class Client {
-    constructor(_opts?: unknown) {
-      // opts (rpc/index/seed) are a node concern; the in-page client is bound to this deployed contract.
-    }
-  }
-
-  for (const [fnId, entry] of Object.entries(c.idl.functions) as [string, IdlEntry][]) {
-    (Client.prototype as Record<string, unknown>)[entry.name] = async function (input: Record<string, unknown> = {}) {
-      return nameOutput(entry, await eng.callFunction(c.slot, fnId, entry, input));
-    };
-  }
-
-  for (const [procId, entry] of Object.entries(c.idl.procedures) as [string, IdlEntry][]) {
-    (Client.prototype as Record<string, unknown>)[entry.name] = async function (input: Record<string, unknown> = {}, opts: ProcOpts = {}) {
-      const caller = { seed: opts.seed ?? accounts[0]?.seed ?? "a".repeat(55), amount: Number(opts.amount) || 0 };
-      const key = `test:${c.name}:${entry.name}:${Math.random().toString(36).slice(2)}`;
-      const { targetTick } = await eng.submitProcedure(c.slot, procId, entry, input, key, caller, { name: c.name, source: c.source });
-      return { ok: true, tick: targetTick, confirmed: true, included: true };
-    };
-  }
-
-  return Client as new (opts?: unknown) => Record<string, unknown>;
-}
+const fileError = (error: string): TestResult[] => [{ name: "(test file)", ok: false, ms: 0, error, logs: [] }];
 
 // Drop the ESM imports (bun:test / ./.qinit) — their names are injected as globals — and any `export`.
+// Each removed line keeps its line breaks, so a syntax error is still reported on the line the developer sees.
 function stripModuleSyntax(src: string): string {
+  const blank = (text: string) => text.replace(/[^\n]/g, "");
   return src
-    .replace(/^\s*import\s[\s\S]*?from\s*["'][^"']+["'];?\s*$/gm, "")
-    .replace(/^\s*import\s*["'][^"']+["'];?\s*$/gm, "")
-    .replace(/^\s*export\s+(?=(default|const|function|class|let|var)\b)/gm, "");
+    .replace(/^[ \t]*import\s[\s\S]*?from\s*["'][^"']+["'];?[ \t]*$/gm, blank)
+    .replace(/^[ \t]*import\s*["'][^"']+["'];?[ \t]*$/gm, blank)
+    .replace(/^([ \t]*)export\s+(?=(default|const|function|class|let|var)\b)/gm, "$1");
 }
 
-export async function runTests(source: string, deps: TestDeps): Promise<TestResult[]> {
+// The clients a file imports from "./.qinit" that no build has produced yet.
+function unbuiltContracts(source: string, built: Record<string, TestContract>): string[] {
+  const imported = [...source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']\.\/\.qinit["']/g)].flatMap((match) => match[1].split(","));
+  const names = imported.map((name) => name.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]).filter(Boolean);
+  return names.filter((name) => name !== "provider" && !(name in built));
+}
+
+async function transpile(source: string): Promise<{ js: string } | { error: string }> {
   const tsmod = (await import("typescript")) as unknown as { default?: typeof import("typescript") } & typeof import("typescript");
   const ts = tsmod.default ?? tsmod;
-  const js = ts.transpileModule(stripModuleSyntax(source), {
+  const output = ts.transpileModule(stripModuleSyntax(source), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None },
-  }).outputText;
+    reportDiagnostics: true,
+  });
 
-  // bun:test-style collection + lifecycle.
-  const collected: { name: string; fn: () => unknown }[] = [];
-  const beforeAll: (() => unknown)[] = [];
-  const beforeEach: (() => unknown)[] = [];
-  const afterEach: (() => unknown)[] = [];
-  const test = (name: string, fn: () => unknown) => collected.push({ name, fn });
-  const describe = (_name: string, fn: () => unknown) => fn(); // flatten — run the body to register its tests
+  // transpileModule emits something for a file that does not parse, and that something used to run and pass.
+  const errors = (output.diagnostics ?? []).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error);
+  if (errors.length) {
+    const lines = errors.map((diagnostic) => {
+      const line = diagnostic.file && diagnostic.start !== undefined ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1 : 0;
+      return `${line ? `line ${line}: ` : ""}${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`;
+    });
+    return { error: `syntax error — ${lines.join("; ")}` };
+  }
+  return { js: output.outputText };
+}
 
-  let logs: string[] = [];
-  const sandboxConsole = {
-    log: (...a: unknown[]) => logs.push(a.map(fmt).join(" ")),
-    error: (...a: unknown[]) => logs.push(a.map(fmt).join(" ")),
-    warn: (...a: unknown[]) => logs.push(a.map(fmt).join(" ")),
+const sandboxContract = (contract: TestContract): SandboxContract => ({
+  name: contract.name,
+  functions: Object.entries(contract.idl.functions).map(([id, entry]) => ({ id, name: entry.name })),
+  procedures: Object.entries(contract.idl.procedures).map(([id, entry]) => ({ id, name: entry.name, hasInput: entry.inFields.length > 0 })),
+});
+
+export async function runTests(source: string, deps: TestDeps, control: RunControl = {}): Promise<TestResult[]> {
+  const unbuilt = unbuiltContracts(source, deps.contracts);
+  if (unbuilt.length) {
+    return fileError(unbuilt.map((name) => `${name} is not built yet — open ${name}.h and press ▶ Compile & Run first`).join("; "));
+  }
+
+  const transpiled = await transpile(source);
+  if ("error" in transpiled) {
+    return fileError(transpiled.error);
+  }
+
+  const { eng } = deps;
+  const wasRunning = eng.isRunning();
+  const images: DeployImage[] = Object.values(deps.contracts).map((c) => ({ slot: c.slot, wasm: c.wasm, name: c.name }));
+
+  // What the worker may ask of the chain. Tests run on one fresh chain for the file, with the auto-ticker held so ticks only move when a test moves them.
+  const bridge: SandboxBridge = {
+    async reset() {
+      eng.pause();
+      await eng.reset(images);
+      deps.onChainReset?.();
+    },
+    async callFunction(contract, fnId, input) {
+      const target = deps.contracts[contract];
+      const entry = target.idl.functions[fnId];
+      return nameOutput(entry, await eng.callFunction(target.slot, fnId, entry, input));
+    },
+    async submitProcedure(contract, procId, input, options: ProcedureOptions): Promise<ProcedureOutcome> {
+      const target = deps.contracts[contract];
+      const entry = target.idl.procedures[procId];
+      const caller = { seed: options.seed ?? deps.accounts[0]?.seed ?? "a".repeat(55), amount: options.amount ?? 0 };
+      const key = `test:${target.name}:${entry.name}:${Math.random().toString(36).slice(2)}`;
+      const sent = await eng.submitProcedure(target.slot, procId, entry, input, key, caller, { name: target.name, source: target.source });
+      return { ok: true, txId: sent.txId, tick: sent.targetTick, confirmed: true, included: sent.included, moneyFlew: sent.moneyFlew };
+    },
   };
 
-  // The "./.qinit" surface: provider() (node opts — a no-op here) + a class per deployed contract.
-  const provider = () => ({});
-  const contractNames = Object.keys(deps.contracts).filter((n) => /^[A-Za-z_$][\w$]*$/.test(n));
-  const contractClasses = contractNames.map((n) => makeContractClass(deps.contracts[n], deps.eng, deps.accounts));
-
-  const globalNames = ["test", "expect", "beforeAll", "beforeEach", "afterEach", "describe", "provider", "console", ...contractNames];
-  const globalVals: unknown[] = [test, makeExpect(), (fn: () => unknown) => beforeAll.push(fn), (fn: () => unknown) => beforeEach.push(fn), (fn: () => unknown) => afterEach.push(fn), describe, provider, sandboxConsole, ...contractClasses];
-
-  // Register the tests (run the file body). A throw here is a file-level error.
-  try {
-    const register = new AsyncFunction(...globalNames, js);
-    await register(...globalVals);
-  } catch (e) {
-    return [{ name: "(test file)", ok: false, ms: 0, error: (e as Error).message, logs: [...logs] }];
-  }
-
-  // Match the node runner: one fresh chain for the whole file, tests in order. Pause the auto-ticker so tick
-  // advancement is deterministic.
-  const images: DeployImage[] = Object.values(deps.contracts).map((c) => ({ slot: c.slot, wasm: c.wasm, name: c.name }));
+  const worker = new Worker(new URL("./test-worker.ts", import.meta.url), { type: "module" });
   const results: TestResult[] = [];
-  const wasRunning = deps.eng.isRunning();
-  deps.eng.pause();
-  try {
-    await deps.eng.reset(images);
-    for (const h of beforeAll) {
-      await h();
-    }
-    for (const t of collected) {
-      logs = [];
-      const t0 = performance.now();
-      try {
-        for (const h of beforeEach) {
-          await h();
-        }
-        await t.fn();
-        for (const h of afterEach) {
-          await h();
-        }
-        results.push({ name: t.name, ok: true, ms: Math.round(performance.now() - t0), logs: [...logs] });
-      } catch (e) {
-        results.push({ name: t.name, ok: false, ms: Math.round(performance.now() - t0), error: (e as Error).message, logs: [...logs] });
-      }
-    }
-  } finally {
-    // a chain the developer paused stays paused.
-    if (wasRunning) deps.eng.resume();
-  }
+  let running: { name: string; since: number } | null = null;
 
-  return results;
+  try {
+    return await new Promise<TestResult[]>((resolve) => {
+      let settled = false;
+      const finish = (outcome: TestResult[]) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(outcome);
+        }
+      };
+      // the run ended before the worker finished: report the test that was in flight, with why.
+      const cut = (why: string) => finish([...results, { name: running?.name ?? "(test file)", ok: false, ms: running ? Math.round(performance.now() - running.since) : 0, error: why, logs: [] }]);
+      const limit = control.timeoutMs ?? TEST_FILE_TIMEOUT_MS;
+      const timer = setTimeout(() => cut(`timed out after ${Math.round(limit / 1000)} s — the run was stopped`), limit);
+      control.signal?.addEventListener("abort", () => cut("stopped"), { once: true });
+
+      worker.onerror = (event) => cut(`the test worker failed: ${event.message}`);
+      worker.onmessage = (event: MessageEvent<TestWorkerRequest>) => {
+        const message = event.data;
+        if (message.kind === "call") {
+          const serve = bridge[message.method] as (...args: unknown[]) => Promise<unknown>;
+          serve(...message.args).then(
+            (value) => worker.postMessage({ kind: "reply", id: message.id, ok: true, value } satisfies TestWorkerReply),
+            (error) => worker.postMessage({ kind: "reply", id: message.id, ok: false, error: error instanceof Error ? error.message : String(error) } satisfies TestWorkerReply),
+          );
+          return;
+        }
+
+        const sandboxEvent = message.event;
+        if (sandboxEvent.kind === "start") {
+          running = { name: sandboxEvent.name, since: performance.now() };
+        } else if (sandboxEvent.kind === "result") {
+          running = null;
+          results.push(sandboxEvent.result);
+          control.onProgress?.([...results]);
+        } else {
+          finish(sandboxEvent.kind === "file-error" ? [{ name: "(test file)", ok: false, ms: 0, error: sandboxEvent.error, logs: sandboxEvent.logs }] : results);
+        }
+      };
+
+      worker.postMessage({ kind: "run", js: transpiled.js, contracts: Object.values(deps.contracts).filter((c) => /^[A-Za-z_$][\w$]*$/.test(c.name)).map(sandboxContract) } satisfies TestWorkerReply);
+    });
+  } finally {
+    worker.terminate();
+    // a chain the developer paused stays paused.
+    if (wasRunning) eng.resume();
+  }
 }

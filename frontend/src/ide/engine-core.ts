@@ -104,6 +104,7 @@ const formatLog = (log: Awaited<ReturnType<typeof describeTrace>>["logs"][number
 export interface TxProcessed {
   key: string;
   name: string;
+  contract: string;
   tick: number;
   txId?: string;
   moneyFlew: boolean;
@@ -115,6 +116,8 @@ export interface TxProcessed {
 export interface ProcedureResult {
   targetTick: number;
   txId?: string;
+  // whether the tick's data holds the transaction, as the node reports it.
+  included: boolean;
   moneyFlew: boolean;
   executed: boolean;
 }
@@ -545,9 +548,9 @@ export class IdeEngineCore {
         const executed = detail !== undefined;
 
         this.history.push({ slot, procId, entry, input, key, caller, contract });
-        this.onTxProcessed?.({ key, name: entry.name, tick: included.tick, txId: result.transactionId, moneyFlew, executed, detail });
+        this.onTxProcessed?.({ key, name: entry.name, contract: contract.name, tick: included.tick, txId: result.transactionId, moneyFlew, executed, detail });
         this.onTick?.(included);
-        return { targetTick: included.tick, txId: result.transactionId, moneyFlew, executed };
+        return { targetTick: included.tick, txId: result.transactionId, included: status?.found ?? true, moneyFlew, executed };
       });
     } finally {
       if (resumeTicker && !this.faultValue) this.resume();

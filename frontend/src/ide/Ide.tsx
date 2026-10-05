@@ -960,6 +960,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const deployedRef = useRef<Record<string, DeployedContract>>({});
   const stateRef = useRef<Record<string, StateDump>>({});
   const faultRef = useRef<EngineFaultInfo | null>(null);
+  const testStopRef = useRef<AbortController | null>(null); // stops the test run in flight
   const projectRef = useRef<Project | null>(null); // the loaded project doc (carries id/createdAt for save)
 
   // Auto-compile coordination (Remix-style background diagnostics). Refs so the debounce reads fresh
@@ -1714,6 +1715,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setOutputs({});
   };
 
+  // A test or scenario run replaces the developer's chain with its own. Say so, and drop the calls that no longer exist.
+  const chainReplaced = (by: string) => {
+    clearSession();
+    appendLog(`chain reset to genesis for ${by} — earlier calls and state are gone; it now holds what the run left`);
+  };
+
   const refreshState = async (name: string) => {
     const eng = engineRef.current;
     const d = deployedRef.current[name];
@@ -1910,6 +1917,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           contract: { name: d.name, source: d.source },
         };
       });
+      chainReplaced(`scenario "${s.name}"`);
       await eng.runSteps(deployImages(), steps);
 
       const out: AssertResult[] = [];
@@ -2028,12 +2036,22 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     // per-project "./.qinit" client module can't be typed here — its module-not-found is ignored below.
     monaco.languages.typescript.typescriptDefaults.addExtraLib(
       `declare module "bun:test" {
-  export function test(name: string, fn: () => any): void;
-  export function expect(actual: any): { toBe(v: any): void; toEqual(v: any): void; toBeGreaterThan(v: any): void; toBeLessThan(v: any): void; toBeTruthy(): void; toBeFalsy(): void };
-  export function beforeAll(fn: () => any): void;
-  export function beforeEach(fn: () => any): void;
-  export function afterEach(fn: () => any): void;
-  export function describe(name: string, fn: () => any): void;
+  type Fn = () => any;
+  interface Matchers {
+    toBe(v: any): void; toEqual(v: any): void;
+    toBeGreaterThan(v: number | bigint): void; toBeGreaterThanOrEqual(v: number | bigint): void;
+    toBeLessThan(v: number | bigint): void; toBeLessThanOrEqual(v: number | bigint): void;
+    toBeTruthy(): void; toBeFalsy(): void; toBeUndefined(): void; toBeDefined(): void;
+    toContain(v: any): void; toThrow(message?: string): void;
+  }
+  export function test(name: string, fn: Fn): void;
+  export function it(name: string, fn: Fn): void;
+  export function expect(actual: any): Matchers & { not: Matchers; rejects: { toThrow(message?: string): Promise<void> } };
+  export function beforeAll(fn: Fn): void;
+  export function afterAll(fn: Fn): void;
+  export function beforeEach(fn: Fn): void;
+  export function afterEach(fn: Fn): void;
+  export function describe(name: string, fn: Fn): void;
 }`,
       "qinit-bun-test.d.ts",
     );
@@ -2528,12 +2546,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         notify.error(line);
       };
 
-      eng.onTxProcessed = ({ key, name, tick, moneyFlew, executed, detail }) => {
+      eng.onTxProcessed = ({ key, name, contract, tick, moneyFlew, executed, detail }) => {
         if (!active()) return;
         // "not executed": the tick took the transaction but the procedure never ran, e.g. a transfer above the signer's balance.
         setOutputs((o) => ({ ...o, [key]: executed ? `applied ✓ @ tick ${tick}${moneyFlew ? " · qu moved" : ""}` : `not executed @ tick ${tick} — the procedure did not run` }));
         appendLog(executed ? `${name}() processed @ tick ${tick}` : `${name}() was included @ tick ${tick} but not executed`);
-        setTxLog((l) => [{ key, name, tick, moneyFlew, executed, contract: key.split(":")[0], detail }, ...l].slice(0, 300));
+        setTxLog((l) => [{ key, name, tick, moneyFlew, executed, contract, detail }, ...l].slice(0, 300));
         // always replace: a call with no trace of its own must not keep showing the one before it.
         setTxDetail((t) => {
           const next = { ...t };
@@ -2555,7 +2573,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           detail.prints.forEach((line) => appendLog(`  print ${line}`));
         }
         eng.ensureAccounts().then((a) => refreshBalances(a)).catch(() => undefined);
-        void refreshState(key.split(":")[0]);
+        void refreshState(contract);
         setAssetsView(eng.assets());
       };
       eng.start();
@@ -2801,19 +2819,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // Run the active .ts test file in-page against the engine. Contracts must have been built (Compile & Run)
   // so deployedRef has their wasm/idl; the runner deploys each on a fresh chain per test.
   const runTestFile = async () => {
-    const eng = await ensureEngine();
-    const accs = await eng.ensureAccounts();
-    const contracts: Record<string, TestContract> = {};
-    for (const d of Object.values(deployedRef.current)) {
-      contracts[d.name] = { name: d.name, slot: d.slot, idl: d.idl, source: d.source, wasm: d.wasm };
-    }
-
-    setTestRun({ results: [], running: true, title: ws.active });
+    const title = ws.active;
+    const stop = new AbortController();
+    testStopRef.current = stop;
+    setTestRun({ results: [], running: true, title });
     try {
-      const results = await runTests(source, { eng, contracts, accounts: accs });
-      setTestRun({ results, running: false, title: ws.active });
+      const eng = await ensureEngine();
+      const accs = await eng.ensureAccounts();
+      const contracts: Record<string, TestContract> = {};
+      for (const d of Object.values(deployedRef.current)) {
+        contracts[d.name] = { name: d.name, slot: d.slot, idl: d.idl, source: d.source, wasm: d.wasm };
+      }
+      const results = await runTests(source, { eng, contracts, accounts: accs, onChainReset: () => chainReplaced("the test run") }, {
+        signal: stop.signal,
+        onProgress: (partial) => setTestRun({ results: partial, running: true, title }),
+      });
+      setTestRun({ results, running: false, title });
     } catch (e) {
-      setTestRun({ results: [{ name: "(runner)", ok: false, ms: 0, error: (e as Error).message, logs: [] }], running: false, title: ws.active });
+      setTestRun({ results: [{ name: "(runner)", ok: false, ms: 0, error: failureLine("the run", e, !!faultRef.current), logs: [] }], running: false, title });
     } finally {
       void guarded("refresh", refreshEngineViews);
     }
@@ -3270,7 +3293,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                   running={runningScen}
                   idl={sel?.idl ?? null}
                   contractName={contractName}
-                  canCapture={!!sel}
+                  canCapture={!!sel && txLog.some((tx) => tx.contract === sel.name && tx.executed)}
                   onCapture={captureScenario}
                   onRun={(s) => void runScenario(s)}
                   onDelete={deleteScenario}
@@ -3336,7 +3359,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       {shareOpen && id && <ShareDialog projectId={id} isLive={!!collab} peerCount={collabApi.peers.length} onGoLive={() => { void goLive(); }} onClose={() => setShareOpen(false)} />}
 
-      {testRun && <TestPanel results={testRun.results} running={testRun.running} title={testRun.title} onClose={() => setTestRun(null)} onRerun={() => void runTestFile()} />}
+      {testRun && <TestPanel results={testRun.results} running={testRun.running} title={testRun.title} onClose={() => setTestRun(null)} onRerun={() => void runTestFile()} onStop={() => testStopRef.current?.abort()} />}
 
       {palette && (
         <CommandPalette

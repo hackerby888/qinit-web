@@ -160,7 +160,7 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
       <button
         onClick={onCapture}
         disabled={!canCapture}
-        title={canCapture ? `Capture the writes you ran on ${contractName} as a test` : "Run a procedure first, then capture it"}
+        title={canCapture ? `Capture the writes you ran on ${contractName} as a test` : `Run a procedure on ${contractName ?? "a contract"} first — there is nothing to capture yet`}
         style={{ alignSelf: "flex-start", border: `1px solid ${color.hair2}`, background: color.void, color: canCapture ? color.accent : color.textFaintDk, fontFamily: font.mono, fontSize: 10.5, padding: "3px 8px", cursor: canCapture ? "pointer" : "default" }}
       >
         + capture session
