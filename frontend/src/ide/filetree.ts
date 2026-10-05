@@ -61,7 +61,7 @@ export function normalizePath(raw: string): string {
   return segments.join("/");
 }
 
-// What a typed name becomes, or why it cannot be used. Every way of naming a file goes through here — the explorer,
+// what a typed name becomes, or why it cannot be used. Every way of naming a file goes through here — the explorer,
 // the command palette, an import — so none of them can make a second file of one name or a second contract of one stem.
 // `replacing` is the path being renamed, which does not clash with itself.
 export function newFileName(raw: string, existing: readonly string[], replacing?: string): { path: string; note?: string; error?: string } {

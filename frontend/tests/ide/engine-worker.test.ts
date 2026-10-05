@@ -139,7 +139,7 @@ test("a timed-out call terminates the wedged worker and restores a fresh one", a
   expect(workers.length).toBe(2);
 });
 
-// The recovery replays the session's calls. When the contract that hung is one they run through, the replay hangs too:
+// the recovery replays the session's calls. When the contract that hung is one they run through, the replay hangs too:
 // it once waited out a full timeout per call and then left the page on an empty node, without a word.
 test("a recovery whose replay hangs falls back to genesis at once, and says the history is gone", async () => {
   const workers: FakeWorker[] = [];

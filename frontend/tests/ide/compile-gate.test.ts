@@ -1,4 +1,4 @@
-// The IDE once deployed what `qinit build` refuses. Each row here is one edit of the starter contract; the build must
+// the IDE once deployed what `qinit build` refuses. Each row here is one edit of the starter contract; the build must
 // refuse it under the rule the CLI's verifier names, and take the untouched starter and every shipped example.
 import { expect, test } from "bun:test";
 import { VERIFIER_RULES } from "@qinit/compiler/analyzer";

@@ -1,4 +1,4 @@
-// The thread a test file runs on. Chain calls go to the page over messages; the page can end a run that never
+// the thread a test file runs on. Chain calls go to the page over messages; the page can end a run that never
 // returns by terminating this worker, which it could not do while tests ran on its own thread.
 /// <reference lib="webworker" />
 import { runSandbox, type SandboxBridge } from "./sandbox";
@@ -21,7 +21,7 @@ const bridge: SandboxBridge = {
   reset: () => call("reset", []),
 };
 
-// A rejected promise no test awaited: held here until the running test finishes, which then fails with it.
+// a rejected promise no test awaited: held here until the running test finishes, which then fails with it.
 const stray: string[] = [];
 self.addEventListener("unhandledrejection", (event) => {
   event.preventDefault();

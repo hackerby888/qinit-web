@@ -28,7 +28,7 @@ function buildRegex(query: string, opts: SearchOpts): RegExp | null {
   }
 }
 
-// Why a regex query cannot run, or null when it can: an invalid pattern once just kept the previous count on screen.
+// why a regex query cannot run, or null when it can: an invalid pattern once just kept the previous count on screen.
 export function searchError(query: string, opts: SearchOpts = {}): string | null {
   if (!query || !opts.regex) {
     return null;

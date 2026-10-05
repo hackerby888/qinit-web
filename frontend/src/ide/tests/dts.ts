@@ -52,7 +52,7 @@ export function genQinitDts(idls: ContractIdl[]): string {
     }
 
     for (const e of Object.values(idl.procedures)) {
-      // An empty-input procedure takes `Name(opts)` and `Name({}, opts)` alike, as the CLI's client does: with only `(opts)`
+      // an empty-input procedure takes `Name(opts)` and `Name({}, opts)` alike, as the CLI's client does: with only `(opts)`
       // declared, the uniform `Name({}, { amount })` was underlined while the form that typed clean sent no payment.
       const parameters = e.inFields.length ? `args: ${iface(e.inFields)}, opts?: ${OPTS}` : `argsOrOpts?: {} | ${OPTS}, maybeOpts?: ${OPTS}`;
       L.push(`  ${e.name}(${parameters}): Promise<${TX}>;`);

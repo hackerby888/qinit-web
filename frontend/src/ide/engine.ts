@@ -38,7 +38,7 @@ export interface IdeEngineOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
-// A call replayed while the node is rebuilt ran in milliseconds the first time; one that takes this long is the code that hung.
+// a call replayed while the node is rebuilt ran in milliseconds the first time; one that takes this long is the code that hung.
 const RECOVERY_STEP_TIMEOUT_MS = 5_000;
 
 export class IdeEngine {
@@ -47,7 +47,7 @@ export class IdeEngine {
   onLog: ((event: EngineLogEvent) => void) | null = null;
   onMemory: ((usage: EngineMemoryUsage) => void) | null = null;
   onFault: ((fault: EngineFaultInfo) => void) | null = null;
-  // The node was rebuilt after a call that never returned. `historyKept` is false when the session's earlier calls
+  // the node was rebuilt after a call that never returned. `historyKept` is false when the session's earlier calls
   // could not be replayed, and the chain is back at genesis with the contracts deployed.
   onRestart: ((historyKept: boolean) => void) | null = null;
 
@@ -191,7 +191,7 @@ export class IdeEngine {
       try {
         await this.rebuildWorker(this.historyValue);
       } catch {
-        // A replayed call did not come back: the contract that hung is still deployed, and the session's calls run
+        // a replayed call did not come back: the contract that hung is still deployed, and the session's calls run
         // through it. Keep the contracts and start them from genesis, rather than wait out every call and end on an empty node.
         historyKept = false;
         this.historyValue = [];
@@ -204,7 +204,7 @@ export class IdeEngine {
     this.onRestart?.(historyKept);
   }
 
-  // A fresh worker holding what this session deployed and funded, with `steps` replayed on top.
+  // a fresh worker holding what this session deployed and funded, with `steps` replayed on top.
   private async rebuildWorker(steps: ReplayStep[]): Promise<void> {
     this.spawnWorker();
     if (this.pendingEpochLengthValue !== null) await this.workerCallRaw("setEpochLength", [this.pendingEpochLengthValue]);
@@ -259,14 +259,14 @@ export class IdeEngine {
     void this.call(method, args).catch((error) => this.onLog?.({ level: "error", tick: 0, cat: "worker", msg: error.message }));
   }
 
-  // A halted chain refuses every call the way a halted node does; the message says so and names the way out.
+  // a halted chain refuses every call the way a halted node does; the message says so and names the way out.
   private assertOperational(): void {
     if (this.faultValue) {
       throw new Error(`the chain is halted (${describeContractError(this.faultValue.message)} at tick ${this.faultValue.failedTick}) — press ↺ reset or ▶ Compile & Run to restart it`);
     }
   }
 
-  // Abandon whatever the worker is doing: pending calls fail with `reason` and the node is rebuilt from the session's history.
+  // abandon whatever the worker is doing: pending calls fail with `reason` and the node is rebuilt from the session's history.
   cancelPending(reason: string): void {
     if (this.workerMode && this.pending.size > 0) {
       this.failWorker(new Error(reason));
@@ -298,7 +298,7 @@ export class IdeEngine {
     }
   }
 
-  // The worker's reset restarts its ticker; put a paused chain back the way the developer left it.
+  // the worker's reset restarts its ticker; put a paused chain back the way the developer left it.
   private async restorePause(): Promise<void> {
     this.running = !this.pausedByUser;
     if (this.pausedByUser) {

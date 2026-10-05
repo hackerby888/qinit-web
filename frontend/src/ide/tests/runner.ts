@@ -1,4 +1,4 @@
-// In-browser .ts test runner — runs the SAME test file the qinit CLI runs under `bun test`, against the in-page
+// in-browser .ts test runner — runs the SAME test file the qinit CLI runs under `bun test`, against the in-page
 // engine. A qinit test imports `{ test, expect, … }` from "bun:test" and the generated typed clients
 // `{ Counter, provider }` from "./.qinit"; here those imports are stripped and the same names are injected.
 // The test body runs in a worker (./sandbox.ts, ./test-worker.ts); this side transpiles the file, serves the
@@ -33,7 +33,7 @@ export interface RunControl {
   onProgress?: (results: TestResult[]) => void;
 }
 
-// A whole file gets this long. A test that spins forever once froze the tab for good.
+// a whole file gets this long. A test that spins forever once froze the tab for good.
 export const TEST_FILE_TIMEOUT_MS = 60_000;
 
 export type TestWorkerRequest = { kind: "call"; id: number; method: keyof SandboxBridge; args: unknown[] } | { kind: "event"; event: SandboxEvent };
@@ -51,7 +51,7 @@ function stripModuleSyntax(src: string): string {
     .replace(/^([ \t]*)export\s+(?=(default|const|function|class|let|var)\b)/gm, "$1");
 }
 
-// The clients a file imports from "./.qinit" that no build has produced yet.
+// the clients a file imports from "./.qinit" that no build has produced yet.
 function unbuiltContracts(source: string, built: Record<string, TestContract>): string[] {
   const imported = [...source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']\.\/\.qinit["']/g)].flatMap((match) => match[1].split(","));
   const names = imported.map((name) => name.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]).filter(Boolean);
@@ -99,7 +99,7 @@ export async function runTests(source: string, deps: TestDeps, control: RunContr
   const wasRunning = eng.isRunning();
   const images: DeployImage[] = Object.values(deps.contracts).map((c) => ({ slot: c.slot, wasm: c.wasm, name: c.name }));
 
-  // What the worker may ask of the chain. Tests run on one fresh chain for the file, with the auto-ticker held so ticks only move when a test moves them.
+  // what the worker may ask of the chain. Tests run on one fresh chain for the file, with the auto-ticker held so ticks only move when a test moves them.
   const bridge: SandboxBridge = {
     async reset() {
       eng.pause();

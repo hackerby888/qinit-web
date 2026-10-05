@@ -1,4 +1,4 @@
-// One contract build, as the compile worker runs it: compile the callees for their ABI, compile the contract,
+// one contract build, as the compile worker runs it: compile the callees for their ABI, compile the contract,
 // then apply the rules `qinit build` applies. Kept apart from the worker's message plumbing so a test can run it.
 import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";
 import type { ContractIdl, CompileDiagnostic } from "@qinit/compiler/browser";
@@ -9,7 +9,7 @@ import type { CompileDiagnostic as IdeDiagnostic } from "../api";
 import { toContractIdlView } from "../idl-view";
 import type { WorkerCompileRequest, WorkerCompileResponse } from "./protocol";
 
-// Matches the backend's browser default (LITE_WASM_ARENA_SZ) — the 1 GiB compiler default would
+// matches the backend's browser default (LITE_WASM_ARENA_SZ) — the 1 GiB compiler default would
 // make every deployed module reserve far more memory than a browser tab should.
 const ARENA_SIZE_BYTES = 64 * 1024 * 1024;
 
@@ -22,7 +22,7 @@ const toHex = (bytes: Uint8Array): string => {
 const mapDiagnostics = (ds: CompileDiagnostic[], file?: string): IdeDiagnostic[] =>
   ds.map((d) => ({ severity: d.severity, line: d.span.line, column: d.span.column, message: d.message, file }));
 
-// What `qinit build` refuses beyond a compile error, from the same analyzer the CLI runs: the constructs core's
+// what `qinit build` refuses beyond a compile error, from the same analyzer the CLI runs: the constructs core's
 // verifier rejects and the protocol gate. Without it the IDE deployed contracts no build would accept.
 function buildRefusals(req: WorkerCompileRequest, callees: ContractIdl[], calleeSources: Array<{ name: string; source: string; slot: number }>): IdeDiagnostic[] {
   if (!detectContractName(req.source)) {
@@ -45,7 +45,7 @@ function buildRefusals(req: WorkerCompileRequest, callees: ContractIdl[], callee
   }));
 }
 
-// The compiler and the gate can both report one mistake (a log in a function); keep the first of each line and message.
+// the compiler and the gate can both report one mistake (a log in a function); keep the first of each line and message.
 function withoutRepeats(diagnostics: IdeDiagnostic[]): IdeDiagnostic[] {
   const seen = new Set<string>();
   return diagnostics.filter((d) => {
@@ -62,7 +62,7 @@ export async function buildContract(req: WorkerCompileRequest): Promise<{ res: W
   });
 
   try {
-    // Slot order matters: a callee may itself invoke a lower-index contract (QSWAP → QUTIL → QX),
+    // slot order matters: a callee may itself invoke a lower-index contract (QSWAP → QUTIL → QX),
     // so each callee compiles with every already-compiled lower callee cascaded in.
     const callees: ContractIdl[] = [];
     const calleeSources: Array<{ name: string; source: string; slot: number }> = [];

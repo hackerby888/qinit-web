@@ -4,10 +4,10 @@ export const ZERO_IDENTITY = "A".repeat(60);
 
 export type InputDraft = Record<string, string>;
 
-// The most qu one transfer may carry (MAX_AMOUNT in the node). Kept here as a literal so this module loads without the engine.
+// the most qu one transfer may carry (MAX_AMOUNT in the node). Kept here as a literal so this module loads without the engine.
 export const MAX_QU = 1_000_000_000_000_000n;
 
-// A qu amount typed into a field: digits only, so `1e3`, `0x10`, `1.5` and `abc` are refused instead of reshaped. Blank is 0.
+// a qu amount typed into a field: digits only, so `1e3`, `0x10`, `1.5` and `abc` are refused instead of reshaped. Blank is 0.
 export function parseQu(text: string, field: string): bigint {
   const typed = text.trim();
   if (typed === "") return 0n;

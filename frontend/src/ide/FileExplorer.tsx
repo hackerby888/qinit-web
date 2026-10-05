@@ -242,7 +242,7 @@ export function FileExplorer({ files, active, source, newFileSignal, projectName
     return true;
   };
 
-  // The shell asks for a new file (command palette): open the same input the toolbar button opens.
+  // the shell asks for a new file (command palette): open the same input the toolbar button opens.
   useEffect(() => {
     if (newFileSignal) {
       startAdd("");

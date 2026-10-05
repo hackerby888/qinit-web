@@ -1,4 +1,4 @@
-// The local project store: two tabs are two copies of one record, and the index is only a summary of the records.
+// the local project store: two tabs are two copies of one record, and the index is only a summary of the records.
 import { beforeEach, expect, test } from "bun:test";
 
 // localStorage stand-in with the two members a rebuild walks (length, key).

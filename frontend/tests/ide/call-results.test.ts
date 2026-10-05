@@ -1,4 +1,4 @@
-// What the IDE reports about a call must be that call's own: its frame, its prints, whether it ran at all.
+// what the IDE reports about a call must be that call's own: its frame, its prints, whether it ran at all.
 // Each test is a finding from the browser campaign, driven here against the real engine and compiler.
 import { expect, test } from "bun:test";
 import { compileContractWithTypeScript as compileContract, type ContractIdl } from "@qinit/compiler/browser";

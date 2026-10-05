@@ -76,7 +76,7 @@ const RAIL = 22;      // collapsed-panel rail width (px) — a thin clickable sp
 const EDITOR_MIN_WIDTH = 320; // below this the body scrolls sideways; a narrow window once squeezed the editor to nothing
 const MOD = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl"; // shortcut hint
 
-// The part of a project two tabs can disagree about. The active file and open tabs are each tab's own view.
+// the part of a project two tabs can disagree about. The active file and open tabs are each tab's own view.
 const contentOf = (p: { name: string; files: WorkspaceFile[]; scenarios?: unknown[]; systemContracts?: string[] }): string =>
   JSON.stringify([p.name, p.files, p.scenarios ?? [], p.systemContracts ?? []]);
 
@@ -144,7 +144,7 @@ function CollabBar({ status, peers, mode, selfName, selfColor }: { status: Colla
   );
 }
 
-// A box with a heavier left edge, one explicit border per side: mixing `border` with `borderLeftWidth` made React warn on every rerender.
+// a box with a heavier left edge, one explicit border per side: mixing `border` with `borderLeftWidth` made React warn on every rerender.
 const edged = (edge: string, frameColor: string): CSSProperties => ({
   borderTop: `1px solid ${frameColor}`,
   borderRight: `1px solid ${frameColor}`,
@@ -228,7 +228,7 @@ const resolveCallees = (files: { name: string; source: string }[], reg: Record<s
   return out;
 };
 
-// The recovery a refused layout change names in the IDE, where there is no node to restart.
+// the recovery a refused layout change names in the IDE, where there is no node to restart.
 const LAYOUT_RECOVERY = "or reset the chain to deploy it on a clean slot";
 
 const KIND_LABEL: Record<ReturnType<typeof fileKind>, string> = {
@@ -475,7 +475,7 @@ const fieldInput = (): CSSProperties => ({
   outline: "none",
 });
 
-// How long a call may run before the row offers to stop it.
+// how long a call may run before the row offers to stop it.
 const STOP_OFFER_MS = 2000;
 
 function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onStop, onDebug }: {
@@ -1064,7 +1064,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const source = activeFile?.source ?? "";
   const activeKind = fileKind(ws.active);
 
-  // The contract the engine panel is about: the open one, or the last one opened while a test or a plain file has the editor.
+  // the contract the engine panel is about: the open one, or the last one opened while a test or a plain file has the editor.
   const lastContractRef = useRef("");
   if (activeKind === "contract") {
     lastContractRef.current = baseName(ws.active);
@@ -1156,13 +1156,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     };
   }, [id, navigate, collab]);
 
-  // What this tab last read from or wrote to storage: the project's content, and this tab's own view of it (active file, tabs).
+  // what this tab last read from or wrote to storage: the project's content, and this tab's own view of it (active file, tabs).
   // Content is what two tabs can disagree about; the view is per tab and never a reason to take or refuse the other's work.
   const savedRef = useRef({ content: "", ui: "" });
   const conflictRef = useRef<Project | null>(null);
   conflictRef.current = conflict;
 
-  // Take another tab's version of the project into this one, keeping this tab's own open file where it still exists.
+  // take another tab's version of the project into this one, keeping this tab's own open file where it still exists.
   const adoptProject = (theirs: Project) => {
     projectRef.current = { ...theirs };
     savedRef.current = { ...savedRef.current, content: contentOf(theirs) };
@@ -1204,7 +1204,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           notify.error(errorMessage(e, "Auto-save failed — your latest changes aren't saved"));
           return;
         }
-        // Another tab saved first. The same content means only its view differs: take its timestamp and save ours.
+        // another tab saved first. The same content means only its view differs: take its timestamp and save ours.
         if (contentOf(e.stored) === content || content === savedRef.current.content) {
           p.updatedAt = e.stored.updatedAt;
           if (contentOf(e.stored) !== content) adoptProject(e.stored);
@@ -1230,7 +1230,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const persistRef = useRef(persistProject);
   persistRef.current = persistProject;
 
-  // The debounce leaves a 400 ms window in which a reload or a closed tab lost the last keystrokes: save when the page goes away.
+  // the debounce leaves a 400 ms window in which a reload or a closed tab lost the last keystrokes: save when the page goes away.
   useEffect(() => {
     const flush = () => persistRef.current();
     const onVisibility = () => {
@@ -1244,7 +1244,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     };
   }, []);
 
-  // The same project open in another tab: when that tab saves, take its version if this tab has nothing unsaved,
+  // the same project open in another tab: when that tab saves, take its version if this tab has nothing unsaved,
   // and ask when both have changes. Before this the last tab to save silently overwrote the other.
   const latestContentRef = useRef("");
   latestContentRef.current = contentOf({ name: projectName, files: ws.files, scenarios, systemContracts: sysSel });
@@ -1528,7 +1528,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     renameDeployed(baseName(oldName), baseName(newName), fileKind(newName) === "contract");
   };
 
-  // A renamed contract file is the same deployment under a new name: its slot, state and saved scenarios go with it.
+  // a renamed contract file is the same deployment under a new name: its slot, state and saved scenarios go with it.
   // Without this the old name stayed in DEPLOYED and the new one deployed beside it.
   const renameDeployed = (from: string, to: string, stillContract: boolean) => {
     const moved = deployedRef.current[from];
@@ -1804,7 +1804,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setBalances(next);
   };
 
-  // Who a fault belongs to, from what is deployed: the contract at the faulted slot, its entry's name, its file.
+  // who a fault belongs to, from what is deployed: the contract at the faulted slot, its entry's name, its file.
   const describeFault = (halted: EngineFaultInfo): string => {
     const d = Object.values(deployedRef.current).find((x) => x.slot === halted.slot);
     const entries = halted.kind === 1 ? d?.idl.procedures : halted.kind === 0 ? d?.idl.functions : undefined;
@@ -1817,7 +1817,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setFault(halted);
   };
 
-  // An engine action that fails must say why in the console, never throw into the page: on a halted chain that is every button.
+  // an engine action that fails must say why in the console, never throw into the page: on a halted chain that is every button.
   const guarded = async (label: string, run: () => Promise<void>): Promise<void> => {
     try {
       await run();
@@ -1826,14 +1826,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  // Results on screen belong to the chain that produced them; a rebuilt chain starts with none.
+  // results on screen belong to the chain that produced them; a rebuilt chain starts with none.
   const clearSession = () => {
     setTxLog([]);
     setTxDetail({});
     setOutputs({});
   };
 
-  // A test or scenario run replaces the developer's chain with its own. Say so, and drop the calls that no longer exist.
+  // a test or scenario run replaces the developer's chain with its own. Say so, and drop the calls that no longer exist.
   const chainReplaced = (by: string) => {
     clearSession();
     appendLog(`chain reset to genesis for ${by} — earlier calls and state are gone; it now holds what the run left`);
@@ -2443,7 +2443,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     document.body.style.userSelect = "none";
   };
 
-  // Put a build's problems on the files they are in, as "qinit" markers. `builtFile` is the file that was built; a
+  // put a build's problems on the files they are in, as "qinit" markers. `builtFile` is the file that was built; a
   // callee's problem names its own file. A file with no open model gets no marker — the console names it instead.
   const applyBuildMarkers = (builtFile: string, diagnostics: CompileResult["diagnostics"]) => {
     const monaco = monacoRef.current;
@@ -2492,7 +2492,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const src = sourceRef.current;
     const name = contractNameRef.current;
     const fileName = activeNameRef.current;
-    // Only a header is a contract. A test, a gtest or a plain file gets no background build: clear any stale markers and stay idle.
+    // only a header is a contract. A test, a gtest or a plain file gets no background build: clear any stale markers and stay idle.
     if (fileKind(fileName) !== "contract") {
       applyBuildMarkers(fileName, []);
       setDiag({ state: "idle", count: 0 });
@@ -2654,7 +2654,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       eng.onTick = (info) => { if (active()) setEngineInfo(info); };
       eng.onMemory = (usage) => { if (active()) setEngineMemory(memorySnapshot(usage)); };
       eng.onLog = (e) => { if (active()) setEngineLog((l) => [...l.slice(-999), e]); }; // buffer the engine's diagnostic stream for the popup
-      // The node was rebuilt after a stopped or timed-out call. When its earlier calls could not be replayed the chain is
+      // the node was rebuilt after a stopped or timed-out call. When its earlier calls could not be replayed the chain is
       // at genesis again, so what the page shows of them goes too.
       eng.onRestart = (historyKept) => {
         if (!active()) return;
@@ -2774,7 +2774,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const visiting = new Set<string>(); // cycle guard
     let failed: CompileResult | null = null; // the compile that stopped the build, for the red panel
 
-    // The file behind a contract name. Two files of one stem would make the open file and the code that runs differ.
+    // the file behind a contract name. Two files of one stem would make the open file and the code that runs differ.
     const fileOf = (name: string): WorkspaceFile | undefined => {
       const matches = filesRef.current.filter((f) => fileKind(f.name) === "contract" && baseName(f.name) === name);
       if (matches.length > 1) {
@@ -2825,7 +2825,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       applyBuildMarkers(fileName, res.diagnostics);
       if (!res.ok || !res.wasm || !res.idl) {
         const errors = res.diagnostics.filter((d) => d.severity === "error");
-        // Surface the Problems panel automatically when the open contract has compile errors.
+        // surface the Problems panel automatically when the open contract has compile errors.
         if (name === contractName && errors.some((d) => !d.file || d.file === fileName)) {
           setProblemsOpen(true);
         }
@@ -2845,7 +2845,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         throw new Error(why);
       }
 
-      // The old state bytes stay in the slot. A changed StateData would be read under the new offsets unless a MIGRATE
+      // the old state bytes stay in the slot. A changed StateData would be read under the new offsets unless a MIGRATE
       // handler that can run rewrites it, so refuse the way `qinit deploy` does.
       const previous = deployedRef.current[name];
       const refusal = previous?.idl.layout && res.idl.layout && previous.slot === slot ? stateCarryoverRejection(name, previous.idl.layout, res.idl.layout, LAYOUT_RECOVERY) : null;
@@ -2869,7 +2869,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     try {
       const eng = await ensureEngine();
 
-      // A halted chain is rebuilt before the build, so the fixed contract can deploy. The contract that halted it is
+      // a halted chain is rebuilt before the build, so the fixed contract can deploy. The contract that halted it is
       // left out: its old build would halt the chain again, and this build puts it back when it is part of the graph.
       const halted = faultRef.current;
       const culprit = halted && Object.values(deployedRef.current).find((d) => d.slot === halted.slot);
@@ -3021,7 +3021,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       setTxDetail(drop);
 
       const value = parseQu(typedValue, "value");
-      // The node takes a transfer the balance cannot cover and drops it at tick assembly, so the procedure would never run.
+      // the node takes a transfer the balance cannot cover and drops it at tick assembly, so the procedure would never run.
       const held = await eng.balanceOf(caller);
       if (value > held) {
         throw new Error(`acct ${shortId(caller)} holds ${held.toLocaleString("en-US")} qus, below the ${value.toLocaleString("en-US")} qus value — lower the value or fund the account`);
@@ -3036,7 +3036,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  // Give up on a call that will not come back; the engine fails it and rebuilds the node from the session's history.
+  // give up on a call that will not come back; the engine fails it and rebuilds the node from the session's history.
   const stopCall = () => engineRef.current?.cancelPending("stopped — the virtual node was restarted");
 
   const idl = sel?.idl ?? null;
@@ -3053,7 +3053,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }));
   };
 
-  // The new-file action: open the explorer's own input, which cleans the name and refuses a duplicate.
+  // the new-file action: open the explorer's own input, which cleans the name and refuses a duplicate.
   const promptNewFile = () => {
     setLeftHidden(false);
     setNewFileSignal((n) => n + 1);

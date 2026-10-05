@@ -1,4 +1,4 @@
-// The body of an in-IDE test run: bun:test's surface (test, expect, hooks) and a client class per contract, with
+// the body of an in-IDE test run: bun:test's surface (test, expect, hooks) and a client class per contract, with
 // every chain call handed to a bridge. It runs in a worker — a test that never returns can then be stopped — and
 // imports nothing from the engine, so a unit test can drive it in-process too.
 
@@ -10,21 +10,21 @@ export interface TestResult {
   logs: string[];
 }
 
-// What a client class needs to know about one contract: its entries, and which take an input struct.
+// what a client class needs to know about one contract: its entries, and which take an input struct.
 export interface SandboxContract {
   name: string;
   functions: { id: string; name: string }[];
   procedures: { id: string; name: string; hasInput: boolean }[];
 }
 
-// The options a procedure call takes, as in the CLI's generated client.
+// the options a procedure call takes, as in the CLI's generated client.
 export interface ProcedureOptions {
   seed?: string;
   amount?: number | bigint;
   confirm?: boolean;
 }
 
-// What a procedure call resolves to: the fields of the CLI client's result that an in-page chain can fill.
+// what a procedure call resolves to: the fields of the CLI client's result that an in-page chain can fill.
 export interface ProcedureOutcome {
   ok: boolean;
   txId?: string;
@@ -77,7 +77,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-// The bun:test matchers a contract test uses. `negated` flips each check, for `.not`.
+// the bun:test matchers a contract test uses. `negated` flips each check, for `.not`.
 function matchers(actual: unknown, negated: boolean) {
   const check = (pass: boolean, positive: string, negative: string) => {
     if (pass === negated) {
@@ -161,7 +161,7 @@ function makeExpect() {
   });
 }
 
-// A client class with the generated client's shape: functions read, procedures take `(args, opts)` — or, for an empty
+// a client class with the generated client's shape: functions read, procedures take `(args, opts)` — or, for an empty
 // input, `(opts)` as well as `({}, opts)`, which is what the typings declare and what the CLI's client accepts.
 function contractClass(contract: SandboxContract, bridge: SandboxBridge): new (options?: unknown) => Record<string, unknown> {
   class Client {
@@ -184,7 +184,7 @@ function contractClass(contract: SandboxContract, bridge: SandboxBridge): new (o
   return Client as unknown as new (options?: unknown) => Record<string, unknown>;
 }
 
-// Register the file's tests, ask for a fresh chain, then run hooks and tests in order, reporting each as it finishes.
+// register the file's tests, ask for a fresh chain, then run hooks and tests in order, reporting each as it finishes.
 // `strayRejections` drains promise rejections nobody awaited since the last call; one of those fails the test that was running.
 export async function runSandbox(js: string, contracts: SandboxContract[], bridge: SandboxBridge, emit: (event: SandboxEvent) => void, strayRejections: () => string[] = () => []): Promise<void> {
   const collected: { name: string; fn: () => unknown }[] = [];
@@ -196,7 +196,7 @@ export async function runSandbox(js: string, contracts: SandboxContract[], bridg
   const print = (...values: unknown[]) => logs.push(values.map((value) => (typeof value === "string" ? value : fmt(value))).join(" "));
   const sandboxConsole = { log: print, info: print, debug: print, warn: print, error: print };
 
-  // The "./.qinit" surface: provider() (node options — nothing to configure here) and a class per deployed contract.
+  // the "./.qinit" surface: provider() (node options — nothing to configure here) and a class per deployed contract.
   const globals: Record<string, unknown> = {
     test,
     it: test,
@@ -220,7 +220,7 @@ export async function runSandbox(js: string, contracts: SandboxContract[], bridg
     return;
   }
 
-  // One step of the run under a name: its own log, its own verdict, and any rejection left unawaited counted against it.
+  // one step of the run under a name: its own log, its own verdict, and any rejection left unawaited counted against it.
   const step = async (name: string, body: () => Promise<void>, always: boolean): Promise<void> => {
     logs = [];
     emit({ kind: "start", name });

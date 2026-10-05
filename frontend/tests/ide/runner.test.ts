@@ -1,4 +1,4 @@
-// The in-IDE test runner promises "the same test the CLI runs under bun test". Each case here is a way the two
+// the in-IDE test runner promises "the same test the CLI runs under bun test". Each case here is a way the two
 // disagreed, or a way a run could not be ended.
 import { expect, test } from "bun:test";
 import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";

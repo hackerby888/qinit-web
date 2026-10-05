@@ -442,7 +442,7 @@ test("IdeEngine: a nested callee trap keeps the session ticking", async () => {
   }
 });
 
-// Ticks per epoch was fixed, so reaching END_EPOCH in the IDE meant a jump of thousands of ticks.
+// ticks per epoch was fixed, so reaching END_EPOCH in the IDE meant a jump of thousands of ticks.
 // The value is staged rather than live: applying it mid-chain would leave the epoch reporting a last tick
 // the chain had already passed, so the rebuild from genesis is what puts it into effect.
 test("IdeEngine: a new epoch length is staged, then applied by the next reset", async () => {

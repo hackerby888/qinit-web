@@ -107,7 +107,7 @@ export function NeoBtn({ children, onClick, title, disabled = false, active = fa
   );
 }
 
-// In-app confirm for a destructive action — the IDE's own look in place of the browser's window.confirm. Enter (the
+// in-app confirm for a destructive action — the IDE's own look in place of the browser's window.confirm. Enter (the
 // focused confirm button) confirms, Esc or a backdrop click cancels.
 export function ConfirmModal({ message, confirmLabel = "Delete", onYes, onCancel }: { message: string; confirmLabel?: string; onYes: () => void; onCancel: () => void }) {
   return (

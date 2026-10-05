@@ -274,7 +274,7 @@ export function buildReportText(includeSensitive: boolean): string {
 
 // ---- install --------------------------------------------------------------
 
-// The browser delivers this as an error event when a resize observer (the editor's auto-layout) could not finish
+// the browser delivers this as an error event when a resize observer (the editor's auto-layout) could not finish
 // in one frame. Layout catches up on the next frame; nothing in the app failed.
 export function isBrowserNotice(message: string | undefined): boolean {
   return /^ResizeObserver loop /.test(message ?? "");

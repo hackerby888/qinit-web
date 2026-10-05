@@ -13,10 +13,10 @@ const CURRENT_KEY = "ide.project.current";
 const PROJECT_PREFIX = "ide.project.";
 const projectKey = (id: string): string => `${PROJECT_PREFIX}${id}`;
 
-// The storage key a project lives under, for a tab that watches it change in another tab.
+// the storage key a project lives under, for a tab that watches it change in another tab.
 export const projectStorageKey = projectKey;
 
-// A save was refused because the stored project is newer than the copy being saved: another tab wrote it.
+// a save was refused because the stored project is newer than the copy being saved: another tab wrote it.
 // Saving anyway would silently drop that tab's work; `stored` is what it wrote.
 export class StaleProjectError extends Error {
   constructor(readonly stored: Project) {
@@ -75,7 +75,7 @@ class LocalProjectStore implements ProjectStore {
     return this.rebuildIndex();
   }
 
-  // The index is derived: every row comes from a project record. A damaged index once showed "0 projects" over records that were all still there.
+  // the index is derived: every row comes from a project record. A damaged index once showed "0 projects" over records that were all still there.
   private rebuildIndex(): ProjectMeta[] {
     const metas: ProjectMeta[] = [];
     for (let i = 0; i < localStorage.length; i++) {

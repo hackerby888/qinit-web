@@ -25,7 +25,7 @@ export interface EngineMemoryUsage {
 export interface EngineTickInfo {
   tick: number;
   epoch: number;
-  // The running epoch's own bounds, so the panel never derives them from `tick % length`.
+  // the running epoch's own bounds, so the panel never derives them from `tick % length`.
   epochFirstTick: number;
   epochLastTick: number;
   fault?: EngineFaultInfo;
@@ -58,7 +58,7 @@ export interface DebugStep {
   prints: string[]; // CC_PRINT output — dev scaffolding, never a chain log
 }
 
-// The frame the developer invoked. `callees` are the frames it reached in other contracts; `prints` covers all of them, in run order.
+// the frame the developer invoked. `callees` are the frames it reached in other contracts; `prints` covers all of them, in run order.
 export interface TxDetail {
   in: string;
   out: string;
@@ -125,7 +125,7 @@ export interface ProcedureResult {
 // qu on the wire is a 64-bit integer; a number only carries it exactly below 2^53.
 export type QuAmount = number | bigint;
 
-// One frame of a print, e.g. `Counter:28 "adding" 5`; the contract is named only when more than one printed.
+// one frame of a print, e.g. `Counter:28 "adding" 5`; the contract is named only when more than one printed.
 const printLine = (cheat: DecodedCheat): string => {
   const blockRows = cheat.blocks
     ? [...cheat.blocks.fields.map((field) => `${field.name} ${field.value}`), ...cheat.blocks.containers.flatMap((container) => container.lines.map((row) => `${row.label} ${row.text}`))]
@@ -135,7 +135,7 @@ const printLine = (cheat: DecodedCheat): string => {
 
 const TRACE_KIND_FUNCTION = 0;
 const TRACE_KIND_PROCEDURE = 1;
-// Enough for one call's frames plus the tick's system procedures on every deployed contract.
+// enough for one call's frames plus the tick's system procedures on every deployed contract.
 const TRACE_WINDOW = 200;
 
 // One replayable write — the args of a submitProcedure call, kept so the whole session can be re-run
@@ -183,7 +183,7 @@ export class IdeEngineCore {
   onLog: ((e: EngineLogEvent) => void) | null = null; // engine diagnostic-log stream -> the IDE's engine-log popup
   onFault: ((fault: EngineFaultInfo) => void) | null = null;
 
-  // Tracing is on from the first tick: a call's result, prints and "did it run" all come from its trace.
+  // tracing is on from the first tick: a call's result, prints and "did it run" all come from its trace.
   private freshNode(): VirtualNode {
     const node = new VirtualNode({ ...IDE_ENGINE_OPTS, epochLength: this.epochLengthValue });
     void node.setDebug(true);
@@ -308,7 +308,7 @@ export class IdeEngineCore {
     this.epochLengthValue = Math.max(0, Math.trunc(ticks));
   }
 
-  // Jump into the next epoch with the node's own routine, which crosses the boundary (END_EPOCH -> epoch++ ->
+  // jump into the next epoch with the node's own routine, which crosses the boundary (END_EPOCH -> epoch++ ->
   // BEGIN_EPOCH); a tick target computed here once stopped on the epoch's last tick, one short of the switch.
   async advanceEpoch(): Promise<EngineTickInfo> {
     await this.runEngineOperation(() => this.engine.advanceEpoch());
@@ -392,14 +392,14 @@ export class IdeEngineCore {
     this.contractSources.set(slot, { source, name });
   }
 
-  // The newest trace sequence number: a call's own frames are the ones recorded after it. The ring drops old
+  // the newest trace sequence number: a call's own frames are the ones recorded after it. The ring drops old
   // entries, so a position in the array says nothing once it has wrapped; the sequence keeps counting.
   private async newestTraceSeq(): Promise<number> {
     const newest = (await this.engine.debugTrace(0, 1)).entries;
     return newest.length ? newest[newest.length - 1].seq : 0;
   }
 
-  // A map entry's row is named by its key, which an update leaves untouched and so out of the diff; read it from the state the call just left.
+  // a map entry's row is named by its key, which an update leaves untouched and so out of the diff; read it from the state the call just left.
   private keyReader(slot: number): (off: number, size: number) => Promise<Uint8Array | undefined> {
     return async (off, size) => {
       const { hex } = await this.engine.stateRead(slot, off, size);
@@ -409,7 +409,7 @@ export class IdeEngineCore {
 
   private async decodeStep(entry: DebugEntry, fallback: { name: string; source: string }): Promise<{ step: DebugStep; view: DecodedTrace }> {
     const src = this.contractSources.get(entry.index) ?? fallback;
-    // No IDL is passed on purpose: the tracer derives a full one from the source, which is what
+    // no IDL is passed on purpose: the tracer derives a full one from the source, which is what
     // decodes the logs and the state diff — and it carries the cheat table too.
     const view = await describeTrace(entry, src.source, src.name, undefined, undefined, undefined, this.keyReader(entry.index));
     const step: DebugStep = {
@@ -431,7 +431,7 @@ export class IdeEngineCore {
     return { step, view };
   }
 
-  // Decode what a call left in the trace after `sinceSeq`. The summary is the frame the developer invoked — the
+  // decode what a call left in the trace after `sinceSeq`. The summary is the frame the developer invoked — the
   // last one matching its slot, kind and entry, since a callee completes before its caller — and the debugger
   // gets every frame. Undefined when that frame is absent: the call never ran. Never throws.
   private async traceOf(sinceSeq: number, call: { slot: number; kind: number; entry: number }, fallback: { name: string; source: string }): Promise<TxDetail | undefined> {

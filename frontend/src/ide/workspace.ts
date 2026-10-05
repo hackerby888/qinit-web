@@ -18,7 +18,7 @@ const KEY = "qinit-ide-workspace.v1";
 // ("lib/Counter.h" -> "Counter"). Folder-agnostic so a contract resolves by type name wherever it lives.
 export const baseName = (file: string): string => file.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
 
-// What a file is to the IDE, by extension: only a header builds as a contract, a .ts file is a test, a .cpp is
+// what a file is to the IDE, by extension: only a header builds as a contract, a .ts file is a test, a .cpp is
 // a gtest the CLI runs, and anything else is plain text.
 export type FileKind = "contract" | "test" | "gtest" | "other";
 
@@ -29,7 +29,7 @@ export function fileKind(path: string): FileKind {
   return "other";
 }
 
-// The file that defines contract `name`: a contract is known by its header's stem, whatever folder it is in.
+// the file that defines contract `name`: a contract is known by its header's stem, whatever folder it is in.
 export const contractFile = <T extends { name: string }>(files: readonly T[], name: string): T | undefined =>
   files.find((file) => fileKind(file.name) === "contract" && baseName(file.name) === name);
 
@@ -41,7 +41,7 @@ test("it works", async () => {
 });
 `;
 
-// What a new file starts with: a contract skeleton for a header, a test skeleton for a .ts file, nothing otherwise.
+// what a new file starts with: a contract skeleton for a header, a test skeleton for a .ts file, nothing otherwise.
 export const newFileSource = (path: string): string => {
   const kind = fileKind(path);
   return kind === "contract" ? NEW_CONTRACT : kind === "test" ? NEW_TEST : "";
@@ -174,5 +174,5 @@ export function decodeSharedWorkspace(): Workspace | null {
   return ws;
 }
 
-// Whether the address carries a share link at all — one that then fails to decode is damaged, and the gallery says so.
+// whether the address carries a share link at all — one that then fails to decode is damaged, and the gallery says so.
 export const sharedLinkPresent = (): boolean => /[#&]p=/.test(location.hash);

@@ -116,7 +116,7 @@ describe("buildFileTree", () => {
   });
 });
 
-// Every way of naming a file goes through one rule, so the palette cannot make what the explorer refuses.
+// every way of naming a file goes through one rule, so the palette cannot make what the explorer refuses.
 describe("newFileName", () => {
   const existing = ["Counter.h", "lib/Token.h", "notes.md", "Counter.test.ts"];
 

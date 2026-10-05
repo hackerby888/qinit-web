@@ -1,4 +1,4 @@
-// A halted chain has to say what failed, where, and how to restart it — the developer otherwise meets a bare abort code.
+// a halted chain has to say what failed, where, and how to restart it — the developer otherwise meets a bare abort code.
 import { expect, test } from "bun:test";
 import { failureLine, faultLine } from "../../src/ide/fault";
 

@@ -27,7 +27,7 @@ export function exportProject(p: Project): void {
   URL.revokeObjectURL(url);
 }
 
-// A download name from a project name: letters and digits of any script stay; a name of only symbols falls back.
+// a download name from a project name: letters and digits of any script stay; a name of only symbols falls back.
 export function exportName(name: string): string {
   return name.trim().replace(/[^\p{L}\p{N}.\-_]+/gu, "_").replace(/^_+|_+$/g, "") || "project";
 }
@@ -37,7 +37,7 @@ const isScenario = (value: unknown): value is Scenario => {
   return !!s && typeof s.id === "string" && typeof s.name === "string" && typeof s.contract === "string" && Array.isArray(s.calls) && Array.isArray(s.asserts);
 };
 
-// The files, tabs and scenarios of an import as a project can hold them. An import is someone else's text: its file
+// the files, tabs and scenarios of an import as a project can hold them. An import is someone else's text: its file
 // names are cleaned the way a typed name is, a name already taken (or a second contract of one stem) gets a free one,
 // and the active file and tabs follow the renames. `renamed` maps each original name to the one it got.
 export function cleanImport(src: { files?: unknown; active?: unknown; openTabs?: unknown; scenarios?: unknown }): { files: WorkspaceFile[]; active: string; openTabs: string[]; scenarios: Scenario[] } {
@@ -66,7 +66,7 @@ export function cleanImport(src: { files?: unknown; active?: unknown; openTabs?:
   return { files, active, openTabs: openTabs.length ? openTabs : [active], scenarios: Array.isArray(src.scenarios) ? src.scenarios.filter(isScenario) : [] };
 }
 
-// Read a .qinit.json (our envelope, or a bare project-ish object) and add it as a NEW project (fresh id).
+// read a .qinit.json (our envelope, or a bare project-ish object) and add it as a NEW project (fresh id).
 export async function importProjectFile(file: File): Promise<Project> {
   let data: Partial<ProjectExport> & Partial<ProjectExport["project"]>;
   try {

@@ -11,7 +11,7 @@ import { isGtestModel } from "./gtest";
 
 const OWNER = "qpi";
 
-// The rules core's verifier refuses, which a build in the IDE refuses too: these are errors here, not warnings.
+// the rules core's verifier refuses, which a build in the IDE refuses too: these are errors here, not warnings.
 // A copy of VERIFIER_RULES in @qinit/compiler/analyzer, kept literal so the editor does not load the compiler; a test holds the two equal.
 export const VERIFIER_RULE_IDS: ReadonlySet<string> = new Set([
   "qpi/no-float",
@@ -31,7 +31,7 @@ export const VERIFIER_RULE_IDS: ReadonlySet<string> = new Set([
   "qpi/stack-local",
 ]);
 
-// A finding's severity as the build sees it. The verifier reserves only names that start with `__`, so one in the middle stays a warning.
+// a finding's severity as the build sees it. The verifier reserves only names that start with `__`, so one in the middle stays a warning.
 export function buildSeverity(finding: { rule: string; severity: string; offset: number }, src: string): "error" | "warn" | "info" {
   const refused = VERIFIER_RULE_IDS.has(finding.rule) && (finding.rule !== "qpi/no-dunder" || src.startsWith("__", finding.offset));
   return refused || finding.severity === "error" ? "error" : finding.severity === "info" ? "info" : "warn";

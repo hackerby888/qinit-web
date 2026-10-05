@@ -1,4 +1,4 @@
-// A project import is someone else's file: its names, tabs and scenarios are cleaned before a project is made of them.
+// a project import is someone else's file: its names, tabs and scenarios are cleaned before a project is made of them.
 import { expect, test } from "bun:test";
 
 (globalThis as Record<string, unknown>).localStorage ??= { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
