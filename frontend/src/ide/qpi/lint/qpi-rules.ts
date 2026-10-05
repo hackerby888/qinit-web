@@ -114,11 +114,11 @@ export function scanQpi(src: string): QpiFinding[] {
       continue;
     }
     if (c === "/") { // not a comment (handled above) -> division (or /=)
-      push("qpi/no-division", "The `/` operator is forbidden (division by zero is undefined). Use `div(a, b)`.", i, c2 === "=" ? 2 : 1);
+      push("qpi/no-division", "The `/` operator is forbidden (division by zero is undefined). Use `QPI::div(a, b)`.", i, c2 === "=" ? 2 : 1);
       i += c2 === "=" ? 2 : 1; continue;
     }
     if (c === "%") {
-      push("qpi/no-modulo", "The `%` operator is forbidden. Use `mod(a, b)`.", i, c2 === "=" ? 2 : 1);
+      push("qpi/no-modulo", "The `%` operator is forbidden. Use `QPI::mod(a, b)`.", i, c2 === "=" ? 2 : 1);
       i += c2 === "=" ? 2 : 1; continue;
     }
     if (c === "[") { push("qpi/no-brackets", "`[` is forbidden (no low-level arrays / unchecked buffers). Use `Array<T, N>`.", i, 1); i++; continue; }

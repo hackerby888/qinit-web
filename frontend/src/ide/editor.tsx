@@ -3,13 +3,16 @@
 // quick-fix, snippets) are registered separately in ./qpi and attach to this same `cpp` language.
 import Editor, { type OnMount } from "@monaco-editor/react";
 import { setupMonaco } from "./monaco";
+import { fileKind } from "./workspace";
 
 setupMonaco();
 
 // The single source of truth for file → Monaco language. Reused by the collab path when it creates models
 // manually, so QPI ("cpp") / TypeScript language services attach identically to bound models.
 export function langForPath(path?: string): string {
-  return /\.tsx?$/.test(path ?? "") ? "typescript" : "cpp";
+  const kind = fileKind(path ?? "");
+  // a path-less model is the collab editor's contract buffer.
+  return kind === "test" ? "typescript" : kind === "other" && path ? "plaintext" : "cpp";
 }
 
 export interface CodeEditorProps {

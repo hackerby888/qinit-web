@@ -14,8 +14,9 @@ import { NeoBtn, Section } from "./ui";
 import { CodeEditor } from "./editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
-import { shareUrl, baseName, NEW_CONTRACT, type Workspace, type WorkspaceFile } from "./workspace";
-import { fileLabel, dirOf, freeName, occupiedNames, KEEP_FILE } from "./filetree";
+import { shareUrl, baseName, contractFile, fileKind, newFileSource, type Workspace, type WorkspaceFile } from "./workspace";
+import { fileLabel, dirOf, freeFilePath, freeName, occupiedNames, KEEP_FILE } from "./filetree";
+import { stateCarryoverRejection } from "@qinit/proto/state-carryover";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
 import { Toasts } from "./Toasts";
@@ -200,17 +201,28 @@ const scanCallees = (src: string): string[] =>
 // deployed-but-not-open callee still resolves (the same way `qinit deploy` pulls callees off the node registry).
 // The slot is the deployed index when known, else a provisional ascending one — its value only affects the
 // emitted index constants, so the contract compiles either way (used for live diagnostics before a deploy).
-const resolveCallees = (files: { name: string; source: string }[], reg: Record<string, DeployedContract>, src: string): { name: string; source: string; slot: number }[] => {
-  const out: { name: string; source: string; slot: number }[] = [];
+const resolveCallees = (files: { name: string; source: string }[], reg: Record<string, DeployedContract>, src: string): { name: string; source: string; slot: number; file?: string }[] => {
+  const out: { name: string; source: string; slot: number; file?: string }[] = [];
   let provisional = SLOT_BASE;
   for (const name of scanCallees(src)) {
-    const source = files.find((x) => baseName(x.name) === name)?.source ?? reg[name]?.source;
+    const file = contractFile(files, name);
+    const source = file?.source ?? reg[name]?.source;
     if (!source) {
-      continue; // unresolved — let clang report the missing callee type
+      continue; // unresolved — let the compiler report the missing callee type
     }
-    out.push({ name, source, slot: reg[name]?.slot ?? provisional++ });
+    out.push({ name, source, slot: reg[name]?.slot ?? provisional++, file: file?.name });
   }
   return out;
+};
+
+// The recovery a refused layout change names in the IDE, where there is no node to restart.
+const LAYOUT_RECOVERY = "or reset the chain to deploy it on a clean slot";
+
+const KIND_LABEL: Record<ReturnType<typeof fileKind>, string> = {
+  contract: "C++ · qpi.h",
+  test: "TypeScript · bun:test",
+  gtest: "C++ · gtest",
+  other: "plain text",
 };
 
 type Phase = "idle" | "compiling" | "ready" | "error";
@@ -902,6 +914,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [pendingCall, setPendingCall] = useState<string | null>(null);
   const [engineInfo, setEngineInfo] = useState<EngineTickInfo | null>(null);
   const [fault, setFault] = useState<EngineFaultInfo | null>(null); // set while the chain is halted by a contract fault
+  const [layoutRefusal, setLayoutRefusal] = useState<string | null>(null); // the contract whose changed StateData a build refused to deploy over live state
+  const [newFileSignal, setNewFileSignal] = useState(0); // bumped to open the explorer's new-file input
   const [engineMemory, setEngineMemory] = useState<IdeMemoryUsage | null>(null);
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null); // in-browser compiler identity (worker hello)
   const [compilerStartup, setCompilerStartup] = useState<StartupTaskStatus>("loading");
@@ -1032,15 +1046,20 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   const activeFile = ws.files.find((f) => f.name === ws.active) ?? ws.files[0];
   const source = activeFile?.source ?? "";
-  const contractName = baseName(ws.active);
+  const activeKind = fileKind(ws.active);
+
+  // The contract the engine panel is about: the open one, or the last one opened while a test or a plain file has the editor.
+  const lastContractRef = useRef("");
+  if (activeKind === "contract") {
+    lastContractRef.current = baseName(ws.active);
+  }
+  const contractName = lastContractRef.current;
 
   sourceRef.current = source;
   contractNameRef.current = contractName;
   activeNameRef.current = ws.active;
   filesRef.current = ws.files;
 
-  const activeIsTest = /\.tsx?$/.test(ws.active); // a .ts test file -> run-tests, not compile
-  const activeIsGtest = /\.(cpp|cc|cxx)$/.test(ws.active); // a C++ gtest file: nothing to run here, `qinit gtest` runs it locally
 
   useEffect(() => {
     setQpiWorkspaceFiles(ws.files);
@@ -1275,7 +1294,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     // `selected`, so this must run even when a matching editor file is already active (selectFile would no-op
     // and leave the previous selection, e.g. a system contract, stuck).
     setSelected(deployed[cn] ? cn : null);
-    const file = ws.files.find((f) => baseName(f.name) === cn);
+    const file = contractFile(ws.files, cn);
     if (file) {
       selectFile(file.name); // a user contract: also focus its editor tab
     }
@@ -1291,11 +1310,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const createFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     if (collab) {
-      collabApi.ops.create(name, NEW_CONTRACT); // files come back via onFiles; active is local
+      collabApi.ops.create(name, newFileSource(name)); // files come back via onFiles; active is local
       setWs((w) => ({ ...w, active: name }));
       return;
     }
-    setWs((w) => ({ files: [...w.files, { name, source: NEW_CONTRACT }], active: name }));
+    setWs((w) => ({ files: [...w.files, { name, source: newFileSource(name) }], active: name }));
   };
 
   // Merge files imported from GitHub into the workspace: existing names are overwritten, new ones appended,
@@ -1387,6 +1406,26 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       const { [oldName]: src, ...rest } = b;
       return { ...rest, [newName]: src };
     });
+    renameDeployed(baseName(oldName), baseName(newName), fileKind(newName) === "contract");
+  };
+
+  // A renamed contract file is the same deployment under a new name: its slot, state and saved scenarios go with it.
+  // Without this the old name stayed in DEPLOYED and the new one deployed beside it.
+  const renameDeployed = (from: string, to: string, stillContract: boolean) => {
+    const moved = deployedRef.current[from];
+    if (!moved || from === to || !stillContract || deployedRef.current[to]) {
+      return;
+    }
+    const rest = { ...deployedRef.current };
+    delete rest[from];
+    deployedRef.current = { ...rest, [to]: { ...moved, name: to, idl: { ...moved.idl, name: to } } };
+    setDeployed(deployedRef.current);
+    engineRef.current?.registerSource(moved.slot, moved.source, to);
+    setScenarios((all) => all.map((scenario) => (scenario.contract === from ? { ...scenario, contract: to } : scenario)));
+    if (lastContractRef.current === from) {
+      lastContractRef.current = to;
+    }
+    updateQinitTypes();
   };
 
   const deleteFile = (name: string) => {
@@ -1415,14 +1454,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const stem = dot > 0 ? label.slice(0, dot) : label;
     const ext = dot > 0 ? label.slice(dot) : "";
 
-    let name = "";
-    for (let i = 1; ; i++) {
-      const candidate = `${dir ? `${dir}/` : ""}${stem}-copy${i > 1 ? i : ""}${ext}`;
-      if (!ws.files.some((x) => x.name === candidate)) {
-        name = candidate;
-        break;
-      }
-    }
+    const names = ws.files.map((x) => x.name);
+    const name = freeFilePath(occupiedNames(names), names, `${dir ? `${dir}/` : ""}${stem}-copy${ext}`);
 
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     if (collab) {
@@ -1569,7 +1602,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         }
       } else {
         const src = ws.files.find((f) => f.name === p);
-        creates.push({ name: dest, source: src?.source ?? "" });
+        // a pasted contract needs a free stem too: two files of one stem are one contract.
+        const names = [...ws.files, ...creates].map((f) => f.name);
+        const free = freeFilePath(taken, names, wanted);
+        addOccupied(taken, free);
+        creates.push({ name: free, source: src?.source ?? "" });
       }
     }
 
@@ -2092,7 +2129,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
     const entry = step.kind === 1 ? d.idl.procedures[String(step.entry)] : step.kind === 0 ? d.idl.functions[String(step.entry)] : undefined;
     const name = entry?.name;
-    const file = ws.files.find((f) => baseName(f.name) === step.contract);
+    const file = contractFile(ws.files, step.contract);
     if (!name || !file) {
       return;
     }
@@ -2153,9 +2190,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // The right-hand ENGINE panel mirrors the file you're editing: switching tab/file points it at that
   // contract's deployment (state + call forms), or clears it when the active contract isn't deployed yet.
   useEffect(() => {
-    const cn = baseName(ws.active);
-    setSelected(deployed[cn] ? cn : null);
-  }, [ws.active, deployed]);
+    setSelected(deployed[contractName] ? contractName : null);
+  }, [contractName, deployed]);
 
   // Close a tab. The last tab can't be closed (the editor always needs an active file); closing the
   // active tab moves focus to the nearest surviving neighbour.
@@ -2271,44 +2307,58 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     document.body.style.userSelect = "none";
   };
 
-  const applyClangMarkers = (res: CompileResult) => {
+  // Put a build's problems on the files they are in, as "qinit" markers. `builtFile` is the file that was built; a
+  // callee's problem names its own file. A file with no open model gets no marker — the console names it instead.
+  const applyBuildMarkers = (builtFile: string, diagnostics: CompileResult["diagnostics"]) => {
     const monaco = monacoRef.current;
-    const model = editorRef.current?.getModel();
-    if (!monaco || !model) {
+    if (!monaco) {
       return;
     }
-    monaco.editor.setModelMarkers(model, "clang", res.diagnostics.map((d) => ({
-      severity: d.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
-      message: d.message,
-      startLineNumber: d.line,
-      startColumn: d.column,
-      endLineNumber: d.line,
-      endColumn: d.column + 1,
-      source: "clang",
-    })));
+    const byFile = new Map<string, CompileResult["diagnostics"]>([[builtFile, []]]);
+    for (const d of diagnostics) {
+      const file = d.file ?? builtFile;
+      byFile.set(file, [...(byFile.get(file) ?? []), d]);
+    }
+
+    for (const [file, found] of byFile) {
+      const model = monaco.editor.getModels().find((m: Monaco.editor.ITextModel) => m.uri.path.replace(/^\/+/, "") === file);
+      if (!model) {
+        continue;
+      }
+      // the editor's own lint already marks a verifier rule on this line, with its quick fix; a second marker would only repeat it.
+      const linted = new Set(monaco.editor.getModelMarkers({ resource: model.uri, owner: "qpi" }).map((m: Monaco.editor.IMarker) => `${String((m.code as { value?: unknown })?.value ?? m.code)}:${m.startLineNumber}`));
+      const lineCount = model.getLineCount();
+      monaco.editor.setModelMarkers(model, "qinit", found.filter((d) => !linted.has(`${d.code}:${d.line}`)).map((d) => {
+        const line = Math.min(Math.max(d.line, 1), lineCount);
+        // a located problem covers the word it points at; one that names only a line covers the line's text.
+        const word = d.column > 1 ? model.getWordAtPosition({ lineNumber: line, column: d.column }) : null;
+        const startColumn = word ? word.startColumn : d.column > 1 ? d.column : model.getLineFirstNonWhitespaceColumn(line) || 1;
+        const endColumn = word ? word.endColumn : d.column > 1 ? d.column + 1 : model.getLineMaxColumn(line);
+        return {
+          severity: d.severity === "error" ? monaco.MarkerSeverity.Error : monaco.MarkerSeverity.Warning,
+          message: d.message,
+          startLineNumber: line,
+          startColumn,
+          endLineNumber: line,
+          endColumn,
+          source: "qinit",
+          code: d.code,
+        };
+      }));
+    }
   };
 
   // Remix's loop, compiler out-of-band: on an idle pause the editor source is compiled in the background
-  // (one POST, non-blocking — typing is fed by the instant local QPI layer) and the real clang diagnostics
-  // land as "clang" markers. Coalesced (single in-flight + trailing re-run), deduped (skip unchanged
+  // (non-blocking — typing is fed by the instant local QPI layer) and the compiler's diagnostics
+  // land as "qinit" markers. Coalesced (single in-flight + trailing re-run), deduped (skip unchanged
   // buffers), and the wasm/idl is kept warm so ▶ Deploy & Run needs no extra compile.
   const runAutoCompile = useCallback(async () => {
     const src = sourceRef.current;
     const name = contractNameRef.current;
     const fileName = activeNameRef.current;
-    if (/\.tsx?$/.test(fileName)) {
-      setDiag({ state: "idle", count: 0 }); // .ts test files aren't contract sources
-      return;
-    }
-
-    // A .cpp gtest file isn't a contract and the IDE doesn't run gtests, so it gets no background
-    // diagnostics. Clear any stale markers and stay idle.
-    if (/\.(cpp|cc|cxx)$/.test(fileName)) {
-      const monaco = monacoRef.current;
-      const model = editorRef.current?.getModel();
-      if (monaco && model) {
-        monaco.editor.setModelMarkers(model, "clang", []);
-      }
+    // Only a header is a contract. A test, a gtest or a plain file gets no background build: clear any stale markers and stay idle.
+    if (fileKind(fileName) !== "contract") {
+      applyBuildMarkers(fileName, []);
       setDiag({ state: "idle", count: 0 });
       return;
     }
@@ -2344,7 +2394,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       return; // superseded by a newer run, or the request failed — don't flap the markers
     }
 
-    applyClangMarkers(res);
+    applyBuildMarkers(fileName, res.diagnostics);
     const errs = res.diagnostics.filter((d) => d.severity === "error").length;
     setDiag({ state: errs ? "error" : "ok", count: errs });
 
@@ -2380,7 +2430,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
     const cname = src.stateType ?? src.name;
 
-    let res = await compileInBrowser({ source: src.source, name: cname, slot: src.index });
+    let res = await compileInBrowser({ source: src.source, name: cname, slot: src.index, system: true });
     if (!res.ok) {
       const all = await fetchSystemSources();
       const callees = "error" in all
@@ -2388,7 +2438,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         : all.filter((o) => o.index < src.index).map((o) => ({ name: o.stateType ?? o.name, source: o.source, slot: o.index }));
       if (callees.length) {
         appendLog(`  retrying with ${callees.length} lower-index system contracts as callees…`);
-        const retry = await compileInBrowser({ source: src.source, name: cname, slot: src.index, callees });
+        const retry = await compileInBrowser({ source: src.source, name: cname, slot: src.index, callees, system: true });
         if (retry.ok) {
           res = retry;
         }
@@ -2561,13 +2611,32 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // Compile + deploy the active contract and the whole graph it calls. Each CALL/INVOKE_OTHER_CONTRACT(<Name>)
   // resolves to the project's <Name>.h, which is deployed FIRST at a lower slot (the qubic lower-index rule),
   // so a single ▶ brings up the whole graph. Post-order DFS: callees land before their callers.
-  const runCompile = async () => {
+  // `freshSlotFor` names a contract to leave off the rebuilt chain first, so its new build lands on a clean slot
+  // (the developer's answer to a refused layout change).
+  const runCompile = async (freshSlotFor?: string) => {
+    const target = contractFile(filesRef.current, contractName);
+    if (!target) {
+      appendLog("nothing to build — open a contract (.h) file first");
+      return;
+    }
+
     setPhase("compiling");
+    setLayoutRefusal(null);
 
     const done = new Map<string, number>(); // name -> slot deployed this pass
     const visiting = new Set<string>(); // cycle guard
+    let failed: CompileResult | null = null; // the compile that stopped the build, for the red panel
 
-    const deployNode = async (eng: IdeEngine, name: string, src: string): Promise<number> => {
+    // The file behind a contract name. Two files of one stem would make the open file and the code that runs differ.
+    const fileOf = (name: string): WorkspaceFile | undefined => {
+      const matches = filesRef.current.filter((f) => fileKind(f.name) === "contract" && baseName(f.name) === name);
+      if (matches.length > 1) {
+        throw new Error(`two files define a contract named ${name}: ${matches.map((f) => f.name).join(" and ")} — a contract is known by its file name, so rename one`);
+      }
+      return matches[0];
+    };
+
+    const deployNode = async (eng: IdeEngine, name: string, src: string, fileName: string): Promise<number> => {
       const seen = done.get(name);
       if (seen !== undefined) {
         return seen;
@@ -2578,15 +2647,15 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       visiting.add(name);
 
       // Deploy every callee first; the caller must sit above the highest of them.
-      const calleeArgs: { name: string; source: string; slot: number }[] = [];
+      const calleeArgs: { name: string; source: string; slot: number; file: string }[] = [];
       let floor = SLOT_BASE;
       for (const cn of scanCallees(src)) {
-        const f = filesRef.current.find((x) => baseName(x.name) === cn);
+        const f = fileOf(cn);
         if (!f) {
           throw new Error(`${name} calls '${cn}', but there's no ${cn}.h in this project`);
         }
-        const cslot = await deployNode(eng, cn, f.source);
-        calleeArgs.push({ name: cn, source: f.source, slot: cslot });
+        const cslot = await deployNode(eng, cn, f.source, f.name);
+        calleeArgs.push({ name: cn, source: f.source, slot: cslot, file: f.name });
         floor = Math.max(floor, cslot + 1);
       }
 
@@ -2605,15 +2674,17 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       }
       if (name === contractName) {
         setResult(res);
-        applyClangMarkers(res);
       }
+      applyBuildMarkers(fileName, res.diagnostics);
       if (!res.ok || !res.wasm || !res.idl) {
-        // Surface the Problems panel automatically when the built contract has compile errors.
-        if (name === contractName && res.diagnostics.some((d) => d.severity === "error")) {
+        const errors = res.diagnostics.filter((d) => d.severity === "error");
+        // Surface the Problems panel automatically when the open contract has compile errors.
+        if (name === contractName && errors.some((d) => !d.file || d.file === fileName)) {
           setProblemsOpen(true);
         }
 
-        const why = res.error ?? (res.diagnostics.length ? `${res.diagnostics.length} compile problem(s) — see the editor` : "compile failed");
+        const elsewhere = [...new Set(errors.map((d) => d.file ?? fileName))].filter((f) => f !== target.name);
+        const why = res.error ?? (errors.length ? `${errors.length} compile problem${errors.length === 1 ? "" : "s"}${elsewhere.length ? ` in ${elsewhere.join(", ")}` : " — see the editor"}` : "compile failed");
         appendLog(`✗ ${name}: ${why}`);
 
         // A compiler failure (worker crash/timeout) carries an `error` but no located diagnostics —
@@ -2622,8 +2693,18 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           notify.error(errorMessage(res.error, `Build of ${name} failed`));
         }
 
-        res.diagnostics.slice(0, 8).forEach((d) => appendLog(`  ${d.severity} ${name}.h:${d.line}:${d.column} — ${d.message}`));
+        res.diagnostics.slice(0, 8).forEach((d) => appendLog(`  ${d.severity} ${d.file ?? fileName}:${d.line}:${d.column} — ${d.message}`));
+        failed = res;
         throw new Error(why);
+      }
+
+      // The old state bytes stay in the slot. A changed StateData would be read under the new offsets unless a MIGRATE
+      // handler that can run rewrites it, so refuse the way `qinit deploy` does.
+      const previous = deployedRef.current[name];
+      const refusal = previous?.idl.layout && res.idl.layout && previous.slot === slot ? stateCarryoverRejection(name, previous.idl.layout, res.idl.layout, LAYOUT_RECOVERY) : null;
+      if (refusal) {
+        setLayoutRefusal(name);
+        throw new Error(refusal);
       }
 
       const wasmBytes = base64ToBytes(res.wasm);
@@ -2644,21 +2725,25 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       // A halted chain is rebuilt before the build, so the fixed contract can deploy. The contract that halted it is
       // left out: its old build would halt the chain again, and this build puts it back when it is part of the graph.
       const halted = faultRef.current;
-      if (halted) {
-        const culprit = Object.values(deployedRef.current).find((d) => d.slot === halted.slot);
-        if (culprit) {
-          const rest = { ...deployedRef.current };
-          delete rest[culprit.name];
-          deployedRef.current = rest;
-          setDeployed(rest);
+      const culprit = halted && Object.values(deployedRef.current).find((d) => d.slot === halted.slot);
+      const leftOut = [culprit?.name, freshSlotFor].filter((name): name is string => !!name && name in deployedRef.current);
+      if (halted || leftOut.length) {
+        const rest = { ...deployedRef.current };
+        for (const name of leftOut) {
+          delete rest[name];
         }
+        deployedRef.current = rest;
+        setDeployed(rest);
         await eng.reset(deployImages());
         markFault(null);
         clearSession();
-        appendLog(`chain was halted — reset to genesis before this build${culprit && culprit.name !== contractName ? `; ${culprit.name} halted it and is no longer deployed` : ""}`);
+        appendLog(halted
+          ? `chain was halted — reset to genesis before this build${culprit && culprit.name !== contractName ? `; ${culprit.name} halted it and is no longer deployed` : ""}`
+          : `chain reset to genesis — ${freshSlotFor} deploys on a clean slot`);
       }
 
-      await deployNode(eng, contractName, source);
+      fileOf(contractName); // refuses a stem two files share before anything is built
+      await deployNode(eng, contractName, target.source, target.name);
 
       setDeployed(deployedRef.current);
       setSelected(contractName);
@@ -2667,7 +2752,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       setBuilt((b) => {
         const next = { ...b };
         for (const nm of done.keys()) {
-          const file = ws.files.find((f) => baseName(f.name) === nm);
+          const file = contractFile(ws.files, nm);
           if (file) {
             next[file.name] = deployedRef.current[nm].source; // clear each deployed file's dirty dot
           }
@@ -2682,13 +2767,17 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       updateQinitTypes(); // refresh the ./.qinit client types for .ts test completion
     } catch (e) {
       setPhase("error");
-      appendLog(failureLine("deploy", e, !!faultRef.current));
+      const line = failureLine("deploy", e, !!faultRef.current);
+      appendLog(line);
+      // the red panel repeats the console's reason; "0 compile problem(s)" was all it said for a failure that was not a compile error.
+      const stopped = failed as CompileResult | null;
+      setResult({ ok: false, diagnostics: stopped?.diagnostics ?? [], error: line.replace(/^deploy failed: /, "") });
     }
   };
 
   // Build entry point. In a collab session, only one build per project may run at a time — claim the shared
   // lock first (deterministic tiebreak for simultaneous clicks) and release it when the build settles.
-  const compile = async () => {
+  const compile = async (freshSlotFor?: string) => {
     if (collab) {
       if (collabApi.building.byOther) {
         appendLog(`${collabApi.building.by} is building — one build per project at a time`);
@@ -2701,7 +2790,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       }
     }
     try {
-      await runCompile();
+      await runCompile(freshSlotFor);
     } finally {
       if (collab) {
         collabApi.releaseBuild();
@@ -2812,14 +2901,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }));
   };
 
-  // The new-file action: prompt for a name, default-extend with `.h`.
+  // The new-file action: open the explorer's own input, which cleans the name and refuses a duplicate.
   const promptNewFile = () => {
-    const raw = window.prompt("New file name", "Contract.h");
-    if (!raw) {
-      return;
-    }
-    const name = /\.\w+$/.test(raw) ? raw : `${raw}.h`;
-    createFile(name);
+    setLeftHidden(false);
+    setNewFileSignal((n) => n + 1);
   };
 
   // Quick-open lists the workspace files; the command palette lists IDE actions. Built only while open.
@@ -2876,14 +2961,16 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>{projectName || "…"}</span>
         {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.accent }}>✓ saved</span>}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          {activeIsTest ? (
+          {activeKind === "test" ? (
             <ToolButton variant="accent" onClick={() => void runTestFile()} disabled={!!testRun?.running}>
               {testRun?.running ? "Running…" : "▶ Run tests"}
             </ToolButton>
-          ) : activeIsGtest ? (
+          ) : activeKind === "gtest" ? (
             <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>C++ test · run it locally with qinit gtest</span>
+          ) : activeKind === "other" ? (
+            <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>plain file · only a .h file builds as a contract</span>
           ) : (
-            <ToolButton variant="accent" onClick={compile} disabled={phase === "compiling" || collabApi.building.byOther}>
+            <ToolButton variant="accent" onClick={() => void compile()} disabled={phase === "compiling" || collabApi.building.byOther}>
               {phase === "compiling" ? "Compiling…" : collabApi.building.byOther ? `${collabApi.building.by} building…` : "▶ Compile & Run"}
             </ToolButton>
           )}
@@ -2943,6 +3030,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
               files={ws.files}
               active={ws.active}
               source={source}
+              newFileSignal={newFileSignal}
               onSelect={selectFile}
               onCreate={createFile}
               onRename={renameFile}
@@ -3074,8 +3162,11 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             )}
 
             {phase === "error" && (
-              <div style={{ fontFamily: font.mono, fontSize: 11.5, color: "#f85149", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                {result?.error ?? `${result?.diagnostics.length ?? 0} compile problem(s) — see the editor.`}
+              <div style={{ fontFamily: font.mono, fontSize: 11.5, color: "#f85149", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>{result?.error ?? "the build failed — see the console."}</span>
+                {layoutRefusal && (
+                  <span><NeoBtn onClick={() => void compile(layoutRefusal)} title={`Reset the chain to genesis and deploy ${layoutRefusal} with empty state — every contract's state and the session's transactions are lost`}>↺ Reset chain and deploy</NeoBtn></span>
+                )}
               </div>
             )}
 
@@ -3095,7 +3186,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                   <DeployedList deployed={deployed} selected={selected} balances={balances} onSelect={selectDeployed} />
                 </Section>
 
-                {!sel && (
+                {!sel && contractName && (
                   <div style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textGhostDk, lineHeight: 1.6, padding: "2px 0" }}>
                     {contractName} isn't deployed yet — hit <span style={{ color: color.accent }}>▶ Compile &amp; Run</span> to deploy this contract.
                   </div>
@@ -3226,8 +3317,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
           ● {fault ? "halted" : phase === "ready" ? "deployed" : phase === "compiling" ? "building" : phase === "error" ? "error" : "ready"}
         </span>
-        <span>{contractName}</span>
-        <span>C++ · qpi.h</span>
+        <span>{fileLabel(ws.active)}</span>
+        <span>{KIND_LABEL[activeKind]}</span>
         {diag.state !== "idle" && (
           <span style={{ color: diag.state === "error" ? "#f85149" : diag.state === "ok" ? color.accent : color.textMutedDk }}>
             {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ no errors" : `✕ ${diag.count} error${diag.count === 1 ? "" : "s"}`}

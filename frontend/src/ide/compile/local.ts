@@ -11,6 +11,7 @@ export interface CompileRequest {
   name: string;
   slot: number;
   callees?: CompileCallee[];
+  system?: boolean;
 }
 
 export interface BrowserCompileResult extends CompileResult {
@@ -92,7 +93,8 @@ function compileInWorker(req: CompileRequest): Promise<WorkerCompileResponse | n
       source: req.source,
       name: req.name,
       slot: req.slot,
-      callees: req.callees?.map((c) => ({ name: c.name, source: c.source, slot: c.slot })),
+      callees: req.callees?.map((c) => ({ name: c.name, source: c.source, slot: c.slot, file: c.file })),
+      system: req.system,
     });
   });
 }

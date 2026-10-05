@@ -4,6 +4,8 @@
 // data model flat means search, collab, persistence, and the engine keep working unchanged — only the
 // explorer (and tab labels) need to understand the path.
 
+import { baseName, contractFile, fileKind } from "./workspace";
+
 export interface TreeFile {
   kind: "file";
   label: string; // last segment, e.g. "utils.h"
@@ -57,6 +59,43 @@ export function normalizePath(raw: string): string {
   const last = segments[segments.length - 1];
   segments[segments.length - 1] = /\.[A-Za-z0-9]+$/.test(last) ? last : `${last}.h`;
   return segments.join("/");
+}
+
+// What a typed name becomes, or why it cannot be used. Every way of naming a file goes through here — the explorer,
+// the command palette, an import — so none of them can make a second file of one name or a second contract of one stem.
+// `replacing` is the path being renamed, which does not clash with itself.
+export function newFileName(raw: string, existing: readonly string[], replacing?: string): { path: string; note?: string; error?: string } {
+  const path = normalizePath(raw);
+  if (!path) {
+    return { path, error: "a file name needs at least one letter, digit, '.', '-' or '_'" };
+  }
+
+  const others = existing.filter((name) => name !== replacing);
+  if (occupiedNames([...others]).has(path)) {
+    return { path, error: `"${fileLabel(path)}" already exists` };
+  }
+
+  const clash = fileKind(path) === "contract" ? contractFile(others.map((name) => ({ name })), baseName(path)) : undefined;
+  if (clash) {
+    return { path, error: `a contract named ${baseName(path)} already exists (${clash.name}) — a contract is known by its file name, whatever folder it is in` };
+  }
+
+  // the typed text with only the default extension added; anything else that changed was dropped.
+  const typed = raw.trim().replace(/^\/+|\/+$/g, "");
+  const kept = path === typed || path === `${typed}.h`;
+  return kept ? { path } : { path, note: `saved as "${path}" — a name keeps letters, digits, '.', '-' and '_' only` };
+}
+
+// `path` if it is free, else the next free "-2", "-3"… variant; a contract also steps past a stem another contract holds.
+export function freeFilePath(taken: Set<string>, existing: readonly string[], path: string): string {
+  const blocked = new Set(taken);
+  const contracts = existing.map((name) => ({ name }));
+  let candidate = freeName(blocked, path, false);
+  while (fileKind(candidate) === "contract" && contractFile(contracts, baseName(candidate))) {
+    blocked.add(candidate);
+    candidate = freeName(blocked, path, false);
+  }
+  return candidate;
 }
 
 // Build the nested tree from a flat list of paths. Folders sort before files, both alphabetically, at every

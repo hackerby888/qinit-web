@@ -19,7 +19,7 @@ export function arrayFixForLine(line: string): string | null {
 
 const OPERAND = "[A-Za-z_]\\w*(?:\\.\\w+)*|\\d+"; // identifier / dotted member / integer literal
 
-// `a / b` -> `div(a, b)` and `a % b` -> `mod(a, b)`, for qpi/no-division / qpi/no-modulo. `col` is the
+// `a / b` -> `QPI::div(a, b)` and `a % b` -> `QPI::mod(a, b)`, for qpi/no-division / qpi/no-modulo. `col` is the
 // operator's column on `line`. CONSERVATIVE: only when both operands are simple primaries (so `/` `%`'s
 // high left-assoc precedence is preserved by rewriting just the immediate operands) and neither is part
 // of a larger chain (a leading `state.get().x` / trailing `f(y)`). Returns the replacement span + text,
@@ -33,7 +33,7 @@ export function divModFixForLine(line: string, col: number, op: "/" | "%"): { st
   const end = col + 1 + right[0].length;      // right operand end   (right[0] = leading ws + operand)
   if (/[.)\]>]/.test(line[start - 1] ?? "")) return null; // left operand is the tail of a bigger expr
   if (/[.(\[]/.test(line[end] ?? "")) return null;        // right operand continues into a call/member
-  return { start, end, text: `${op === "/" ? "div" : "mod"}(${left[1]}, ${right[1]})` };
+  return { start, end, text: `QPI::${op === "/" ? "div" : "mod"}(${left[1]}, ${right[1]})` };
 }
 
 const TYPE_RE = "[A-Za-z_]\\w*(?:::[A-Za-z_]\\w*)*(?:\\s*<(?:[^<>]|<[^<>]*>)*>)?"; // mirrors the lexer's TYPE

@@ -16,11 +16,33 @@ const loc = { origin: "https://ide.test", hash: "", pathname: "/ide", search: ""
 (globalThis as Record<string, unknown>).location = loc;
 (globalThis as Record<string, unknown>).history = { replaceState: (_s: unknown, _t: string, url: string) => { loc.hash = ""; void url; } };
 
-const { baseName, loadWorkspace, saveWorkspace, resetWorkspace, shareUrl, decodeSharedWorkspace } = await import("../../src/ide/workspace");
+const { baseName, contractFile, fileKind, newFileSource, loadWorkspace, saveWorkspace, resetWorkspace, shareUrl, decodeSharedWorkspace } = await import("../../src/ide/workspace");
 
 beforeEach(() => {
   (globalThis as { localStorage: MemStore }).localStorage.clear();
   loc.hash = "";
+});
+
+// only a header is a contract; the IDE once built notes.md and helper.ts as one.
+test("fileKind reads a file's role from its extension", () => {
+  expect(["Counter.h", "lib/Token.hpp", "x.hh"].map(fileKind)).toEqual(["contract", "contract", "contract"]);
+  expect(["Counter.test.ts", "ui.tsx"].map(fileKind)).toEqual(["test", "test"]);
+  expect(["contract_counter.cpp", "a.cc"].map(fileKind)).toEqual(["gtest", "gtest"]);
+  expect(["notes.md", "data.json", "lib/.keep", "Makefile"].map(fileKind)).toEqual(["other", "other", "other", "other"]);
+});
+
+test("a contract is found by its header's stem, never by a test or text file of the same name", () => {
+  const files = [{ name: "Counter.md" }, { name: "Counter.test.ts" }, { name: "lib/Counter.h" }];
+  expect(contractFile(files, "Counter")).toEqual({ name: "lib/Counter.h" });
+  expect(contractFile(files, "Counter.test")).toBeUndefined();
+  expect(contractFile(files, "Missing")).toBeUndefined();
+});
+
+test("a new file starts as what it is: a contract, a test, or empty", () => {
+  expect(newFileSource("Vault.h")).toContain("struct CONTRACT_STATE_TYPE : public ContractBase");
+  expect(newFileSource("vault.test.ts")).toStartWith('import { test, expect } from "bun:test";');
+  expect(newFileSource("notes.md")).toBe("");
+  expect(newFileSource("lib/.keep")).toBe("");
 });
 
 test("baseName strips folder prefix and extension to the contract stem", () => {

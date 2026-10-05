@@ -115,10 +115,13 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         uint64 depositCount;
     };
 
-    // A QPI log message is any struct ending in \`sint8 _terminator\`. LOG_INFO emits the bytes before the
-    // terminator; the debugger decodes them (matched by size) into named fields.
+    // A QPI log message opens with two header words, \`_contractIndex\` and \`_type\`, and ends in
+    // \`sint8 _terminator\`. The node writes the index; \`_type\` tells one kind of message from another.
+    enum LogKind { Deposited = 1, Withdrawn = 2 };
     struct MoveLog
     {
+        uint32 _contractIndex;
+        uint32 _type;
         id account;
         uint64 amount;
         sint8 _terminator;
@@ -146,6 +149,7 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
         locals.log.account = qpi.invocator();
         locals.log.amount = qpi.invocationReward();
+        locals.log._type = Deposited;
         LOG_INFO(locals.log);
     }
 
@@ -155,6 +159,7 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
         locals.log.account = qpi.invocator();
         locals.log.amount = input.amount;
+        locals.log._type = Withdrawn;
         LOG_INFO(locals.log);
     }
 
@@ -192,10 +197,13 @@ struct CONTRACT_STATE_TYPE : public ContractBase
         uint64 totalBurned;
     };
 
-    // A QPI log message: any struct ending in \`sint8 _terminator\`. The debugger decodes the bytes before
-    // it into named fields.
+    // A QPI log message opens with two header words, \`_contractIndex\` and \`_type\`, and ends in
+    // \`sint8 _terminator\`. The node writes the index; \`_type\` tells one kind of message from another.
+    enum LogKind { Deposited = 1, Sent = 2, Withdrawn = 3 };
     struct MoveLog
     {
+        uint32 _contractIndex;
+        uint32 _type;
         id account;
         uint64 amount;
         sint8 _terminator;
@@ -249,6 +257,7 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
         locals.log.account = qpi.invocator();
         locals.log.amount = qpi.invocationReward();
+        locals.log._type = Deposited;
         LOG_INFO(locals.log);
     }
 
@@ -270,6 +279,7 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
         locals.log.account = input.to;
         locals.log.amount = input.amount;
+        locals.log._type = Sent;
         LOG_INFO(locals.log);
     }
 
@@ -289,6 +299,7 @@ struct CONTRACT_STATE_TYPE : public ContractBase
 
         locals.log.account = qpi.invocator();
         locals.log.amount = input.amount;
+        locals.log._type = Withdrawn;
         LOG_INFO(locals.log);
     }
 

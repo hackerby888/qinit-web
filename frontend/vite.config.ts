@@ -22,7 +22,11 @@ const aliases: Record<string, string> = {
   // Subpath imports must precede the package root (first match wins).
   "@qinit/proto/contract-idl": qinit("proto/src/contract-idl.ts"),
   "@qinit/proto/qpi-layout": qinit("proto/src/qpi-layout.ts"),
+  // The redeploy layout check alone: the shell runs it before a deploy and must not pull in proto's codecs for it.
+  "@qinit/proto/state-carryover": qinit("proto/src/state-carryover.ts"),
   "@qinit/proto": qinit("proto/src/index.ts"),
+  // The CLI's build gate, run in the compile worker so the IDE refuses what `qinit build` refuses. Before the root: first match wins.
+  "@qinit/build/compile/build-rules": qinit("build/src/compile/build-rules.ts"),
   // trace/format.ts imports the package root; keep that transitive edge on the browser-safe IDL module.
   "@qinit/build": qinit("build/src/compile/idl.ts"),
   // The shared state/trace decoder (also used by the qinit CLI) — reused as-is, single source of truth.

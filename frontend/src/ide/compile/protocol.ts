@@ -15,7 +15,9 @@ export interface WorkerCompileRequest {
   source: string;
   name: string;
   slot: number;
-  callees?: Array<{ name: string; source: string; slot: number }>;
+  callees?: Array<{ name: string; source: string; slot: number; file?: string }>;
+  // core's own contracts are exempt from the rules written for a developer's contract.
+  system?: boolean;
 }
 
 export type WorkerRequest = WorkerHelloRequest | WorkerCompileRequest;

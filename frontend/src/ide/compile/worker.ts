@@ -6,97 +6,9 @@
 // the qinit CLI's local-compile flow; their source also rides along so the caller can read the
 // callee's nested output types.
 /// <reference lib="webworker" />
-import { compileContractWithTypeScript as compileContract, COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compiler/browser";
-import type { ContractIdl, CompileDiagnostic } from "@qinit/compiler/browser";
-import { initK12, k12Sync } from "@qinit/core";
-import { toContractIdlView } from "../idl-view";
-import type { WorkerCompileRequest, WorkerCompileResponse, WorkerRequest } from "./protocol";
-
-// Matches the backend's browser default (LITE_WASM_ARENA_SZ) — the 1 GiB compiler default would
-// make every deployed module reserve far more memory than a browser tab should.
-const ARENA_SIZE_BYTES = 64 * 1024 * 1024;
-
-const toHex = (bytes: Uint8Array): string => {
-  let s = "";
-  for (const b of bytes) s += b.toString(16).padStart(2, "0");
-  return s;
-};
-
-const mapDiagnostics = (ds: CompileDiagnostic[]) =>
-  ds.map((d) => ({ severity: d.severity, line: d.span.line, column: d.span.column, message: d.message }));
-
-async function handle(req: WorkerCompileRequest): Promise<{ res: WorkerCompileResponse; transfer: Transferable[] }> {
-  const started = performance.now();
-  const fail = (partial: Partial<WorkerCompileResponse>): { res: WorkerCompileResponse; transfer: Transferable[] } => ({
-    res: { id: req.id, kind: "compiled", ok: false, diagnostics: [], ms: performance.now() - started, ...partial },
-    transfer: [],
-  });
-
-  try {
-    // Slot order matters: a callee may itself invoke a lower-index contract (QSWAP → QUTIL → QX),
-    // so each callee compiles with every already-compiled lower callee cascaded in.
-    const callees: ContractIdl[] = [];
-    const calleeSources: Array<{ name: string; source: string; slot: number }> = [];
-    for (const c of [...(req.callees ?? [])].sort((a, b) => a.slot - b.slot)) {
-      const cr = await compileContract({
-        source: c.source,
-        contractName: c.name,
-        slot: c.slot,
-        arenaSizeBytes: ARENA_SIZE_BYTES,
-        callees: callees.length ? callees : undefined,
-        calleeSources: calleeSources.length ? calleeSources : undefined,
-      });
-      if (cr.diagnostics.some((d) => d.severity === "error")) {
-        return fail({ diagnostics: mapDiagnostics(cr.diagnostics), error: `callee ${c.name} failed to compile` });
-      }
-      if (!cr.idl || cr.wasm.byteLength === 0) {
-        return fail({ error: `callee ${c.name} did not produce a deployable artifact` });
-      }
-      callees.push(cr.idl);
-      calleeSources.push({ name: c.name, source: c.source, slot: c.slot });
-    }
-
-    const r = await compileContract({
-      source: req.source,
-      contractName: req.name,
-      slot: req.slot,
-      arenaSizeBytes: ARENA_SIZE_BYTES,
-      callees: callees.length ? callees : undefined,
-      calleeSources: calleeSources.length ? calleeSources : undefined,
-    });
-
-    const errors = r.diagnostics.filter((d) => d.severity === "error");
-    if (errors.length || r.wasm.byteLength === 0) {
-      return fail({ diagnostics: mapDiagnostics(r.diagnostics) });
-    }
-    if (!r.idl) {
-      return fail({ diagnostics: mapDiagnostics(r.diagnostics), error: "compiler did not produce IDL" });
-    }
-
-    const idl = toContractIdlView(r.idl);
-
-    await initK12();
-    const hash = toHex(k12Sync(r.wasm));
-
-    const buf = r.wasm.buffer.slice(r.wasm.byteOffset, r.wasm.byteOffset + r.wasm.byteLength) as ArrayBuffer;
-    return {
-      res: {
-        id: req.id,
-        kind: "compiled",
-        ok: true,
-        wasm: buf,
-        size: r.wasm.byteLength,
-        hash,
-        idl,
-        diagnostics: mapDiagnostics(r.diagnostics),
-        ms: performance.now() - started,
-      },
-      transfer: [buf],
-    };
-  } catch (e) {
-    return fail({ error: e instanceof Error ? e.message : String(e) });
-  }
-}
+import { COMPILER_PROTOCOL_VERSION, compilerInfo } from "@qinit/compiler/browser";
+import { buildContract } from "./build";
+import type { WorkerCompileResponse, WorkerRequest } from "./protocol";
 
 // A failed reply (DataCloneError on an already-detached buffer) rejects inside the worker, where
 // Worker.onerror never fires — the caller just waits out its timeout. Turn it into a normal error reply.
@@ -113,5 +25,5 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
     self.postMessage({ id: e.data.id, kind: "hello", protocolVersion: COMPILER_PROTOCOL_VERSION, compilerInfo });
     return;
   }
-  void handle(e.data).then(({ res, transfer }) => post(res, transfer));
+  void buildContract(e.data).then(({ res, transfer }) => post(res, transfer));
 };

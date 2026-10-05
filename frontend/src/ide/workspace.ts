@@ -18,6 +18,35 @@ const KEY = "qinit-ide-workspace.v1";
 // ("lib/Counter.h" -> "Counter"). Folder-agnostic so a contract resolves by type name wherever it lives.
 export const baseName = (file: string): string => file.replace(/^.*\//, "").replace(/\.[^.]+$/, "");
 
+// What a file is to the IDE, by extension: only a header builds as a contract, a .ts file is a test, a .cpp is
+// a gtest the CLI runs, and anything else is plain text.
+export type FileKind = "contract" | "test" | "gtest" | "other";
+
+export function fileKind(path: string): FileKind {
+  if (/\.(h|hh|hpp)$/i.test(path)) return "contract";
+  if (/\.tsx?$/i.test(path)) return "test";
+  if (/\.(cpp|cc|cxx)$/i.test(path)) return "gtest";
+  return "other";
+}
+
+// The file that defines contract `name`: a contract is known by its header's stem, whatever folder it is in.
+export const contractFile = <T extends { name: string }>(files: readonly T[], name: string): T | undefined =>
+  files.find((file) => fileKind(file.name) === "contract" && baseName(file.name) === name);
+
+export const NEW_TEST = `import { test, expect } from "bun:test";
+
+// Build a contract with ▶ Compile & Run, then import its client from "./.qinit" and call it here.
+test("it works", async () => {
+  expect(1 + 1).toBe(2);
+});
+`;
+
+// What a new file starts with: a contract skeleton for a header, a test skeleton for a .ts file, nothing otherwise.
+export const newFileSource = (path: string): string => {
+  const kind = fileKind(path);
+  return kind === "contract" ? NEW_CONTRACT : kind === "test" ? NEW_TEST : "";
+};
+
 export const NEW_CONTRACT = `using namespace QPI;
 
 struct CONTRACT_STATE2_TYPE

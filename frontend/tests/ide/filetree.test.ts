@@ -1,6 +1,6 @@
 // Folder tree: path labelling, normalisation (incl. traversal guards), and nested tree assembly.
 import { test, expect, describe } from "bun:test";
-import { fileLabel, dirOf, normalizePath, normalizeDir, occupiedNames, freeName, buildFileTree, type TreeDir, type TreeFile } from "../../src/ide/filetree";
+import { fileLabel, dirOf, normalizePath, normalizeDir, occupiedNames, freeName, freeFilePath, newFileName, buildFileTree, type TreeDir, type TreeFile } from "../../src/ide/filetree";
 
 describe("fileLabel / dirOf", () => {
   test("root-level file has no dir and labels itself", () => {
@@ -113,5 +113,57 @@ describe("buildFileTree", () => {
     const tree = buildFileTree(["a.h", "a.h", ""]);
     expect(tree).toHaveLength(1);
     expect(tree[0].path).toBe("a.h");
+  });
+});
+
+// Every way of naming a file goes through one rule, so the palette cannot make what the explorer refuses.
+describe("newFileName", () => {
+  const existing = ["Counter.h", "lib/Token.h", "notes.md", "Counter.test.ts"];
+
+  test("a clean name is taken as typed, with .h added to a bare one", () => {
+    expect(newFileName("Vault", existing)).toEqual({ path: "Vault.h" });
+    expect(newFileName("lib/Vault.h", existing)).toEqual({ path: "lib/Vault.h" });
+    expect(newFileName("readme.md", existing)).toEqual({ path: "readme.md" });
+  });
+
+  test("an exact duplicate is refused, and so is a file named like an existing folder", () => {
+    expect(newFileName("Counter.h", existing).error).toBe('"Counter.h" already exists');
+    expect(newFileName("lib", [...existing, "lib.h/x.h"]).error).toBe('"lib.h" already exists');
+  });
+
+  test("a second contract of one stem is refused wherever it lives; a test or a text file of that stem is not", () => {
+    expect(newFileName("other/Counter.h", existing).error).toBe(
+      "a contract named Counter already exists (Counter.h) — a contract is known by its file name, whatever folder it is in",
+    );
+    expect(newFileName("b/Token.hpp", existing).error).toContain("a contract named Token already exists (lib/Token.h)");
+    expect(newFileName("Token.test.ts", existing)).toEqual({ path: "Token.test.ts" });
+    expect(newFileName("Counter.md", existing)).toEqual({ path: "Counter.md" });
+  });
+
+  test("a rename does not clash with the file being renamed", () => {
+    expect(newFileName("src/Counter.h", existing, "Counter.h")).toEqual({ path: "src/Counter.h" });
+    expect(newFileName("Counter.h", existing, "Counter.h")).toEqual({ path: "Counter.h" });
+  });
+
+  test("dropped characters are reported, and a name with nothing left is refused", () => {
+    expect(newFileName("my token.h", existing)).toEqual({ path: "mytoken.h", note: `saved as "mytoken.h" — a name keeps letters, digits, '.', '-' and '_' only` });
+    expect(newFileName("über.h", existing).note).toContain('saved as "ber.h"');
+    expect(newFileName("bad name/../x", existing).path).toBe("badname/x.h");
+    expect(newFileName("///", existing).error).toBe("a file name needs at least one letter, digit, '.', '-' or '_'");
+  });
+});
+
+describe("freeFilePath", () => {
+  const existing = ["a/Thing.h", "notes.md"];
+  const taken = () => occupiedNames(existing);
+
+  test("a pasted contract steps past a stem another contract holds, not just a taken path", () => {
+    expect(freeFilePath(taken(), existing, "b/Thing.h")).toBe("b/Thing-2.h");
+    expect(freeFilePath(taken(), [...existing, "c/Thing-2.h"], "b/Thing.h")).toBe("b/Thing-3.h");
+  });
+
+  test("a plain file only needs a free path", () => {
+    expect(freeFilePath(taken(), existing, "b/notes.md")).toBe("b/notes.md");
+    expect(freeFilePath(taken(), existing, "notes.md")).toBe("notes-2.md");
   });
 });

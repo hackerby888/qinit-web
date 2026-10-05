@@ -11,6 +11,10 @@ export interface CompileDiagnostic {
   line: number;
   column: number;
   message: string;
+  // the workspace file the problem is in, when it is not the one being built (a callee).
+  file?: string;
+  // the rule that refused it, when a build rule rather than the compiler did.
+  code?: string;
 }
 
 export interface CompileResult {
@@ -30,6 +34,7 @@ export interface CompileCallee {
   name: string;
   source: string;
   slot: number;
+  file?: string;
 }
 
 // A built-in system contract the IDE can deploy onto its in-browser virtual node (QX, QEARN, …).

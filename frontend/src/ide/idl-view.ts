@@ -1,5 +1,6 @@
 import { analyzeContract } from "@qinit/compiler/analyzer";
 import type { ContractIdl as CompilerContractIdl } from "@qinit/compiler/browser";
+import type { StateLayoutView } from "@qinit/proto/state-carryover";
 
 type CompilerEntry = CompilerContractIdl["functions"][number];
 type CompilerAbiType = CompilerEntry["input"];
@@ -31,6 +32,8 @@ export interface ContractIdlView {
   functions: Record<string, EntryView>;
   procedures: Record<string, EntryView>;
   state?: FieldView[];
+  // StateData's size and format, and the OldStateData size a MIGRATE handler reads: what decides whether a redeploy keeps the state readable.
+  layout?: StateLayoutView;
 }
 
 function fieldsOf(type: CompilerAbiType): FieldView[] {
@@ -96,6 +99,10 @@ export function toContractIdlView(idl: CompilerContractIdl): ContractIdlView {
       idl.procedures.map((entry) => [String(entry.inputType), entryView(entry)]),
     ),
     state: fieldsOf(idl.state),
+    layout: {
+      state: { size: idl.state.size, format: idl.state.format },
+      migration: idl.migration && { oldState: { size: idl.migration.oldState.size } },
+    },
   };
 }
 

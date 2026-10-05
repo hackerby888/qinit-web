@@ -6,7 +6,7 @@ import { Crosshair, ChevronsDownUp, ChevronRight, ChevronDown, Folder, FolderOpe
 import { color, font, themeFlags } from "../landing/tokens";
 import { PixelQMark } from "../landing/components";
 import type { WorkspaceFile } from "./workspace";
-import { buildFileTree, normalizePath, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
+import { buildFileTree, newFileName, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
 
 interface MenuItem {
@@ -17,10 +17,12 @@ interface MenuItem {
   sep?: boolean;
 }
 
-export function FileExplorer({ files, active, source, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onMovePaths, onCopyPaths, onDeletePaths, onJump }: {
+export function FileExplorer({ files, active, source, newFileSignal, onSelect, onCreate, onRename, onDelete, onCreateFolder, onDeleteFolder, onRenameFolder, onDuplicate, onMovePaths, onCopyPaths, onDeletePaths, onJump }: {
   files: WorkspaceFile[];
   active: string;
   source: string;
+  // bumped by the shell to open the new-file input from outside (the command palette's "New file…").
+  newFileSignal?: number;
   onSelect: (name: string) => void;
   onCreate: (name: string) => void;
   onRename: (oldName: string, newName: string) => void;
@@ -110,7 +112,6 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
     lineHeight: 1,
   };
 
-  const taken = (n: string, except?: string) => files.some((f) => f.name === n && f.name !== except);
 
   // The flat, render-order list of visible rows (respecting collapse) — used for shift-range selection.
   const visibleOrder = (): string[] => {
@@ -222,21 +223,30 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   // Typed create/rename: on a name clash, show a notice and keep the input open (return false) so the user can
   // fix it; an empty name just cancels. Drag-moves auto-suffix instead (moveTo / moveDir).
   const commitNew = (): boolean => {
-    const n = normalizePath(addPrefix ? `${addPrefix}/${draft}` : draft);
-    if (!n) {
+    if (!draft.trim()) {
       setAdding(false);
       setDraft("");
       return true;
     }
-    if (taken(n)) {
-      setNotice(`"${fileLabel(n)}" already exists`);
+    const named = newFileName(addPrefix ? `${addPrefix}/${draft}` : draft, files.map((f) => f.name));
+    if (named.error) {
+      setNotice(named.error);
       return false;
     }
-    onCreate(n);
+    setNotice(named.note ?? "");
+    onCreate(named.path);
     setAdding(false);
     setDraft("");
     return true;
   };
+
+  // The shell asks for a new file (command palette): open the same input the toolbar button opens.
+  useEffect(() => {
+    if (newFileSignal) {
+      startAdd("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on the signal alone
+  }, [newFileSignal]);
 
   const startMkdir = (prefix: string) => {
     setNotice("");
@@ -265,16 +275,21 @@ export function FileExplorer({ files, active, source, onSelect, onCreate, onRena
   };
 
   const commitRename = (old: string): boolean => {
-    const n = normalizePath(renameDraft);
-    if (!n || n === old) {
+    if (!renameDraft.trim()) {
       setRenaming(null);
       return true;
     }
-    if (taken(n, old)) {
-      setNotice(`"${fileLabel(n)}" already exists`);
+    const named = newFileName(renameDraft, files.map((f) => f.name), old);
+    if (named.path === old) {
+      setRenaming(null);
+      return true;
+    }
+    if (named.error) {
+      setNotice(named.error);
       return false;
     }
-    onRename(old, n);
+    setNotice(named.note ?? "");
+    onRename(old, named.path);
     setRenaming(null);
     return true;
   };

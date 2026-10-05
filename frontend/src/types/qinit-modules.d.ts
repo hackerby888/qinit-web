@@ -145,10 +145,14 @@ declare module "@qinit/proto" {
   export function decodeAbi(bytes: Uint8Array, type: string): Promise<unknown>;
   export function contractAddress(contractIndex: number): Uint8Array;
   export function traceDescendants<T extends { seq: number; tick: number; kind: number; children?: number[] }>(parent: T, entries: readonly T[], sinceSeq: number, depth?: number): { entry: T; depth: number }[];
+}
+
+declare module "@qinit/proto/state-carryover" {
   export interface StateLayoutView {
     state?: { size: number; format: string };
     migration?: { oldState: { size: number } };
   }
+  // why a redeploy of `next` over `previous` must not proceed, or null when the state bytes stay readable.
   export function stateCarryoverRejection(name: string, previous: StateLayoutView, next: StateLayoutView, recovery?: string): string | null;
 }
 
@@ -315,6 +319,13 @@ declare module "@qinit/compiler/browser" {
 }
 
 declare module "@qinit/compiler/analyzer" {
+  export interface SourceAnalysisDiagnostic {
+    origin: string;
+    code: string;
+    severity: "error" | "warning" | "information";
+    message: string;
+    span: { start: number; end: number; line: number; column: number };
+  }
   export function analyzeContract(options: {
     source: string;
     contractName?: string;
@@ -323,7 +334,16 @@ declare module "@qinit/compiler/analyzer" {
     callees?: import("@qinit/compiler/browser").ContractIdl[];
     calleeSources?: Array<{ name: string; source: string; slot?: number }>;
   }): {
-    diagnostics: import("@qinit/compiler/browser").CompileDiagnostic[];
+    diagnostics: SourceAnalysisDiagnostic[];
     idl?: import("@qinit/compiler/browser").ContractIdl;
   };
+  export function detectContractName(source: string): string | undefined;
+  // the analyzer codes core's native verifier refuses; a browser fails a build on them instead.
+  export const VERIFIER_RULES: ReadonlySet<string>;
+  export function verifierViolations(diagnostics: readonly SourceAnalysisDiagnostic[], source: string): SourceAnalysisDiagnostic[];
+}
+
+declare module "@qinit/build/compile/build-rules" {
+  import type { SourceAnalysisDiagnostic } from "@qinit/compiler/analyzer";
+  export function buildGateDiagnostics(diagnostics: readonly SourceAnalysisDiagnostic[], context?: { contractKind?: "user" | "system"; buildRules?: boolean; rejectsLogHeader?: boolean }): SourceAnalysisDiagnostic[];
 }
