@@ -3466,7 +3466,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
         <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
-          ● {fault ? "halted" : phase === "ready" ? `deployed ${builtName}` : phase === "compiling" ? `building ${builtName}` : phase === "error" ? `build of ${builtName} failed` : "ready"}
+          ● {fault ? "halted" : phase === "ready" ? `deployed ${builtName}` : phase === "compiling" ? `building ${builtName}` : phase === "error" ? `error — ${builtName} not deployed` : "ready"}
         </span>
         <span>{fileLabel(ws.active)}</span>
         <span>{KIND_LABEL[activeKind]}</span>
