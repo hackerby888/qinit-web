@@ -9,3 +9,6 @@ bun.lockb
 *.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
+
+# the qinit checkout scripts/pages-build.sh fetches
+.qinit/

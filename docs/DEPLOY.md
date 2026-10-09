@@ -91,3 +91,28 @@ Ship stdout/stderr to your log aggregator.
 The API image does **not** bake the core headers. Either (a) mount a host `~/.cache/qinit` populated by
 `qinit up` (compose default), or (b) build a derived image that runs `qinit up` at build time. Set `QINIT_CORE`
 to override the header snapshot path.
+
+## Cloudflare Pages (static site only)
+
+With `BACKEND_ENABLED = false` (`frontend/src/ide/backend.ts`) the site is static and Pages builds and serves it
+on every push to `main`. The build needs the sibling `Qinit/` monorepo, which Pages does not check out, so
+`scripts/pages-build.sh` fetches it into `.qinit/` (gitignored) and builds from there.
+
+Dashboard → Workers & Pages → Create → Pages → Connect to Git → `qinit-web`:
+
+| Setting | Value |
+|---|---|
+| Production branch | `main` |
+| Framework preset | None |
+| Root directory | *(empty — repo root)* |
+| Build command | `bash scripts/pages-build.sh` |
+| Build output directory | `frontend/dist` |
+| Environment variable | `BUN_VERSION` = `1.3.14` (the Bun CI uses) |
+
+Optional variables: `QINIT_REPO` (default `hackerby888/qinit`) and `QINIT_REF` (default `main`; a sha or tag
+holds the IDE on a known Qinit) — the same knobs the CI workflow has.
+
+Client-side routes (`/docs/...`, `/ide/...`) work without configuration: there is no `404.html`, so Pages serves
+`index.html` for unknown paths. A push to the **Qinit** repo does not rebuild the site by itself — the next
+`qinit-web` push picks it up, or create a Deploy Hook (Settings → Builds & deployments) and call its URL from
+Qinit's CI.
