@@ -3,7 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 /**
  * The signature graphic: Qubic's quorum is exactly 676 computors (26×26).
  * We render that lattice on a canvas. A "tick" ripple periodically sweeps the
- * grid — the wavefront flashes amber→mint then decays, standing in for the
+ * grid — the wavefront flashes amber→green then decays, standing in for the
  * quorum confirming a tick. `pulse()` fires an extra amber ripple from the
  * centre; the hero terminal calls it on `qinit deploy` to link "you ship" to
  * "the 676 computors confirm".
@@ -13,11 +13,11 @@ export interface LatticeHandle { pulse: () => void }
 const COLS = 26, ROWS = 26; // 26 × 26 = 676 computors
 
 // palette (rgb) per theme. light: faint grey dots that darken toward teal/amber
-// as the tick wave passes (Aleo dotted-map). dark: phosphor mint/amber on graphite.
-type Pal = { base: number[]; mint: number[]; amber: number[]; aBase: number; aSpan: number };
+// as the tick wave passes (Aleo dotted-map). dark: phosphor green/amber on graphite.
+type Pal = { base: number[]; green: number[]; amber: number[]; aBase: number; aSpan: number };
 const PAL: { light: Pal; dark: Pal } = {
-  light: { base: [206, 207, 200], mint: [12, 156, 128], amber: [214, 138, 30], aBase: 0.28, aSpan: 0.6 },
-  dark: { base: [26, 34, 29], mint: [60, 232, 196], amber: [255, 179, 71], aBase: 0.5, aSpan: 0.5 },
+  light: { base: [206, 207, 200], green: [26, 127, 55], amber: [214, 138, 30], aBase: 0.28, aSpan: 0.6 },
+  dark: { base: [26, 34, 29], green: [63, 185, 80], amber: [255, 179, 71], aBase: 0.5, aSpan: 0.5 },
 };
 
 type Ripple = { cx: number; cy: number; t: number; strength: number; amber: number };
@@ -81,7 +81,7 @@ export const ComputorLattice = forwardRef<LatticeHandle, { className?: string }>
       for (let row = 0; row < ROWS; row++) {
         for (let col = 0; col < COLS; col++) {
           const { e, amber } = energyAt(col, row);
-          const target = mix(p.mint, p.amber, amber);
+          const target = mix(p.green, p.amber, amber);
           const [r, g, b] = mix(p.base, target, e);
           ctx.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},${p.aBase + p.aSpan * e})`;
           const x = ox + col * cell, y = oy + row * cell;

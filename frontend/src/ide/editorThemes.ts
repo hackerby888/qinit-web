@@ -27,10 +27,10 @@ export interface EditorThemeMeta {
 
 // The picker list. "Match UI" is Auto (follows chrome); the rest are sectioned light vs dark.
 export const EDITOR_THEMES: EditorThemeMeta[] = [
-  { id: "match", label: "Match UI", group: "auto", monacoName: null, swatch: ["#9B8CFF", "#56C8FF", "#FFD23F"] },
-  { id: "qinit-light", label: "qinit Light", group: "light", monacoName: "qinit-light", swatch: ["#6A4ACB", "#1E7FA8", "#8A6D00"] },
+  { id: "match", label: "Match UI", group: "auto", monacoName: null, swatch: ["#9B8CFF", "#7EE787", "#FFD23F"] },
+  { id: "qinit-light", label: "qinit Light", group: "light", monacoName: "qinit-light", swatch: ["#6A4ACB", "#1A7F37", "#8A6D00"] },
   { id: "intellij-light", label: "IntelliJ Light", group: "light", monacoName: "intellij-light", swatch: ["#0033B3", "#871094", "#067D17"] },
-  { id: "qinit-dark", label: "qinit Dark", group: "dark", monacoName: "qinit-dark", swatch: ["#9B8CFF", "#56C8FF", "#FFD23F"] },
+  { id: "qinit-dark", label: "qinit Dark", group: "dark", monacoName: "qinit-dark", swatch: ["#9B8CFF", "#7EE787", "#FFD23F"] },
   { id: "qinit-flat", label: "qinit Flat (GitHub Dark)", group: "dark", monacoName: "qinit-flat", swatch: ["#ff7b72", "#a5d6ff", "#79c0ff"] },
   { id: "monokai", label: "Monokai", group: "dark", monacoName: "monokai", swatch: ["#F92672", "#A6E22E", "#E6DB74"] },
   { id: "dracula", label: "Dracula", group: "dark", monacoName: "dracula", swatch: ["#FF79C6", "#50FA7B", "#F1FA8C"] },
@@ -117,10 +117,10 @@ const THEMES: Record<string, Palette> = {
   "qinit-light": {
     base: "vs",
     bg: "F7F7F2", fg: "2B2E29",
-    comment: "8A8E78", keyword: "6A4ACB", type: "0B7A63", qpiType: "1E7FA8", annotation: "C2632A",
+    comment: "8A8E78", keyword: "6A4ACB", type: "1A7F37", qpiType: "116329", annotation: "C2632A",
     builtin: "A23E8C", number: "9A7A00", string: "8A6D00", identifier: "2B2E29",
-    lineNr: "B8BCB0", lineNrActive: "6B6F63", selection: "19E0B433", lineHighlight: "00000008",
-    cursor: "0B7A63", widgetBg: "FFFFFF", widgetBorder: "E2E2D8", suggestSelected: "19E0B422", scrollbar: "00000022",
+    lineNr: "B8BCB0", lineNrActive: "6B6F63", selection: "3FB95033", lineHighlight: "00000008",
+    cursor: "1A7F37", widgetBg: "FFFFFF", widgetBorder: "E2E2D8", suggestSelected: "3FB95022", scrollbar: "00000022",
   },
   monokai: {
     base: "vs-dark",

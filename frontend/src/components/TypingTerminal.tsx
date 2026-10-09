@@ -19,17 +19,17 @@ const LINES: Line[] = [
   { text: "✓ deployed · arm-verified by codeHash", tone: "ok", confirm: true },
 ];
 
-const toneClass = (t?: Line["tone"]) => (t === "ok" ? "text-mint" : t === "dim" ? "text-mist" : "text-bone");
+const toneClass = (t?: Line["tone"]) => (t === "ok" ? "text-green" : t === "dim" ? "text-mist" : "text-bone");
 
 function Cursor() {
-  return <span className="ml-0.5 inline-block h-[14px] w-[7px] translate-y-[2px] animate-blink bg-mint align-middle" aria-hidden />;
+  return <span className="ml-0.5 inline-block h-[14px] w-[7px] translate-y-[2px] animate-blink bg-green align-middle" aria-hidden />;
 }
 
 function Row({ line, partial, cursor }: { line: Line; partial?: string; cursor?: boolean }) {
   const text = partial ?? line.text;
   return (
     <div className="whitespace-pre-wrap break-words">
-      {line.prompt && <span className="select-none text-mint">$ </span>}
+      {line.prompt && <span className="select-none text-green">$ </span>}
       <span className={toneClass(line.tone)}>{text}</span>
       {cursor && <Cursor />}
     </div>
@@ -92,7 +92,7 @@ export function TypingTerminal({ onDeploy, className = "" }: { onDeploy?: () => 
         <div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-2.5">
           <span className="h-3 w-3 rounded-full bg-faint/70" />
           <span className="h-3 w-3 rounded-full bg-amber/70" />
-          <span className="h-3 w-3 rounded-full bg-mint/70" />
+          <span className="h-3 w-3 rounded-full bg-green/70" />
           <span className="ml-2 font-mono text-xs text-faint">zsh — qinit</span>
           <span className="ml-auto flex items-center gap-1.5 font-mono text-[11px] text-mist">
             <span className="h-1.5 w-1.5 rounded-full bg-amber animate-tick-pulse" /> live

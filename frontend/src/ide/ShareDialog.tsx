@@ -149,8 +149,8 @@ export function ShareDialog({ projectId, isLive, peerCount, onGoLive, onClose }:
               <span style={{ fontFamily: font.display, fontSize: 18, color: color.textLightHi }}>Share project</span>
               <div style={{ flex: 1 }} />
               {isLive ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 11, color: "#3ECF8E" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3ECF8E" }} />
+                <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 11, color: color.accent }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: color.accent }} />
                   live{peerCount ? ` · ${peerCount + 1} editing` : ""}
                 </span>
               ) : (

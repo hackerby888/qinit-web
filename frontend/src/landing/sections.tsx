@@ -6,7 +6,7 @@ import { DotField, Typewriter, VoteDots, VoxelStack } from "./illustrations";
 
 const wrap: CSSProperties = { maxWidth: 1140, margin: "0 auto" };
 const dotGrid = (dark: boolean): CSSProperties => ({
-  backgroundImage: `radial-gradient(${dark ? "#19E0B40d" : "#16190F0d"} 1.5px, transparent 1.5px)`,
+  backgroundImage: `radial-gradient(${dark ? color.accent + "0d" : "#16190F0d"} 1.5px, transparent 1.5px)`,
   backgroundSize: dark ? "9px 9px" : "8px 8px",
 });
 const h2: CSSProperties = { fontFamily: font.display, fontWeight: 600, fontSize: 42, margin: 0, color: color.ink };
@@ -228,7 +228,7 @@ export function Cta() {
   return (
     <section style={{ padding: "0 32px", background: color.void }}>
       <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <div style={{ position: "relative", padding: "72px 40px", textAlign: "center", overflow: "hidden", ...dotGrid(true), backgroundImage: `radial-gradient(#19E0B412 1.5px, transparent 1.5px)` }}>
+        <div style={{ position: "relative", padding: "72px 40px", textAlign: "center", overflow: "hidden", ...dotGrid(true), backgroundImage: `radial-gradient(${color.accent}12 1.5px, transparent 1.5px)` }}>
           <div style={{ position: "absolute", top: 34, left: "8%", width: 12, height: 12, background: color.accent, animation: "twk 3s ease-in-out infinite" }} />
           <div style={{ position: "absolute", bottom: 40, right: "10%", width: 16, height: 16, background: color.yellow, border: `3px solid ${color.void}`, animation: "twk 3.6s ease-in-out infinite" }} />
           <h2 style={{ fontFamily: font.display, margin: "0 0 14px", fontSize: 46, fontWeight: 700, color: color.textLightHi }}>Ship your first Qubic contract today.</h2>

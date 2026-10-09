@@ -40,18 +40,18 @@ export function CodeBlock({ code, label, prompt }: { code: string; label?: strin
         <div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-2.5">
           <span className="h-3 w-3 rounded-full bg-faint/70" />
           <span className="h-3 w-3 rounded-full bg-amber/70" />
-          <span className="h-3 w-3 rounded-full bg-mint/70" />
+          <span className="h-3 w-3 rounded-full bg-green/70" />
           {label && <span className="ml-2 font-mono text-xs text-faint">{label}</span>}
           <button
             onClick={copy}
-            className="ml-auto rounded-md border border-white/10 bg-white/[.04] px-2.5 py-1 font-mono text-xs text-mist transition hover:border-mint/40 hover:text-bone"
+            className="ml-auto rounded-md border border-white/10 bg-white/[.04] px-2.5 py-1 font-mono text-xs text-mist transition hover:border-green/40 hover:text-bone"
           >
             {copied ? "copied ✓" : "copy"}
           </button>
         </div>
         <pre className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-relaxed">
           <code className="hljs">
-            {prompt && <span className="select-none text-mint">$ </span>}
+            {prompt && <span className="select-none text-green">$ </span>}
             <span dangerouslySetInnerHTML={{ __html: html }} />
           </code>
         </pre>

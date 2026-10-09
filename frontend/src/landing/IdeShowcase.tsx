@@ -13,7 +13,7 @@ const STATS: [string, string, boolean][] = [
 
 export function IdeShowcase() {
   return (
-    <section id="ide" style={{ background: color.void, color: color.textLight, padding: "64px 32px 70px", borderTop: `3px solid ${color.ink}`, borderBottom: `3px solid ${color.ink}`, backgroundImage: "radial-gradient(#19E0B40d 1.5px, transparent 1.5px)", backgroundSize: "9px 9px" }}>
+    <section id="ide" style={{ background: color.void, color: color.textLight, padding: "64px 32px 70px", borderTop: `3px solid ${color.ink}`, borderBottom: `3px solid ${color.ink}`, backgroundImage: `radial-gradient(${color.accent}0d 1.5px, transparent 1.5px)`, backgroundSize: "9px 9px" }}>
       <div style={{ maxWidth: 1140, margin: "0 auto" }}>
         <div style={{ textAlign: "center", marginBottom: 38 }}>
           <Chip tone="panel">

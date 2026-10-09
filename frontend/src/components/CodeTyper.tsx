@@ -71,12 +71,12 @@ export function CodeTyper({ code, file = "contracts/Counter.h", className = "" }
         <div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-2.5">
           <span className="h-3 w-3 rounded-full bg-faint/70" />
           <span className="h-3 w-3 rounded-full bg-amber/70" />
-          <span className="h-3 w-3 rounded-full bg-mint/70" />
+          <span className="h-3 w-3 rounded-full bg-green/70" />
           <span className="ml-2 font-mono text-xs text-faint">{file}</span>
           <span className="ml-auto flex items-center gap-1.5 font-mono text-[11px] text-mist">
             {typing
               ? <><span className="h-1.5 w-1.5 rounded-full bg-amber animate-tick-pulse" /> writing</>
-              : <><span className="text-mint">✓</span> saved</>}
+              : <><span className="text-green">✓</span> saved</>}
           </span>
         </div>
         <div className="flex gap-4 px-4 py-4 font-mono text-[12.5px] leading-[1.65]">
@@ -86,7 +86,7 @@ export function CodeTyper({ code, file = "contracts/Counter.h", className = "" }
           <pre className="flex-1 overflow-x-auto whitespace-pre">
             <code className="hljs">
               {parts.map((p, i) => (p.cls ? <span key={i} className={p.cls}>{p.text}</span> : <span key={i}>{p.text}</span>))}
-              {typing && <span className="ml-px inline-block h-[14px] w-[7px] translate-y-[2px] animate-blink bg-mint align-middle" aria-hidden />}
+              {typing && <span className="ml-px inline-block h-[14px] w-[7px] translate-y-[2px] animate-blink bg-green align-middle" aria-hidden />}
             </code>
           </pre>
         </div>

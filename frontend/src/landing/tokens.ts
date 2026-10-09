@@ -1,6 +1,14 @@
 // qinit design tokens — single source of truth (from the official design handoff).
 // Style = "pixel / neo-brutalist": flat fills, 3px ink borders, HARD offset
 // shadows (no blur), notched/bitten corners, zero border-radius (except the q-seed).
+// the brand green, shared by both palettes: one accent whether the chrome is neo or flat.
+const GREEN = {
+  accent: "#3FB950", // primary brand / signal
+  accentMid: "#2EA043", // shade (voxel left face)
+  accentDeep: "#238636", // deep (voxel right face, button frames, shadows on dark)
+  accentShadow: "#16401F", // hard-shadow color for accent buttons on dark
+};
+
 // The original "neo-brutalist" palette — the single source of truth for the landing, the projects
 // gallery and the IDE chrome's default look.
 const NEO = {
@@ -13,10 +21,7 @@ const NEO = {
   white: "#FFFFFF", // light card faces
 
   // brand
-  accent: "#19E0B4", // mint — primary brand / signal
-  accentMid: "#12B891", // mint shade (voxel left face)
-  accentDeep: "#0B7A63", // mint deep (voxel right face, button frames, shadows on dark)
-  accentShadow: "#073A30", // hard-shadow color for accent buttons on dark
+  ...GREEN,
   secondary: "#9B8CFF", // grape — secondary accent
   secondaryDeep: "#5A4ACB",
   secondaryDk: "#3A2EA0", // voxel right face for grape
@@ -50,10 +55,7 @@ const FLAT: typeof NEO = {
   paper: "#e6edf3",     // light surface (rare in the dark IDE)
   white: "#f0f3f6",
 
-  accent: "#3fb950",      // success.fg — primary signal / active / the green button
-  accentMid: "#2ea043",
-  accentDeep: "#238636",  // success.emphasis — button frame
-  accentShadow: "#16401f",
+  ...GREEN,               // success.fg / success.emphasis — the same green as neo
   secondary: "#2f81f7",   // accent.fg — links / secondary
   secondaryDeep: "#1f6feb",
   secondaryDk: "#194fb3",

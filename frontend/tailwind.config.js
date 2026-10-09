@@ -13,13 +13,13 @@ export default {
         ink: v("ink"), // primary text + hairline source
         slate: v("slate"), // secondary text
         faint: v("faint"), // tertiary / captions
-        "mint-deep": v("accent"), // accent on the page (links, signals)
+        "green-deep": v("accent"), // accent on the page (links, signals)
         // constant tokens (same in both themes)
         ink2: "#0F1411", // dark "screen" surface (terminal / code)
         graphite: "#161C18", // dark screen alt
         bone: "#E8EAE6", // primary text on dark screens
         mist: "#8A938C", // secondary text on dark screens
-        mint: "#3CE8C4", // phosphor on dark screens / lattice
+        green: "#3FB950", // phosphor on dark screens / lattice
         amber: "#FFB347", // confirm signal — rationed
       },
       fontFamily: {

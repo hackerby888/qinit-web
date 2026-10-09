@@ -124,7 +124,7 @@ function DividerCollapse({ side, onCollapse }: { side: "left" | "right"; onColla
 
 // The collab presence strip — stacked peer avatars + a connection/live status pill in the editor toolbar.
 function CollabBar({ status, peers, mode, selfName, selfColor }: { status: CollabStatus; peers: Peer[]; mode: "view" | "edit"; selfName: string; selfColor: string }) {
-  const dot = status === "connected" ? "#3ECF8E" : status === "connecting" ? color.yellow : "#f85149";
+  const dot = status === "connected" ? color.accent : status === "connecting" ? color.yellow : "#f85149";
   const label = status === "connected" ? (mode === "view" ? "viewing" : "live") : status === "connecting" ? "connecting…" : "reconnecting…";
   const all = [{ name: `${selfName} (you)`, color: selfColor }, ...peers];
   return (

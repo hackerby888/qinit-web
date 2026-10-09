@@ -12,7 +12,7 @@
   --ink: 11 14 12;      /* #0B0E0C primary text + hairline source */
   --slate: 106 110 104; /* #6A6E68 secondary */
   --faint: 154 158 151; /* #9A9E97 tertiary */
-  --accent: 12 156 128; /* #0C9C80 page accent (links, signals) */
+  --accent: 26 127 55;  /* #1A7F37 page accent (links, signals) */
 }
 .dark {
   color-scheme: dark;
@@ -22,7 +22,7 @@
   --ink: 232 234 230;   /* #E8EAE6 bone text */
   --slate: 138 147 140; /* #8A938C mist */
   --faint: 90 97 91;    /* #5A615B faint */
-  --accent: 60 232 196; /* #3CE8C4 bright phosphor mint */
+  --accent: 63 185 80;  /* #3FB950 bright phosphor green */
 }
 html { scroll-behavior: smooth; }
 body {
@@ -34,10 +34,10 @@ body {
 
 /* ---- fixed atmosphere: the landing's dots in both themes; dark adds a glow ---- */
 .bg-fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.dark .bg-fx::before { /* mint glow */
+.dark .bg-fx::before { /* green glow */
   content: ""; position: absolute; top: -360px; left: 50%; transform: translateX(-50%);
   width: 900px; height: 720px; border-radius: 9999px; filter: blur(150px);
-  background: radial-gradient(closest-side, rgba(60,232,196,.20), transparent 70%);
+  background: radial-gradient(closest-side, rgb(var(--accent) / .20), transparent 70%);
 }
 .dark .bg-fx::after { /* lone amber ember, far + faint */
   content: ""; position: absolute; bottom: -260px; right: -120px;
@@ -58,7 +58,7 @@ body {
 
 /* ---- accent (one phrase of colour, like Aleo's lone colour dots) ---- */
 .phosphor { color: rgb(var(--accent)); }
-.dark .phosphor { text-shadow: 0 0 22px rgba(60,232,196,.4); }
+.dark .phosphor { text-shadow: 0 0 22px rgb(var(--accent) / .4); }
 .grad-text { @apply bg-clip-text text-transparent; background-image: linear-gradient(100deg, rgb(var(--accent)), rgb(var(--ink)) 70%); }
 .grad-still { @apply bg-clip-text text-transparent; background-image: linear-gradient(100deg, rgb(var(--accent)), rgb(var(--ink))); }
 
@@ -69,11 +69,11 @@ body {
 /* dark "screen" surface for the terminal + code blocks (dark cards on a light page) */
 .screen { @apply rounded-2xl border border-white/10 bg-ink2 shadow-screen; }
 
-/* subtle teal hairline ring overlay (no layout shift) */
+/* subtle green hairline ring overlay (no layout shift) */
 .gborder { position: relative; }
 .gborder::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
-  background: linear-gradient(135deg, rgba(12,156,128,.35), rgba(12,156,128,.04) 50%, transparent 72%);
+  background: linear-gradient(135deg, rgb(var(--accent) / .35), rgb(var(--accent) / .04) 50%, transparent 72%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
 }
@@ -110,16 +110,16 @@ textarea::placeholder {
 
 /* visible focus for keyboard users */
 :where(a, button, [tabindex]):focus-visible {
-  outline: 2px solid #0C9C80; outline-offset: 2px; border-radius: 8px;
+  outline: 2px solid rgb(var(--accent)); outline-offset: 2px; border-radius: 8px;
 }
 
 /* ---- syntax highlight — phosphor palette (renders on the dark screens) ---- */
 .hljs { color: #E8EAE6; background: transparent; }
 .hljs-comment, .hljs-quote { color: #6b7280; font-style: italic; }
-.hljs-keyword, .hljs-literal, .hljs-built_in, .hljs-name, .hljs-selector-tag { color: #6df2d6; }
-.hljs-string, .hljs-attr, .hljs-symbol, .hljs-bullet, .hljs-addition { color: #3CE8C4; }
+.hljs-keyword, .hljs-literal, .hljs-built_in, .hljs-name, .hljs-selector-tag { color: #7EE787; }
+.hljs-string, .hljs-attr, .hljs-symbol, .hljs-bullet, .hljs-addition { color: #3FB950; }
 .hljs-number { color: #FFB347; }
-.hljs-title, .hljs-title.function_, .hljs-section, .hljs-type { color: #9fefe0; }
+.hljs-title, .hljs-title.function_, .hljs-section, .hljs-type { color: #56D364; }
 .hljs-variable, .hljs-template-variable, .hljs-params { color: #FFC97A; }
 .hljs-meta, .hljs-meta .hljs-keyword { color: #8A938C; }
 .hljs-punctuation, .hljs-operator { color: #8A938C; }

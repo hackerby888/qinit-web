@@ -12,13 +12,13 @@
   overflow-x: hidden;
 }
 .pixel-root *, .pixel-root *::before, .pixel-root *::after { box-sizing: border-box; }
-.pixel-root ::selection { background: #19E0B4; color: #070908; }
+.pixel-root ::selection { background: #3FB950; color: #070908; }
 .pixel-root svg { shape-rendering: crispEdges; }
 .pixel-root a { color: inherit; }
 
 
 .nav-link { transition: color .15s ease; }
-.nav-link:hover { color: #19E0B4 !important; }
+.nav-link:hover { color: #3FB950 !important; }
 
 @media (max-width: 880px) {
   .pix-hero-grid, .pix-pillars, .pix-3col, .pix-2col, .pix-ide-body { grid-template-columns: 1fr !important; }

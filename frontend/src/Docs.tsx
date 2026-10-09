@@ -50,10 +50,10 @@ const md: Components = {
   strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
   a: ({ href, children }) =>
     href?.startsWith("/")
-      ? <Link to={href} className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</Link>
+      ? <Link to={href} className="text-ink underline underline-offset-2 transition hover:text-green-deep">{children}</Link>
       : href?.startsWith("#")
-        ? <a href={href} className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</a>
-        : <a href={href} target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 transition hover:text-mint-deep">{children}</a>,
+        ? <a href={href} className="text-ink underline underline-offset-2 transition hover:text-green-deep">{children}</a>
+        : <a href={href} target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 transition hover:text-green-deep">{children}</a>,
   blockquote: ({ children }) => <div className="my-5 rounded-xl border-l-2 border-ink/25 bg-snow/60 px-4 py-3 text-sm text-ink [&_p]:my-0 [&_p]:text-slate">{children}</div>,
   code: ({ className, children }) => {
     const lang = /language-(\w+)/.exec(className ?? "")?.[1];
