@@ -6,9 +6,9 @@ import { Docs } from "./Docs";
 import { SplashScreen } from "./ui/Splash";
 import { loadIdeModule } from "./ide/load";
 import { BACKEND_ENABLED } from "./ide/backend";
-import { installCrashHandlers } from "./ide/crash";
-import { CrashBoundary, CrashOverlay } from "./ide/CrashDialog";
-import { CrashDevTrigger, installCrashDev } from "./ide/crashDev"; // DEV-only smoke triggers
+import { installCrashHandlers } from "./crash/crash";
+import { CrashBoundary, CrashOverlay } from "./crash/CrashDialog";
+import { CrashDevTrigger, installCrashDev } from "./crash/CrashDevTrigger"; // DEV-only smoke triggers
 import "./index.css";
 
 // The IDE pulls in Monaco — lazy-load it so the landing/docs bundle stays light.

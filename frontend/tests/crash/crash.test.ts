@@ -3,7 +3,7 @@
 import { test, expect, describe, beforeEach } from "bun:test";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CrashBoundary, CrashOverlay } from "../../src/ide/CrashDialog";
+import { CrashBoundary, CrashOverlay } from "../../src/crash/CrashDialog";
 import { color } from "../../src/ui/tokens";
 import {
   _resetCrash,
@@ -20,7 +20,7 @@ import {
   sensitiveKeys,
   subscribeCrash,
   type CrashReport,
-} from "../../src/ide/crash";
+} from "../../src/crash/crash";
 
 const seen = (): CrashReport | null => {
   let out: CrashReport | null = null;

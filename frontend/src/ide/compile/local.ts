@@ -4,7 +4,7 @@
 import type { CompilerInfo } from "@qinit/compiler/browser";
 import type { CompileCallee, CompileResult } from "../api";
 import type { WorkerCompileResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
-import { reportCrash } from "../crash";
+import { reportCrash } from "../../crash/crash";
 
 export interface CompileRequest {
   source: string;

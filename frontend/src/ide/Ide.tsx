@@ -22,7 +22,7 @@ import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
 import { Toasts } from "../ui/Toasts";
 import { OfflineBanner } from "./OfflineBanner";
 import { notify, errorMessage } from "../ui/notify";
-import { registerDiagnostic } from "./crash";
+import { registerDiagnostic } from "../crash/crash";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
 import { ShareDialog } from "./ShareDialog";

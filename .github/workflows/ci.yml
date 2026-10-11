@@ -89,7 +89,7 @@ jobs:
         working-directory: Qinit-web/frontend
         run: |
           if grep -R -E '__crash|\[crash dev\]' dist; then
-            echo "production bundle contains the DEV-only crash triggers (src/ide/crashDev.tsx)" >&2
+            echo "production bundle contains the DEV-only crash triggers (src/crash/CrashDevTrigger.tsx)" >&2
             exit 1
           fi
 
