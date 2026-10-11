@@ -5,6 +5,17 @@ Landing page for [qinit](https://github.com/hackerby888/qinit) — how to instal
 - **frontend/** — React + TailwindCSS (Vite, TypeScript): landing, docs and the browser IDE
 - **backend/** — Bun + Express + MongoDB (TypeScript); serves live release info + a visit counter
 
+## Frontend layout
+
+`frontend/src` groups code by what it does; one folder is one subsystem:
+
+- `ui/` — the shared pixel design system (tokens, primitives, modals, toasts, splash)
+- `crash/` — the crash reporter `main.tsx` installs before React renders
+- `landing/`, `docs/`, `admin/` — one route each
+- `ide/` — the browser IDE. `Ide.tsx` is the shell; `cloud/` holds everything behind `BACKEND_ENABLED`; `compile/`, `engine/`, `calls/`, `workspace/`, `projects/`, `editor/`, `qpi/` and `test-runner/` are its subsystems
+
+Files are kebab-case modules, `PascalCase.tsx` components and `use-*.ts` hooks; no barrel `index.ts` files. `frontend/tests` mirrors the same folders.
+
 ## Run (dev)
 
 The site, the docs and the IDE need only the frontend:
