@@ -1,6 +1,6 @@
 // the compile result as the shell sees it: the worker reply from compile/local.ts with the wasm re-encoded as
 // base64, plus the diagnostic and callee shapes the worker protocol shares with it.
-import type { ContractIdlView as ContractIdl } from "../idl-view";
+import type { ContractIdlView as ContractIdl } from "../calls/idl-view";
 
 export interface CompileDiagnostic {
   severity: "error" | "warning";

@@ -1,8 +1,8 @@
 // A project is the unit the IDE creates / manages — a self-contained, syncable document holding the
 // contract files plus its session state (open tabs + saved test scenarios). Kept deliberately flat and
 // JSON-serializable so the same shape round-trips through localStorage now and a cloud API later.
-import type { WorkspaceFile } from "../workspace";
-import type { Scenario } from "../scenarios";
+import type { WorkspaceFile } from "../workspace/workspace";
+import type { Scenario } from "../calls/scenarios";
 
 export const PROJECT_SCHEMA_VERSION = 1;
 

@@ -6,7 +6,7 @@ import { analyzeContract, detectContractName, verifierViolations } from "@qinit/
 import { buildGateDiagnostics } from "@qinit/build/compile/build-rules";
 import { initK12, k12Sync } from "@qinit/core";
 import type { CompileDiagnostic as IdeDiagnostic } from "./result";
-import { toContractIdlView } from "../idl-view";
+import { toContractIdlView } from "../calls/idl-view";
 import type { WorkerCompileRequest, WorkerCompileResponse } from "./protocol";
 
 // matches the backend's browser default (LITE_WASM_ARENA_SZ) — the 1 GiB compiler default would

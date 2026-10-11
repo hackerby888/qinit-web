@@ -1,9 +1,9 @@
 // Project persistence behind one async interface. The IDE only ever talks to `ProjectStore`, so the local
 // backend here can later be swapped for a cloud one (REST over the existing Mongo backend, `/api/projects`)
 // with zero changes at the call sites — the methods are already async and modelled document-per-project.
-import type { WorkspaceFile } from "../workspace";
-import { EXAMPLES } from "../examples";
-import type { Scenario } from "../scenarios";
+import type { WorkspaceFile } from "../workspace/workspace";
+import { EXAMPLES } from "../workspace/examples";
+import type { Scenario } from "../calls/scenarios";
 import { PROJECT_SCHEMA_VERSION, metaOf, type Project, type ProjectMeta } from "./types";
 import { getToken } from "../cloud/auth";
 import { CloudProjectStore } from "../cloud/cloud-store";

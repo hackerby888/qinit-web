@@ -2,9 +2,9 @@
 // project document (minus volatile ids/timestamps), so it's also the payload a future cloud API ingests.
 import { getStore } from "./store";
 import { PROJECT_SCHEMA_VERSION, type Project } from "./types";
-import type { WorkspaceFile } from "../workspace";
-import type { Scenario } from "../scenarios";
-import { freeFilePath, normalizePath, occupiedNames } from "../filetree";
+import type { WorkspaceFile } from "../workspace/workspace";
+import type { Scenario } from "../calls/scenarios";
+import { freeFilePath, normalizePath, occupiedNames } from "../workspace/filetree";
 
 interface ProjectExport {
   format: "qinit-project";

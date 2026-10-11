@@ -13,7 +13,7 @@ import "./index.css";
 
 // The IDE pulls in Monaco — lazy-load it so the landing/docs bundle stays light.
 const Ide = React.lazy(loadIdeModule);
-const Projects = React.lazy(() => import("./ide/Projects"));
+const Projects = React.lazy(() => import("./ide/projects/ProjectsPage"));
 const SharedEntry = React.lazy(() => import("./ide/cloud/SharedEntry"));
 const Admin = React.lazy(() => import("./admin/AdminPage"));
 

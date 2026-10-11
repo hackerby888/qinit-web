@@ -1,7 +1,7 @@
 // Workspace-aware IntelliSense for CALL/INVOKE_OTHER_CONTRACT. The browser editor has no clangd, so
 // public callee entries and their IO types are indexed directly from the live project sources.
 import type * as Monaco from "monaco-editor";
-import { baseName } from "../workspace";
+import { baseName } from "../workspace/workspace";
 import { definitionOffset } from "./definition";
 import { isGtestModel } from "./gtest";
 import { collectStructs, maskComments, type Field, type TypeScope } from "./members";

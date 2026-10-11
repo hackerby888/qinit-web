@@ -1,6 +1,6 @@
 // Message contract between the IDE and the in-browser compile worker. Kept in one module so both
 // sides (worker.ts, local.ts) and tests share the exact shapes.
-import type { ContractIdlView as ContractIdl } from "../idl-view";
+import type { ContractIdlView as ContractIdl } from "../calls/idl-view";
 import type { CompilerInfo } from "@qinit/compiler/browser";
 import type { CompileDiagnostic } from "./result";
 

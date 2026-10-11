@@ -1,8 +1,8 @@
 // Cloud project storage — the same ProjectStore interface over the backend's /api/projects (per-account,
 // Bearer-authed). The server owns persistence; the client owns the document shape. The "current project id"
 // stays a client-side UI pref (which project to reopen), so no extra endpoint is needed.
-import type { WorkspaceFile } from "../workspace";
-import { EXAMPLES } from "../examples";
+import type { WorkspaceFile } from "../workspace/workspace";
+import { EXAMPLES } from "../workspace/examples";
 import { PROJECT_SCHEMA_VERSION, type Project, type ProjectMeta } from "../projects/types";
 import type { ProjectStore } from "../projects/store";
 import { authHeaders, handleUnauthorized } from "./auth";

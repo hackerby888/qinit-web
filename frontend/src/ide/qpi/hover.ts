@@ -5,7 +5,7 @@
 //   4. any struct field by name (fallback) -> "Struct.field : type"
 import type * as Monaco from "monaco-editor";
 import { isGtestModel } from "./gtest";
-import { extractContractIdlView as extractIdl } from "../idl-view";
+import { extractContractIdlView as extractIdl } from "../calls/idl-view";
 import { QPI_API, CONTAINERS, collectStructs, containerKind, walkPath, enclosingEntryBase, type Method, type Field } from "./members";
 import { QPI_TYPES, QPI_MACROS } from "./vocab";
 
