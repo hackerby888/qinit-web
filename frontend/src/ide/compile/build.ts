@@ -5,7 +5,7 @@ import type { ContractIdl, CompileDiagnostic } from "@qinit/compiler/browser";
 import { analyzeContract, detectContractName, verifierViolations } from "@qinit/compiler/analyzer";
 import { buildGateDiagnostics } from "@qinit/build/compile/build-rules";
 import { initK12, k12Sync } from "@qinit/core";
-import type { CompileDiagnostic as IdeDiagnostic } from "../api";
+import type { CompileDiagnostic as IdeDiagnostic } from "./result";
 import { toContractIdlView } from "../idl-view";
 import type { WorkerCompileRequest, WorkerCompileResponse } from "./protocol";
 

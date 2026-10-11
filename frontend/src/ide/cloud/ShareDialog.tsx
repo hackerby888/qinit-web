@@ -1,10 +1,10 @@
 // The Share dialog — create / copy / revoke view + edit links, set an expiry, and start a live session.
-// Backed by shareApi (the backend share endpoints). The engine note clarifies that only file edits are
+// Backed by share-api (the backend share endpoints). The engine note clarifies that only file edits are
 // shared; each collaborator keeps their own engine sandbox.
 import { useEffect, useState, type CSSProperties } from "react";
-import { color, font } from "../ui/tokens";
-import { Card, NeoBtn } from "../ui/modals";
-import { createShareLink, listShareLinks, revokeShareLink, shareUrlFor, type ShareLink, type ShareMode } from "./shareApi";
+import { color, font } from "../../ui/tokens";
+import { Card, NeoBtn } from "../../ui/modals";
+import { createShareLink, listShareLinks, revokeShareLink, shareUrlFor, type ShareLink, type ShareMode } from "./share-api";
 
 const TTL_OPTIONS: { label: string; ms?: number }[] = [
   { label: "No expiry" },

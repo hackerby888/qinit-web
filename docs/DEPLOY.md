@@ -94,7 +94,7 @@ to override the header snapshot path.
 
 ## Cloudflare (static site only)
 
-With `BACKEND_ENABLED = false` (`frontend/src/ide/backend.ts`) the site is static and Cloudflare builds and
+With `BACKEND_ENABLED = false` (`frontend/src/ide/cloud/backend.ts`) the site is static and Cloudflare builds and
 serves it on every push to `main`. The build needs the sibling `Qinit/` monorepo, which Cloudflare does not
 check out, so `scripts/pages-build.sh` fetches it into `.qinit/` (gitignored) and builds from there.
 `wrangler.jsonc` points the Worker at `frontend/dist` with SPA fallback (client-side routes get `index.html`).

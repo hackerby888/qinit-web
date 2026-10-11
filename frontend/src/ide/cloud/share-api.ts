@@ -1,5 +1,5 @@
 // Share-link API: owner-authed create/list/revoke, plus a public resolve for opening a link. Mirrors the
-// cloudStore fetch style (authHeaders + 401 → handleUnauthorized).
+// cloud-store fetch style (authHeaders + 401 → handleUnauthorized).
 import { authHeaders, handleUnauthorized } from "./auth";
 
 export type ShareMode = "view" | "edit";

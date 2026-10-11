@@ -1,41 +1,8 @@
-// Backend API client for the IDE. Compilation happens in the browser (./compile/local.ts — the
-// @qinit/compiler worker); the backend only serves the system-contract catalog + sources, which the
-// browser then compiles and runs in-page via ./engine.
+// the system-contract catalog and sources, served by the backend. the browser compiles them itself (../compile)
+// and deploys the wasm onto its in-page node (../engine).
 import { BACKEND_ENABLED } from "./backend";
-import type { ContractIdlView as ContractIdl } from "./idl-view";
 
-const BACKEND_OFF = "system contracts come from the backend, which is switched off (BACKEND_ENABLED in ide/backend.ts)";
-
-export interface CompileDiagnostic {
-  severity: "error" | "warning";
-  line: number;
-  column: number;
-  message: string;
-  // the workspace file the problem is in, when it is not the one being built (a callee).
-  file?: string;
-  // the rule that refused it, when a build rule rather than the compiler did.
-  code?: string;
-}
-
-export interface CompileResult {
-  ok: boolean;
-  wasm?: string;
-  size?: number;
-  hash?: string;
-  idl?: ContractIdl;
-  diagnostics: CompileDiagnostic[];
-  idlError?: string;
-  error?: string;
-}
-
-// An inter-contract callee passed to the compiler: a sibling contract this one calls, with the slot it's
-// deployed at (the callee must sit at a lower index than the caller — the qubic lower-index rule).
-export interface CompileCallee {
-  name: string;
-  source: string;
-  slot: number;
-  file?: string;
-}
+const BACKEND_OFF = "system contracts come from the backend, which is switched off (BACKEND_ENABLED in ide/cloud/backend.ts)";
 
 // A built-in system contract the IDE can deploy onto its in-browser virtual node (QX, QEARN, …).
 // `stateType` is the contract's state-struct name, which can differ from the on-chain ticker
@@ -110,11 +77,3 @@ export async function fetchSystemSources(): Promise<SystemSource[] | { error: st
   return body.contracts;
 }
 
-export function base64ToBytes(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) {
-    out[i] = bin.charCodeAt(i);
-  }
-  return out;
-}

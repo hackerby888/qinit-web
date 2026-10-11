@@ -1,7 +1,7 @@
 // A loud, persistent bar across the top while the browser is offline — so a lost connection isn't a silent
 // "nothing saves and I don't know why". Driven by the window online/offline events. Rendered on both pages.
 import { useEffect, useState } from "react";
-import { color, font } from "../ui/tokens";
+import { color, font } from "../../ui/tokens";
 import { BACKEND_ENABLED } from "./backend";
 
 export function OfflineBanner() {

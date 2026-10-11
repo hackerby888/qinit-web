@@ -2,7 +2,7 @@
 // CompileResult shape the IDE consumes. This is the only compile path — there is no backend
 // compiler; a crashed or wedged worker surfaces as an error and the next compile gets a fresh one.
 import type { CompilerInfo } from "@qinit/compiler/browser";
-import type { CompileCallee, CompileResult } from "../api";
+import type { CompileCallee, CompileResult } from "./result";
 import type { WorkerCompileResponse, WorkerHelloResponse, WorkerResponse } from "./protocol";
 import { reportCrash } from "../../crash/crash";
 

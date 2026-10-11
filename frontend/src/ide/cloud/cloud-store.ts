@@ -3,9 +3,9 @@
 // stays a client-side UI pref (which project to reopen), so no extra endpoint is needed.
 import type { WorkspaceFile } from "../workspace";
 import { EXAMPLES } from "../examples";
-import { PROJECT_SCHEMA_VERSION, type Project, type ProjectMeta } from "./types";
-import type { ProjectStore } from "./store";
-import { authHeaders, handleUnauthorized } from "../auth";
+import { PROJECT_SCHEMA_VERSION, type Project, type ProjectMeta } from "../projects/types";
+import type { ProjectStore } from "../projects/store";
+import { authHeaders, handleUnauthorized } from "./auth";
 
 const CURRENT_KEY = "ide.project.current";
 const uid = (): string => Math.random().toString(36).slice(2, 10);

@@ -8,8 +8,8 @@ import type { OnMount } from "@monaco-editor/react";
 import * as Y from "yjs";
 import { MonacoBinding } from "y-monaco";
 import { createCollabSession, type CollabSession, type CollabStatus } from "./collab";
-import { langForPath } from "./editor";
-import { notify } from "../ui/notify";
+import { langForPath } from "../editor";
+import { notify } from "../../ui/notify";
 
 type MonacoNS = Parameters<OnMount>[1];
 type EditorRef = Parameters<OnMount>[0];

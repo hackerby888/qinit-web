@@ -5,8 +5,8 @@ import type { WorkspaceFile } from "../workspace";
 import { EXAMPLES } from "../examples";
 import type { Scenario } from "../scenarios";
 import { PROJECT_SCHEMA_VERSION, metaOf, type Project, type ProjectMeta } from "./types";
-import { getToken } from "../auth";
-import { CloudProjectStore } from "./cloudStore";
+import { getToken } from "../cloud/auth";
+import { CloudProjectStore } from "../cloud/cloud-store";
 
 const INDEX_KEY = "ide.projects.index";
 const CURRENT_KEY = "ide.project.current";

@@ -17,7 +17,7 @@ Open http://localhost:5173.
 
 The IDE compiles and runs contracts in the page and keeps projects in the browser. Everything the backend adds
 (sign-in and cloud projects, share links and live collab, GitHub import/export, the admin page, the
-system-contract catalog) is switched off by `BACKEND_ENABLED` in `frontend/src/ide/backend.ts`. Set it to
+system-contract catalog) is switched off by `BACKEND_ENABLED` in `frontend/src/ide/cloud/backend.ts`. Set it to
 `true` and run the backend to bring those back:
 
 ```bash

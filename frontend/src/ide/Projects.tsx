@@ -10,14 +10,14 @@ import { Card, ConfirmModal, NeoBtn } from "../ui/modals";
 import { SplashScreen, type SplashStep } from "../ui/Splash";
 import { isIdeModuleLoaded, loadIdeModule } from "./load";
 import { getStore, getLocalStore } from "./projects/store";
-import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./auth";
-import { BACKEND_ENABLED } from "./backend";
+import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./cloud/auth";
+import { BACKEND_ENABLED } from "./cloud/backend";
 import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace, sharedLinkPresent } from "./workspace";
 import { STARTER } from "./examples";
 import { Toasts } from "../ui/Toasts";
-import { OfflineBanner } from "./OfflineBanner";
+import { OfflineBanner } from "./cloud/OfflineBanner";
 import { notify, errorMessage } from "../ui/notify";
 import "../ui/pixel.css";
 

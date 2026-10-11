@@ -18,10 +18,10 @@ storage.setItem("qinit.token", "stale.jwt.token");
   throw new Error("the IDE reached for the backend");
 };
 
-const { BACKEND_ENABLED } = await import("../../src/ide/backend");
-const { getToken, isAuthed, authHeaders, fetchMe, captureAuthRedirect } = await import("../../src/ide/auth");
-const { fetchSystemCatalog, fetchSystemSource, fetchSystemSources } = await import("../../src/ide/api");
-const { getStore, getLocalStore } = await import("../../src/ide/projects/store");
+const { BACKEND_ENABLED } = await import("../../../src/ide/cloud/backend");
+const { getToken, isAuthed, authHeaders, fetchMe, captureAuthRedirect } = await import("../../../src/ide/cloud/auth");
+const { fetchSystemCatalog, fetchSystemSource, fetchSystemSources } = await import("../../../src/ide/cloud/system-api");
+const { getStore, getLocalStore } = await import("../../../src/ide/projects/store");
 
 test.skipIf(BACKEND_ENABLED)("a stored token is ignored, and kept for when the backend returns", async () => {
   expect(getToken()).toBeNull();

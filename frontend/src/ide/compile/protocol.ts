@@ -2,7 +2,7 @@
 // sides (worker.ts, local.ts) and tests share the exact shapes.
 import type { ContractIdlView as ContractIdl } from "../idl-view";
 import type { CompilerInfo } from "@qinit/compiler/browser";
-import type { CompileDiagnostic } from "../api";
+import type { CompileDiagnostic } from "./result";
 
 export interface WorkerHelloRequest {
   id: number;

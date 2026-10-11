@@ -2,8 +2,8 @@
 // the workspace to a Gist using a personal access token the user pastes (sent once, never stored). Both call
 // the owner-authed backend proxy, so a signed-out user is shown a sign-in prompt instead.
 import { useState, type CSSProperties } from "react";
-import { color, font } from "../ui/tokens";
-import { importRepo, exportGist, type RepoFile } from "./githubApi";
+import { color, font } from "../../ui/tokens";
+import { importRepo, exportGist, type RepoFile } from "./github-api";
 
 const overlay: CSSProperties = {
   position: "fixed",

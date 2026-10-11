@@ -5,7 +5,7 @@ import LandingPage from "./landing/LandingPage";
 import { Docs } from "./docs/DocsPage";
 import { SplashScreen } from "./ui/Splash";
 import { loadIdeModule } from "./ide/load";
-import { BACKEND_ENABLED } from "./ide/backend";
+import { BACKEND_ENABLED } from "./ide/cloud/backend";
 import { installCrashHandlers } from "./crash/crash";
 import { CrashBoundary, CrashOverlay } from "./crash/CrashDialog";
 import { CrashDevTrigger, installCrashDev } from "./crash/CrashDevTrigger"; // DEV-only smoke triggers
@@ -14,7 +14,7 @@ import "./index.css";
 // The IDE pulls in Monaco — lazy-load it so the landing/docs bundle stays light.
 const Ide = React.lazy(loadIdeModule);
 const Projects = React.lazy(() => import("./ide/Projects"));
-const SharedEntry = React.lazy(() => import("./ide/SharedEntry"));
+const SharedEntry = React.lazy(() => import("./ide/cloud/SharedEntry"));
 const Admin = React.lazy(() => import("./admin/AdminPage"));
 
 const routeFallback = (label: string, task: string) => (
