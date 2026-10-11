@@ -3,9 +3,9 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from "react-route
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Components } from "react-markdown";
-import { CodeBlock } from "./components/CodeBlock";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { pageHeadings, slugifyHeading } from "./docs-headings";
+import { CodeBlock } from "./CodeBlock";
+import { ThemeToggle } from "./ThemeToggle";
+import { pageHeadings, slugifyHeading } from "./headings";
 
 const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
 const DOC_ALIASES = new Map([

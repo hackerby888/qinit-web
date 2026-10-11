@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { pageHeadings } from "../src/docs-headings";
+import { pageHeadings } from "../../src/docs/headings";
 
 const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
 const ALIASES: Record<string, string> = {
@@ -9,7 +9,7 @@ const ALIASES: Record<string, string> = {
 };
 
 test("developer docs are internally consistent", () => {
-  const content = new URL("../src/content/", import.meta.url);
+  const content = new URL("../../src/docs/content/", import.meta.url);
   const errors: string[] = [];
   const docs = readdirSync(content)
     .filter((file) => file.endsWith(".md"))

@@ -1,11 +1,11 @@
 import { useEffect } from "react";
-import "./ui/pixel.css";
-import { KEYFRAMES } from "./ui/primitives";
-import { CodeShowcase, Cta, Features, Footer, Hero, Nav, NetworkStrip, Path, Pillars } from "./landing/sections";
-import { IdeShowcase } from "./landing/IdeShowcase";
-import { applyTheme } from "./ui/tokens";
+import "../ui/pixel.css";
+import { KEYFRAMES } from "../ui/primitives";
+import { CodeShowcase, Cta, Features, Footer, Hero, Nav, NetworkStrip, Path, Pillars } from "./sections";
+import { IdeShowcase } from "./IdeShowcase";
+import { applyTheme } from "../ui/tokens";
 
-export default function App() {
+export default function LandingPage() {
   // Landing page always renders neo-brutalist. When navigating here from the IDE (flat), reset the shared
   // palette so the landing chrome reads the right colors. The IDE's useIdeTheme applies its own palette on
   // mount, so the landing and IDE never share a palette.

@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { applyTheme, color } from "../src/ui/tokens";
+import { applyTheme, color } from "../../src/ui/tokens";
 
 const ACCENT_KEYS = ["accent", "accentMid", "accentDeep", "accentShadow"] as const;
 
@@ -29,7 +29,7 @@ function* walk(dir: string): Generator<string> {
 }
 
 test("no retired mint literal is left in the frontend", () => {
-  const root = new URL("..", import.meta.url).pathname;
+  const root = new URL("../..", import.meta.url).pathname;
   const hits: string[] = [];
   for (const path of [...walk(join(root, "src")), ...walk(join(root, "public")), join(root, "index.html"), join(root, "tailwind.config.js")]) {
     readFileSync(path, "utf8").split("\n").forEach((line, index) => {

@@ -1,8 +1,8 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
-import App from "./App";
-import { Docs } from "./Docs";
+import LandingPage from "./landing/LandingPage";
+import { Docs } from "./docs/DocsPage";
 import { SplashScreen } from "./ui/Splash";
 import { loadIdeModule } from "./ide/load";
 import { BACKEND_ENABLED } from "./ide/backend";
@@ -15,7 +15,7 @@ import "./index.css";
 const Ide = React.lazy(loadIdeModule);
 const Projects = React.lazy(() => import("./ide/Projects"));
 const SharedEntry = React.lazy(() => import("./ide/SharedEntry"));
-const Admin = React.lazy(() => import("./ide/Admin"));
+const Admin = React.lazy(() => import("./admin/AdminPage"));
 
 const routeFallback = (label: string, task: string) => (
   <SplashScreen label={label} steps={[{ label: task, status: "loading" }]} />
@@ -36,7 +36,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       {import.meta.env.DEV && <CrashDevTrigger />}
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<App />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/docs" element={<Docs />} />
           <Route path="/docs/:slug" element={<Docs />} />
           <Route path="/ide" element={<Suspense fallback={routeFallback("Opening projects", "project manager")}><Projects /></Suspense>} />

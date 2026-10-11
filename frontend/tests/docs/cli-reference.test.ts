@@ -2,7 +2,7 @@
 // truth. This fails when a command or flag is missing from the page, or the page names one the CLI no longer has.
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { COMMANDS, META, type CommandMeta } from "../../../Qinit/packages/cli/src/meta";
+import { COMMANDS, META, type CommandMeta } from "../../../../Qinit/packages/cli/src/meta";
 
 const UNIVERSAL = ["help", "json", "plain"];
 
@@ -34,7 +34,7 @@ const flagNames = (meta: CommandMeta): string[] => [
 const mentions = (text: string, flag: string): boolean => new RegExp(`--${flag}(?![\\w-])`).test(text);
 
 test("the CLI reference covers every command and flag, and names none that are gone", () => {
-  const all = sections(readFileSync(new URL("../src/content/cli-reference.md", import.meta.url), "utf8"));
+  const all = sections(readFileSync(new URL("../../src/docs/content/cli-reference.md", import.meta.url), "utf8"));
   const errors: string[] = [];
 
   for (const command of COMMANDS) {

@@ -17,7 +17,7 @@ import {
   type HistoryResponse,
   type Incident,
   type RangeKey,
-} from "./adminApi";
+} from "./admin-api";
 
 const CRIT = "#f85149";
 const POLL_MS = 2000;
