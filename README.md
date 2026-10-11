@@ -2,7 +2,7 @@
 
 Landing page for [qinit](https://github.com/hackerby888/qinit) — how to install and use it.
 
-- **frontend/** — React + @tanstack/react-query + TailwindCSS (Vite, TypeScript)
+- **frontend/** — React + TailwindCSS (Vite, TypeScript): landing, docs and the browser IDE
 - **backend/** — Bun + Express + MongoDB (TypeScript); serves live release info + a visit counter
 
 ## Run (dev)

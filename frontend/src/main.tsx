@@ -1,7 +1,6 @@
 import React, { Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import { Docs } from "./Docs";
 import { SplashScreen } from "./ide/Splash";
@@ -22,8 +21,6 @@ const routeFallback = (label: string, task: string) => (
   <SplashScreen label={label} steps={[{ label: task, status: "loading" }]} />
 );
 
-const qc = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: 1 } } });
-
 // Armed before React renders, so a throw in the very first render is already covered.
 installCrashHandlers();
 if (import.meta.env.DEV) {
@@ -37,20 +34,18 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <CrashOverlay />
     <CrashBoundary>
       {import.meta.env.DEV && <CrashDevTrigger />}
-      <QueryClientProvider client={qc}>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<App />} />
-            <Route path="/docs" element={<Docs />} />
-            <Route path="/docs/:slug" element={<Docs />} />
-            <Route path="/ide" element={<Suspense fallback={routeFallback("Opening projects", "project manager")}><Projects /></Suspense>} />
-            <Route path="/ide/p/:id" element={<Suspense fallback={routeFallback("Opening workspace", "editor bundle")}><Ide /></Suspense>} />
-            {/* shared links and the admin console exist only with the backend */}
-            <Route path="/ide/s/:linkId" element={BACKEND_ENABLED ? <Suspense fallback={routeFallback("Opening shared project", "collaboration client")}><SharedEntry /></Suspense> : <Navigate to="/ide" replace />} />
-            <Route path="/admin" element={BACKEND_ENABLED ? <Suspense fallback={routeFallback("Opening admin", "admin console")}><Admin /></Suspense> : <Navigate to="/ide" replace />} />
-          </Routes>
-        </BrowserRouter>
-      </QueryClientProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/docs" element={<Docs />} />
+          <Route path="/docs/:slug" element={<Docs />} />
+          <Route path="/ide" element={<Suspense fallback={routeFallback("Opening projects", "project manager")}><Projects /></Suspense>} />
+          <Route path="/ide/p/:id" element={<Suspense fallback={routeFallback("Opening workspace", "editor bundle")}><Ide /></Suspense>} />
+          {/* shared links and the admin console exist only with the backend */}
+          <Route path="/ide/s/:linkId" element={BACKEND_ENABLED ? <Suspense fallback={routeFallback("Opening shared project", "collaboration client")}><SharedEntry /></Suspense> : <Navigate to="/ide" replace />} />
+          <Route path="/admin" element={BACKEND_ENABLED ? <Suspense fallback={routeFallback("Opening admin", "admin console")}><Admin /></Suspense> : <Navigate to="/ide" replace />} />
+        </Routes>
+      </BrowserRouter>
     </CrashBoundary>
   </React.StrictMode>,
 );
