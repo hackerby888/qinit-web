@@ -1,12 +1,12 @@
-// The qinit browser IDE — a Remix-style editor for Qubic dynamic contracts. Write qpi.h C++, get live
-// QPI diagnostics + IDL hover (./qpi), compile on the backend (./api), and deploy + test the wasm in
-// this page via @qinit/engine (./engine). The engine/crypto modules are dynamically imported so a load
-// failure degrades to "compile only" rather than breaking the editor.
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from "react";
+// The qinit browser IDE — a Remix-style editor for Qubic contracts. Write qpi.h C++, get live QPI
+// diagnostics + IDL hover (./qpi), compile in a worker (./compile), and deploy + test the wasm on a chain
+// inside this page (./engine). This file is the shell: state, the main flows and the layout. The panels it
+// composes live in the subsystem folders next to it.
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import type { OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
-import type { EntryView as IdlEntry, ContractIdlView as ContractIdl } from "./calls/idl-view";
+import type { EntryView as IdlEntry } from "./calls/idl-view";
 import { bytesToIdentity } from "@qinit/core";
 import { color, font, themeFlags } from "../ui/tokens";
 import { PixelQMark, KEYFRAMES } from "../ui/primitives";
@@ -26,7 +26,6 @@ import { registerDiagnostic } from "../crash/crash";
 import { useCollab, type CollabCtx, type Peer } from "./cloud/use-collab";
 import { colorFor, type CollabStatus } from "./cloud/collab";
 import { ShareDialog } from "./cloud/ShareDialog";
-import { Copy, Check, FastForward, LoaderCircle } from "lucide-react";
 import { getToken, fetchMe, login, type Me } from "./cloud/auth";
 import { BACKEND_ENABLED } from "./cloud/backend";
 import { GitHubDialog } from "./cloud/GitHubDialog";
@@ -37,7 +36,7 @@ import { fetchSystemCatalog, fetchSystemSource, fetchSystemSources, type SystemC
 import { base64ToBytes, type CompileResult } from "./compile/result";
 import { compileInBrowser, getCompilerInfo } from "./compile/local";
 import type { CompilerInfo } from "@qinit/compiler/browser";
-import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineFaultInfo, EngineLogEvent, EngineMemoryUsage, EngineTickInfo } from "./engine/proxy";
+import type { IdeEngine, Account, TxDetail, DeployImage, ReplayStep, DebugStep, AssetView, EngineFaultInfo, EngineLogEvent, EngineTickInfo } from "./engine/proxy";
 import { Debugger } from "./engine/Debugger";
 import { SystemSourceView } from "./cloud/SystemSourceView";
 import { TxExplorer, type TxRow } from "./engine/TxExplorer";
@@ -57,7 +56,6 @@ import { ideStartupPending, ideStartupSteps, type StartupTaskStatus } from "./st
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./workspace/SearchPanel";
 import { ScenarioPanel, compare, uid, type Scenario, type AssertStep, type AssertResult, type CallStep } from "./calls/scenarios";
-import { InputFields } from "./calls/InputFields";
 import { buildInput, inputToDraft, parseQu, type InputDraft } from "./calls/input-values";
 import { nameOutput, outputText } from "./calls/output-values";
 import { failureLine, faultLine } from "./engine/fault";
@@ -65,14 +63,19 @@ import { getStore, projectStorageKey, StaleProjectError } from "./projects/store
 import type { Project } from "./projects/types";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
 import "../ui/pixel.css";
+import { frame, hair, selectStyle, shortId } from "./chrome";
+import { EditorTabs } from "./EditorTabs";
+import { CallRow } from "./calls/CallRow";
+import { CompilerStrip } from "./compile/CompilerStrip";
+import { SystemPicker } from "./cloud/SystemPicker";
+import { AccountsBar } from "./engine/AccountsBar";
+import { AssetsPanel } from "./engine/AssetsPanel";
+import { DeployedList } from "./engine/DeployedList";
+import { EngineControls } from "./engine/EngineControls";
+import { EngineStrip, memorySnapshot, type IdeMemoryUsage } from "./engine/EngineStrip";
+import { hasState, StatePanel } from "./engine/StatePanel";
+import { assignSlot, contractSlotOf, hexToBytes, resolveCallees, scanCallees, slotAtOrAbove, SLOT_BASE, type DeployedContract } from "./engine/slots";
 
-// Structural borders, read live at render so a theme swap (neo 3px ↔ flat 1px) takes effect without a
-// reload. Used across Ide() and the sibling EditorTabs(), so they stay module-level helpers rather than
-// per-component consts.
-const frame = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.ink}`;
-const hair = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
-
-const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
 const RAIL = 22;      // collapsed-panel rail width (px) — a thin clickable spine at the screen edge
 const EDITOR_MIN_WIDTH = 320; // below this the body scrolls sideways; a narrow window once squeezed the editor to nothing
 const MOD = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "⌘" : "Ctrl"; // shortcut hint
@@ -80,8 +83,6 @@ const MOD = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) 
 // the part of a project two tabs can disagree about. The active file and open tabs are each tab's own view.
 const contentOf = (p: { name: string; files: WorkspaceFile[]; scenarios?: unknown[]; systemContracts?: string[] }): string =>
   JSON.stringify([p.name, p.files, p.scenarios ?? [], p.systemContracts ?? []]);
-
-type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array; calls?: string[] };
 
 // A collapsed panel's rail — a thin vertical spine at the screen edge with the panel's name + an expand
 // chevron. Click anywhere on it (or the keyboard shortcut) to restore the panel to its remembered width.
@@ -145,90 +146,6 @@ function CollabBar({ status, peers, mode, selfName, selfColor }: { status: Colla
   );
 }
 
-// a box with a heavier left edge, one explicit border per side: mixing `border` with `borderLeftWidth` made React warn on every rerender.
-const edged = (edge: string, frameColor: string): CSSProperties => ({
-  borderTop: `1px solid ${frameColor}`,
-  borderRight: `1px solid ${frameColor}`,
-  borderBottom: `1px solid ${frameColor}`,
-  borderLeft: `3px solid ${edge}`,
-});
-
-const shortId = (id: string): string => (id.length > 12 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
-const fmtQus = (b?: string): string => (b === undefined ? "…" : BigInt(b).toLocaleString("en-US"));
-
-// A 32-byte id as hex → bytes. Asset issuer/owner ids cross from the engine as hex; the panel needs raw bytes
-// to tell a contract id apart from a wallet and to derive the Qubic identity.
-const hexToBytes = (hex: string): Uint8Array => {
-  const n = (hex.length / 2) | 0;
-  const out = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-  }
-  return out;
-};
-
-// A contract id is id(slot, 0, 0, 0): only the leading 8-byte slot index is non-zero. Returns the slot, or
-// null for a real wallet identity.
-const contractSlotOf = (hex: string): number | null => {
-  const b = hexToBytes(hex);
-  for (let i = 8; i < 32; i++) {
-    if (b[i] !== 0) {
-      return null;
-    }
-  }
-  return b.length >= 32 ? Number(new DataView(b.buffer).getBigUint64(0, true)) : null;
-};
-
-const assignSlot = (reg: Record<string, DeployedContract>, name: string): number => {
-  if (reg[name]) {
-    return reg[name].slot;
-  }
-  const used = new Set(Object.values(reg).map((d) => d.slot));
-  let s = SLOT_BASE;
-  while (used.has(s)) {
-    s++;
-  }
-  return s;
-};
-
-// First free slot at or above `floor`, reusing the contract's current slot when it already clears the floor.
-// A caller must land above all its callees (the qubic lower-index rule), so floor = maxCalleeSlot + 1.
-const slotAtOrAbove = (reg: Record<string, DeployedContract>, name: string, floor: number): number => {
-  const cur = reg[name]?.slot;
-  if (cur !== undefined && cur >= floor) {
-    return cur;
-  }
-  const used = new Set(Object.values(reg).map((d) => d.slot));
-  let s = Math.max(SLOT_BASE, floor);
-  while (used.has(s)) {
-    s++;
-  }
-  return s;
-};
-
-// Inter-contract callee type names referenced by CALL/INVOKE_OTHER_CONTRACT(<Name>, …) in a source.
-const scanCallees = (src: string): string[] =>
-  [...new Set([...src.matchAll(/(?:CALL|INVOKE)_OTHER_CONTRACT_\w+\s*\(\s*(\w+)/g)].map((m) => m[1]))];
-
-// Resolve a source's callees to the source that defines them, for passing to the compiler. Prefer an open
-// project file; else fall back to the source the in-page node stored when the callee was deployed — so a
-// deployed-but-not-open callee still resolves (the same way `qinit deploy` pulls callees off the node registry).
-// The slot is the deployed index when known, else a provisional ascending one — its value only affects the
-// emitted index constants, so the contract compiles either way (used for live diagnostics before a deploy).
-const resolveCallees = (files: { name: string; source: string }[], reg: Record<string, DeployedContract>, src: string): { name: string; source: string; slot: number; file?: string }[] => {
-  const out: { name: string; source: string; slot: number; file?: string }[] = [];
-  let provisional = SLOT_BASE;
-  for (const name of scanCallees(src)) {
-    const file = contractFile(files, name);
-    const source = file?.source ?? reg[name]?.source;
-    if (!source) {
-      continue; // unresolved — let the compiler report the missing callee type
-    }
-    out.push({ name, source, slot: reg[name]?.slot ?? provisional++, file: file?.name });
-  }
-  return out;
-};
-
 // the recovery a refused layout change names in the IDE, where there is no node to restart.
 const LAYOUT_RECOVERY = "or reset the chain to deploy it on a clean slot";
 
@@ -243,7 +160,6 @@ type Phase = "idle" | "compiling" | "ready" | "error";
 type MonacoNS = Parameters<OnMount>[1];
 type EditorRef = Parameters<OnMount>[0];
 
-
 // One row of the Problems panel — a marker (qpi lexical/context, or clang) on the active model.
 function TrafficLights() {
   return (
@@ -251,106 +167,6 @@ function TrafficLights() {
       <span style={{ width: 11, height: 11, background: color.accent }} />
       <span style={{ width: 11, height: 11, background: color.swatchOff }} />
       <span style={{ width: 11, height: 11, background: color.swatchOff }} />
-    </div>
-  );
-}
-
-// In-process engine clock — the single-authority dev testnet your contracts deploy to. Time is
-// explicit (advances on tick/invoke), so this reflects engine state, not a wall clock.
-interface IdeMemoryUsage {
-  engine: EngineMemoryUsage;
-  pageHeapBytes?: number;
-}
-
-function formatMemory(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KiB`;
-  const mib = bytes / (1024 * 1024);
-  if (mib < 1024) return `${mib < 100 ? mib.toFixed(1) : Math.round(mib)} MiB`;
-  return `${(mib / 1024).toFixed(2)} GiB`;
-}
-
-function memorySnapshot(engine: EngineMemoryUsage): IdeMemoryUsage {
-  const pm = typeof performance === "undefined" ? undefined : (performance as Performance & {
-    memory?: { usedJSHeapSize: number };
-  }).memory;
-  return {
-    engine,
-    pageHeapBytes: pm?.usedJSHeapSize,
-  };
-}
-
-function infoPopoverStyle(width: number): CSSProperties {
-  return {
-    position: "absolute", zIndex: 200, top: "calc(100% + 9px)", right: 0, width,
-    flexDirection: "column", gap: 7, padding: "11px 12px",
-    border: `1px solid ${color.hair2}`, background: color.panelDeep, boxShadow: "0 10px 28px #0009",
-    color: color.textMutedDk, fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.45,
-  };
-}
-
-function EngineStrip({ info, memory }: { info: { tick: number; epoch: number } | null; memory: IdeMemoryUsage | null }) {
-  const live = !!info;
-  const ideBytes = memory ? memory.engine.linearMemoryBytes + (memory.pageHeapBytes ?? 0) : 0;
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk }}>
-      <span style={{ width: 7, height: 7, flex: "none", background: live ? color.accent : color.swatchOff, animation: live ? "nodePulse 2s ease-in-out infinite" : undefined }} />
-      <span style={{ color: color.textMutedDk, letterSpacing: ".14em" }}>IN-PROCESS</span>
-      {info ? (
-        <>
-          <span><span style={{ color: color.textGhostDk }}>tick </span><span style={{ color: color.accent }}>{info.tick.toLocaleString("en-US")}</span></span>
-          <span><span style={{ color: color.textGhostDk }}>epoch </span><span style={{ color: color.textMutedDk }}>{info.epoch}</span></span>
-          {memory && (
-            <span
-              className="pix-info-hover"
-              tabIndex={0}
-              aria-label="IDE page RAM breakdown"
-              style={{ position: "relative", cursor: "default", outline: "none" }}
-            >
-              <span style={{ color: color.textGhostDk, borderBottom: `1px dotted ${color.textGhostDk}` }}>ram </span>
-              <span style={{ color: color.textMutedDk }}>{memory.pageHeapBytes === undefined ? "≥ " : ""}{formatMemory(ideBytes)}</span>
-              <span className="pix-info-popover" role="tooltip" style={infoPopoverStyle(330)}>
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 16, color: color.textLightHi }}>
-                  <span>IDE PAGE RAM {memory.pageHeapBytes === undefined ? "LOWER BOUND" : "ESTIMATE"}</span>
-                  <span style={{ color: color.accent }}>{formatMemory(ideBytes)}</span>
-                </span>
-                <span style={{ height: 1, background: color.hair2 }} />
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>virtual-node Wasm</span><span>{formatMemory(memory.engine.linearMemoryBytes)} exact</span></span>
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>contract state</span><span>{formatMemory(memory.engine.stateBytes)}</span></span>
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>deployed contracts</span><span>{memory.engine.contractCount}</span></span>
-                <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>page JS heap</span><span>{memory.pageHeapBytes === undefined ? "unavailable" : `${formatMemory(memory.pageHeapBytes)} estimate`}</span></span>
-              </span>
-            </span>
-          )}
-        </>
-      ) : (
-        <span style={{ color: color.textGhostDk }}>idle · compile to start</span>
-      )}
-    </div>
-  );
-}
-
-// Identity of the in-browser TS compiler, from the worker's hello handshake: package version plus
-// the core-lite commit its embedded QPI snapshot was generated from ("*" = dirty checkout). The
-// full pin (snapshot hash, generator/protocol versions) lives in the hover tooltip. Not rendered
-// when the worker is unavailable — compiles then run on the backend clang path.
-function CompilerStrip({ info }: { info: CompilerInfo }) {
-  const dirty = info.coreCommit.endsWith("-dirty");
-  const commit = info.coreCommit.replace(/-dirty$/, "").slice(0, 8);
-
-  return (
-    <div className="pix-info-hover" tabIndex={0} aria-label="TS-QPI compiler details" style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, outline: "none" }}>
-      <span style={{ color: color.textMutedDk, letterSpacing: ".14em" }}>TS-QPI</span>
-      <span><span style={{ color: color.textGhostDk }}>v</span><span style={{ color: color.textMutedDk }}>{info.qinitVersion}</span></span>
-      <span style={{ borderBottom: `1px dotted ${color.textGhostDk}` }}><span style={{ color: color.textGhostDk }}>core </span><span style={{ color: color.textMutedDk }}>{commit}{dirty ? "*" : ""}</span></span>
-      <span className="pix-info-popover" role="tooltip" style={infoPopoverStyle(360)}>
-        <span style={{ color: color.textLightHi }}>IN-BROWSER TS-QPI COMPILER</span>
-        <span style={{ height: 1, background: color.hair2 }} />
-        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>qinit version</span><span>{info.qinitVersion}</span></span>
-        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>core commit</span><span>{info.coreCommit}</span></span>
-        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>snapshot</span><span style={{ maxWidth: 225, overflow: "hidden", textOverflow: "ellipsis" }}>{info.snapshotHash}</span></span>
-        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>generator</span><span>v{info.generatorVersion}</span></span>
-        <span style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><span>protocol</span><span>v{info.protocolVersion}</span></span>
-      </span>
     </div>
   );
 }
@@ -462,442 +278,11 @@ function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: Edi
   );
 }
 
-// Built per render (a function, not a const) so a live theme swap recolors the input — the same reason
-// the structural border helpers above are functions. Consumed by sibling components (CallRow, AccountsBar).
-const fieldInput = (): CSSProperties => ({
-  flex: 1,
-  minWidth: 0,
-  background: color.void,
-  border: `1px solid ${color.hair2}`,
-  color: color.textLight,
-  fontFamily: font.mono,
-  fontSize: 11.5,
-  padding: "4px 7px",
-  outline: "none",
-});
-
-// how long a call may run before the row offers to stop it.
-const STOP_OFFER_MS = 2000;
-
-function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun, onStop, onDebug }: {
-  kind: "function" | "procedure";
-  id: string;
-  entry: IdlEntry;
-  busy: boolean;
-  disabled: boolean;
-  output?: string;
-  detail?: TxDetail;
-  onRun: (input: InputDraft, value: string) => void;
-  onStop: () => void;
-  onDebug?: (steps: DebugStep[], title: string) => void;
-}) {
-  const [vals, setVals] = useState<InputDraft>({});
-  const [value, setValue] = useState(""); // empty, so the "0" placeholder shows as a hint
-  const [slow, setSlow] = useState(false);
-  const accent = kind === "function" ? color.accent : color.secondary;
-
-  useEffect(() => {
-    setSlow(false);
-    if (!busy) {
-      return;
-    }
-    const timer = setTimeout(() => setSlow(true), STOP_OFFER_MS);
-    return () => clearTimeout(timer);
-  }, [busy]);
-
-  return (
-    <div style={{ ...edged(accent, color.hair), background: color.panel, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ width: 7, height: 7, background: accent, flex: "none" }} />
-        <span style={{ fontFamily: font.mono, fontSize: 12.5, color: color.textLight }}>{entry.name}</span>
-        <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>#{id} · {kind === "function" ? "read" : "write"}</span>
-        {busy && slow && (
-          <button onClick={onStop} title="Stop this call — the chain is rebuilt from the session's earlier calls" style={{ marginLeft: "auto", border: `1px solid ${color.hair2}`, background: color.void, color: "#f85149", fontFamily: font.mono, fontSize: 11, padding: "3px 8px", cursor: "pointer" }}>■ stop</button>
-        )}
-        <button
-          onClick={() => onRun(vals, value)}
-          disabled={disabled}
-          aria-busy={busy}
-          style={{ marginLeft: busy && slow ? 0 : "auto", minWidth: 64, border: `2px solid ${color.ink}`, background: accent, color: color.void, fontFamily: font.display, fontSize: 12, padding: "3px 10px", cursor: disabled ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: disabled && !busy ? 0.55 : 1 }}
-        >
-          {busy ? <><LoaderCircle className="pix-call-spinner" size={13} strokeWidth={2.5} /><span>{kind === "function" ? "Calling" : "Running"}</span></> : kind === "function" ? "Call" : "Run"}
-        </button>
-      </div>
-
-      <InputFields fields={entry.inFields} draft={vals} onChange={setVals} />
-
-      {kind === "procedure" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <span style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk, minWidth: 64 }}>value</span>
-          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk, minWidth: 44 }}>qus</span>
-          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" style={fieldInput()} />
-        </div>
-      )}
-
-      {output !== undefined && (
-        <div style={{ fontFamily: font.mono, fontSize: 11.5, color: accent, wordBreak: "break-all" }}>→ {output}</div>
-      )}
-
-      {detail && (
-        <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textFaintDk, lineHeight: 1.6, borderTop: `1px solid ${color.hair}`, paddingTop: 5, display: "flex", flexDirection: "column", gap: 1 }}>
-          {onDebug && detail.steps && detail.steps.length > 0 && (
-            <button onClick={() => onDebug(detail.steps, `${entry.name}()`)} title="Step through this transaction" style={{ alignSelf: "flex-start", border: `1px solid ${color.hair2}`, background: color.void, color: color.accent, fontFamily: font.mono, fontSize: 10.5, padding: "2px 8px", cursor: "pointer", marginBottom: 4 }}>🐞 step debug</button>
-          )}
-          {detail.caller && detail.caller !== "(none)" && <div>caller <span style={{ color: color.textMutedDk }}>{shortId(detail.caller)}</span></div>}
-          {detail.in && detail.in !== "(none)" && <div>in <span style={{ color: color.textMutedDk }}>{detail.in}</span></div>}
-          {detail.out && detail.out !== "(none)" && <div>out <span style={{ color: color.textMutedDk }}>{detail.out}</span></div>}
-          {detail.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.text}</div>)}
-          {detail.hostCalls.map((h, i) => <div key={`h${i}`} style={{ color: color.textMutedDk }}>host {h}</div>)}
-          {detail.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
-          {detail.callees.map((callee) => (
-            <div key={callee.seq} style={{ paddingLeft: 10, borderLeft: `1px solid ${color.hair2}`, marginTop: 2 }}>
-              <div style={{ color: color.textMutedDk }}>↳ {callee.contract}.{callee.label}{callee.ok ? "" : " (failed)"}</div>
-              {callee.diff.map((d, i) => <div key={i} style={{ color: color.accent }}>Δ {d.label}: {d.text}</div>)}
-              {callee.logs.map((l, i) => <div key={`l${i}`} style={{ color: color.secondary }}>log {l}</div>)}
-            </div>
-          ))}
-          {detail.prints.map((line, i) => <div key={`p${i}`} style={{ color: color.yellow, whiteSpace: "pre-wrap" }}>print {line}</div>)}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// The qinit `state` inspector inline — a deployed contract's decoded StateData (scalars + container
-// columns), refreshed each tick. Reuses the CLI's readState decoder.
-function StatePanel({ dump }: { dump?: StateDump }) {
-  if (!dump) {
-    return null;
-  }
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-        {dump.fields.map((f) => (
-          <div key={f.name} style={{ display: "flex", gap: 8, fontFamily: font.mono, fontSize: 11.5 }}>
-            <span style={{ color: color.textMutedDk, minWidth: 78 }}>{f.name}</span>
-            <span style={{ color: color.accent, wordBreak: "break-all" }}>{f.value}</span>
-          </div>
-        ))}
-        {dump.containers.map((c) => (
-          <div key={c.name} style={{ fontFamily: font.mono, fontSize: 11 }}>
-            <div style={{ color: color.secondary }}>{c.name} <span style={{ color: color.textGhostDk }}>({c.totalEntries})</span></div>
-            {c.lines.map((line, i) => (
-              <div key={i} style={{ color: color.textMutedDk, paddingLeft: 10, wordBreak: "break-all" }}>{line.label} {line.text}</div>
-            ))}
-            {c.error && <div style={{ color: "#f85149", paddingLeft: 10 }}>{c.error}</div>}
-          </div>
-        ))}
-    </div>
-  );
-}
-
-// True when a state dump has anything worth showing (gates the STATE section).
-function hasState(dump?: StateDump): boolean {
-  return !!dump && (dump.fields.length > 0 || dump.containers.length > 0);
-}
-
-// The asset universe — every issued asset (qpi.issueAsset) and its share holdings. Global, not per-contract:
-// assets live in the spectrum universe, not a contract's state. `mgr` is the contract managing a holding
-// (the ownership-management slot). Refreshes each tick like balances/state.
-function AssetsPanel({ assets, slotName, fmtHolder }: { assets: AssetView[]; slotName: (slot: number) => string; fmtHolder: (hex: string) => string }) {
-  if (assets.length === 0) {
-    return null;
-  }
-  const num = (s: string): string => Number(s).toLocaleString("en-US");
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {assets.map((a) => (
-          <div key={a.issuer + a.name} style={{ fontFamily: font.mono, fontSize: 11, display: "flex", flexDirection: "column", gap: 2 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
-              <span style={{ color: color.yellow, fontSize: 12 }}>{a.name}</span>
-              <span style={{ color: color.textGhostDk }}>by {fmtHolder(a.issuer)}</span>
-              <span style={{ marginLeft: "auto", color: color.accent }}>{num(a.totalShares)} sh</span>
-            </div>
-            {a.holdings.map((h, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, paddingLeft: 12, color: color.textMutedDk }}>
-                <span style={{ color: color.textGhostDk }}>{fmtHolder(h.owner)}</span>
-                <span style={{ color: color.secondary }}>{num(h.shares)}</span>
-                <span style={{ marginLeft: "auto", color: color.textGhostDk }}>mgr {slotName(h.ownMgmt)}</span>
-              </div>
-            ))}
-          </div>
-        ))}
-    </div>
-  );
-}
-
 function PanelHint() {
   return (
     <div style={{ fontFamily: font.body, fontSize: 13, lineHeight: 1.6, color: color.textMutedDk }}>
       The Qubic contract engine runs in this page. Hit <span style={{ color: color.accent }}>▶ Compile &amp; Run</span> to build your
       contract to Wasm and deploy it on a chain inside this tab.
-    </div>
-  );
-}
-
-const selectStyle = (): CSSProperties => ({
-  flex: 1,
-  minWidth: 0,
-  background: color.void,
-  color: color.textLight,
-  border: `1px solid ${color.hair2}`,
-  fontFamily: font.mono,
-  fontSize: 11.5,
-  padding: "4px 7px",
-  outline: "none",
-});
-
-// Pick the caller for a write + see its balance (Remix's account dropdown). Dev accounts are funded by
-// the engine faucet; the +fund control tops the selected account up with more qus straight from it.
-function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
-  accounts: Account[];
-  caller: string;
-  onSelect: (id: string) => void;
-  balances: Record<string, string>;
-  onFund: (id: string, qus: string) => void;
-}) {
-  const [amount, setAmount] = useState("1000000000");
-  const [copied, setCopied] = useState(false);
-  const copyId = async () => {
-    try {
-      await navigator.clipboard.writeText(caller);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    } catch {}
-  };
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <select value={caller} onChange={(e) => onSelect(e.target.value)} style={{ ...selectStyle(), flex: 1, minWidth: 0 }}>
-            {accounts.map((a, i) => (
-              <option key={a.id} value={a.id}>{`acct ${i} · ${shortId(a.id)}`}</option>
-            ))}
-          </select>
-          <button
-            onClick={() => void copyId()}
-            title={copied ? "Copied!" : "Copy the full 60-char account id"}
-            style={{ flex: "none", display: "flex", alignItems: "center", justifyContent: "center", width: 30, height: 30, border: `1px solid ${color.hair2}`, background: color.panel, color: copied ? color.accent : color.textMutedDk, cursor: "pointer" }}
-          >
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-          </button>
-        </div>
-        <div style={{ fontFamily: font.mono, fontSize: 11, color: color.textMutedDk }}>
-          balance <span style={{ color: color.accent }}>{fmtQus(balances[caller])}</span> qus
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput()} />
-          <NeoBtn onClick={() => onFund(caller, amount)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
-        </div>
-    </div>
-  );
-}
-
-// Deterministic testnet controls (Remix has none — we own the chain in-page). Pause/step time, jump an
-// epoch to fire BEGIN/END_EPOCH hooks, and reset/replay the whole session against a fresh chain.
-function EngineControls({ paused, speed, info, epochLen, pendingEpochLen, onToggle, onStep, onEpoch, onEpochLen, onReset, onReplay, onSpeed }: {
-  paused: boolean;
-  speed: number;
-  info: EngineTickInfo | null;
-  epochLen: number;
-  pendingEpochLen: number;
-  onEpochLen: (typed: string) => void;
-  onToggle: () => void;
-  onStep: (n: number) => void;
-  onEpoch: () => void;
-  onReset: () => void;
-  onReplay: () => void;
-  onSpeed: (ticksPerSec: number) => void;
-}) {
-  const tick = info?.tick ?? 0;
-  // the node's own epoch bounds: the first tick moves with every switch, so `tick % length` drifts.
-  const within = info ? Math.min(epochLen, tick - info.epochFirstTick) : 0;
-  const pct = epochLen > 0 ? (within / epochLen) * 100 : 0;
-  return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>
-          tick <span style={{ color: color.accent }}>{tick}</span> · epoch <span style={{ color: color.textMutedDk }}>{info?.epoch ?? 0}</span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 9.5, color: color.textGhostDk }}>
-          <span style={{ flex: 1, height: 8, background: color.void, border: `1px solid ${color.hair}`, position: "relative", overflow: "hidden" }}>
-            <span style={{ position: "absolute", inset: 0, width: `${pct}%`, background: color.accentDeep }} />
-          </span>
-          <span>{within}/{epochLen}</span>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
-          <span>ticks/epoch</span>
-          <input
-            type="number"
-            min={1}
-            value={pendingEpochLen}
-            onChange={(e) => onEpochLen(e.target.value)}
-            title="Ticks per epoch. A short epoch reaches END_EPOCH without ticking thousands of times."
-            style={{ width: 62, border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}
-          />
-          {pendingEpochLen !== epochLen && <span style={{ color: color.secondary }}>applies on ↺ reset</span>}
-        </div>
-
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
-          <NeoBtn onClick={onToggle} active={paused} title={paused ? "Resume auto-tick" : "Pause auto-tick"}>{paused ? "▶ run" : "⏸ pause"}</NeoBtn>
-          <NeoBtn onClick={() => onStep(1)} title="Advance 1 tick">⏭ +1</NeoBtn>
-          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks"><span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#f5a623" }}><FastForward size={11} fill="#f5a623" /> +10</span></NeoBtn>
-          <NeoBtn onClick={onEpoch} accent={color.secondary} title={`Jump into epoch ${(info?.epoch ?? 0) + 1} — fires END_EPOCH → BEGIN_EPOCH`}>⤓ epoch</NeoBtn>
-          <NeoBtn onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset</NeoBtn>
-          <NeoBtn onClick={onReplay} title="Replay every tx this session from genesis">↻ replay</NeoBtn>
-          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>
-            speed
-            <select value={speed} onChange={(e) => onSpeed(Number(e.target.value))} style={{ border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}>
-              <option value={1}>1×</option>
-              <option value={2}>2×</option>
-              <option value={5}>5×</option>
-              <option value={10}>10×</option>
-            </select>
-          </span>
-        </div>
-      </div>
-  );
-}
-
-// The deployed-contracts list (Remix's "Deployed Contracts") — each compile&deploy registers one; click
-// to drive its call form.
-function DeployedList({ deployed, selected, balances, onSelect }: {
-  deployed: Record<string, DeployedContract>;
-  selected: string | null;
-  balances: Record<string, string>;
-  onSelect: (name: string) => void;
-}) {
-  const [copied, setCopied] = useState<string | null>(null);
-  const copyAddress = async (address: string) => {
-    try {
-      await navigator.clipboard.writeText(address);
-      setCopied(address);
-      setTimeout(() => setCopied(null), 1200);
-    } catch {}
-  };
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {Object.values(deployed).map((d) => {
-        const on = d.name === selected;
-        return (
-          <div
-            key={d.name}
-            onClick={() => onSelect(d.name)}
-            style={{ display: "flex", flexDirection: "column", gap: 3, padding: "6px 9px", cursor: "pointer", ...edged(on ? color.accent : color.hair2, on ? color.accent : color.hair), background: on ? `${color.accent}14` : color.panel, fontFamily: font.mono, fontSize: 11.5 }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
-              <span style={{ color: on ? color.accent : color.textLight }}>{d.name}</span>
-              <span style={{ color: color.textGhostDk, fontSize: 10 }}>slot {d.slot}</span>
-              <span style={{ marginLeft: "auto", color: color.textGhostDk, fontSize: 10 }}>{shortId(d.address)}</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); void copyAddress(d.address); }}
-                title={copied === d.address ? "Copied!" : "Copy the contract's full 60-char address"}
-                style={{ flex: "none", display: "flex", alignItems: "center", border: "none", background: "transparent", color: copied === d.address ? color.accent : color.textGhostDk, cursor: "pointer", padding: 0 }}
-              >
-                {copied === d.address ? <Check size={11} /> : <Copy size={11} />}
-              </button>
-            </div>
-            <div style={{ color: color.textGhostDk, fontSize: 10, paddingLeft: 14 }}>balance <span style={{ color: color.textMutedDk }}>{fmtQus(balances[d.address])}</span> qus</div>
-            {d.calls && d.calls.length > 0 && (
-              <div style={{ color: color.secondary, fontSize: 10, paddingLeft: 14 }}>→ calls {d.calls.join(", ")}</div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Built-in system contracts (QX, QEARN, …) the user can host on the in-browser virtual node — toggle chips.
-// On = selected/deployed (compiled in the browser, run in-page). Ctrl+click opens the contract's source in a
-// read-only popup instead of toggling. A real node embeds these; this is dev-only.
-function SystemPicker({ catalog, selected, deployed, onToggle, onView }: {
-  catalog: SystemContractEntry[];
-  selected: string[];
-  deployed: Record<string, DeployedContract>;
-  onToggle: (name: string) => void;
-  onView: (name: string) => void;
-}) {
-  if (!catalog.length) {
-    return null;
-  }
-  const sel = new Set(selected);
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-      {catalog.map((c) => {
-        const on = sel.has(c.name) || c.name in deployed;
-        return (
-          <button
-            key={c.name}
-            onClick={(e) => ((e.ctrlKey || e.metaKey) ? onView(c.name) : onToggle(c.name))}
-            title={`${c.name} · slot ${c.index} — ${on ? "deployed (click to remove)" : "click to compile + deploy"} · Ctrl+click to view the source`}
-            style={{ padding: "2px 7px", border: `1px solid ${on ? color.accent : color.hair}`, background: on ? `${color.accent}14` : color.panel, color: on ? color.accent : color.textLight, cursor: "pointer", fontFamily: font.mono, fontSize: 10.5, lineHeight: 1.5 }}
-          >
-            {c.name}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-// Open-file tabs over the editor (VSCode's editor tabs). The active file is always an open tab; a tab
-// shows a dirty dot when its source has edits not yet built, and a close ✕ on hover. The last tab can't
-// be closed — the editor always needs an active file.
-function EditorTabs({ tabs, active, dirty, onSelect, onClose }: {
-  tabs: string[];
-  active: string;
-  dirty: (name: string) => boolean;
-  onSelect: (name: string) => void;
-  onClose: (name: string, e: { stopPropagation(): void }) => void;
-}) {
-  return (
-    <div className="pix-tabs" style={{ display: "flex", height: 36, flex: "none", borderBottom: hair(), background: color.panelDeep, overflowX: "auto", overflowY: "hidden" }}>
-      {tabs.map((name) => {
-        const on = name === active;
-        const d = dirty(name);
-        return (
-          <div
-            key={name}
-            className="pix-tab"
-            onClick={() => onSelect(name)}
-            onMouseDown={(e) => { if (e.button === 1) { onClose(name, e); } }}
-            title={name}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "0 10px",
-              flex: "none",
-              maxWidth: 200,
-              cursor: "pointer",
-              borderRight: `1px solid ${color.hair}`,
-              borderBottom: on ? `2px solid ${color.accent}` : "2px solid transparent",
-              background: on ? color.panel : "transparent",
-              color: on ? color.accent : color.textMutedDk,
-              fontFamily: font.mono,
-              fontSize: 12,
-            }}
-          >
-            <span style={{ width: 7, height: 7, flex: "none", background: on ? color.accent : color.textGhostDk }} />
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileLabel(name)}</span>
-            <span style={{ position: "relative", width: 14, height: 14, flex: "none" }}>
-              {d && (
-                <span className="pix-tab-dot" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: color.yellow, fontSize: 10 }}>●</span>
-              )}
-              <button
-                className="pix-tab-x"
-                onClick={(e) => onClose(name, e)}
-                title="Close"
-                style={{ position: "absolute", inset: 0, border: "none", background: "transparent", color: color.textGhostDk, cursor: "pointer", fontFamily: font.mono, fontSize: 14, lineHeight: 1, padding: 0 }}
-              >
-                ×
-              </button>
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -1076,7 +461,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   contractNameRef.current = contractName;
   activeNameRef.current = ws.active;
   filesRef.current = ws.files;
-
 
   useEffect(() => {
     setQpiWorkspaceFiles(ws.files);
@@ -1400,7 +784,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     },
     [idNames, deployed],
   );
-
 
   const selectFile = (name: string) => {
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
@@ -1855,7 +1238,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-
   const deployImages = (): DeployImage[] =>
     Object.values(deployedRef.current).map((d) => ({ slot: d.slot, wasm: d.wasm, name: d.name }));
 
@@ -2307,7 +1689,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     setBottomTab(tab);
     setProblemsOpen(true);
   };
-
 
   // Keep the open-tabs list self-consistent with the workspace: drop tabs whose file is gone, and make
   // sure the active file is always an open tab. This lets the file handlers stay simple — selecting,
