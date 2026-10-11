@@ -3,8 +3,8 @@
 // engine emits these via onLog; the IDE buffers them and shows them here. Distinct from the TxExplorer/Debugger,
 // which carry the heavy per-tx call detail — this is the lifecycle/activity timeline.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { color, font } from "../landing/tokens";
-import { Card } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card } from "../ui/modals";
 import type { EngineLogEvent } from "./engine";
 
 const line: CSSProperties = { fontFamily: font.mono, fontSize: 11.5 };

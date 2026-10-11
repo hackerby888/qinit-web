@@ -5,7 +5,7 @@ import * as monaco from "monaco-editor";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import TsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { loader } from "@monaco-editor/react";
-import { color } from "../landing/tokens";
+import { color } from "../ui/tokens";
 import { applyQpiGrammar } from "./qpi/grammar";
 import { registerEditorThemes } from "./editorThemes";
 import { formatCode } from "./format";

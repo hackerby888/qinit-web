@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { applyTheme, type ThemeName } from "../landing/tokens";
+import { applyTheme, type ThemeName } from "../ui/tokens";
 import { type EditorThemeId } from "./editorThemes";
 
 // Apply the persisted IDE theme at module-import time — before any React component renders. The Ide chunk is

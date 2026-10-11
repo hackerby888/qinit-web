@@ -2,7 +2,7 @@
 // pressable button. Same visual language as the landing (tokens.NOTCH + hardShadow), tuned for a dense
 // dark dashboard: static cards (no hover lift), compact buttons.
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { color, font, NOTCH, hardShadow, themeFlags } from "../landing/tokens";
+import { color, font, NOTCH, hardShadow, themeFlags } from "./tokens";
 
 export const clipNotch: CSSProperties = { clipPath: NOTCH, WebkitClipPath: NOTCH };
 

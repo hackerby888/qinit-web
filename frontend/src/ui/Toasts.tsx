@@ -2,7 +2,7 @@
 // stay long (10s) and are red; warnings/info fade faster. Each row owns its own auto-dismiss timer so a new
 // toast doesn't reset the others. Click × to dismiss now.
 import { useEffect, useState } from "react";
-import { color, font } from "../landing/tokens";
+import { color, font } from "./tokens";
 import { subscribeToasts, dismissToast, type Toast, type ToastKind } from "./notify";
 
 const KIND_COLOR: Record<ToastKind, string> = {

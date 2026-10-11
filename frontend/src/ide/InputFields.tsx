@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import type { FieldView as Field } from "./idl-view";
-import { color, font } from "../landing/tokens";
+import { color, font } from "../ui/tokens";
 import { arrayType, inputHint, type InputDraft } from "./input-values";
 
 const inputStyle = (compact: boolean): CSSProperties => ({

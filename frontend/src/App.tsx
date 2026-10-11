@@ -1,9 +1,9 @@
 import { useEffect } from "react";
-import "./landing/pixel.css";
-import { KEYFRAMES } from "./landing/components";
+import "./ui/pixel.css";
+import { KEYFRAMES } from "./ui/primitives";
 import { CodeShowcase, Cta, Features, Footer, Hero, Nav, NetworkStrip, Path, Pillars } from "./landing/sections";
 import { IdeShowcase } from "./landing/IdeShowcase";
-import { applyTheme } from "./landing/tokens";
+import { applyTheme } from "./ui/tokens";
 
 export default function App() {
   // Landing page always renders neo-brutalist. When navigating here from the IDE (flat), reset the shared

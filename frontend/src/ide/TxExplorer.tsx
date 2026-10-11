@@ -2,8 +2,8 @@
 // transaction, newest first, grouped under its tick: which contract.procedure ran, the caller, whether
 // money moved, and a one-glance state-diff count. Click a row to step through it in the debugger.
 import { useEffect, type CSSProperties } from "react";
-import { color, font } from "../landing/tokens";
-import { Card } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card } from "../ui/modals";
 import type { TxDetail, DebugStep } from "./engine";
 
 export interface TxRow {

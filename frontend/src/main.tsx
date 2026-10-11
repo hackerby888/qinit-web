@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import App from "./App";
 import { Docs } from "./Docs";
-import { SplashScreen } from "./ide/Splash";
+import { SplashScreen } from "./ui/Splash";
 import { loadIdeModule } from "./ide/load";
 import { BACKEND_ENABLED } from "./ide/backend";
 import { installCrashHandlers } from "./ide/crash";

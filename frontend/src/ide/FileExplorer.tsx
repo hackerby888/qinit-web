@@ -3,10 +3,10 @@
 // folders are virtual (a path prefix), with a hidden `.keep` placeholder holding empty ones open.
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
 import { Crosshair, ChevronsDownUp, ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, FileCode, FilePlus, Pencil, Trash2 } from "lucide-react";
-import { color, font, themeFlags } from "../landing/tokens";
-import { PixelQMark } from "../landing/components";
+import { color, font, themeFlags } from "../ui/tokens";
+import { PixelQMark } from "../ui/primitives";
 import type { WorkspaceFile } from "./workspace";
-import { ConfirmModal } from "./ui";
+import { ConfirmModal } from "../ui/modals";
 import { buildFileTree, newFileName, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
 import { parseOutline } from "./outline";
 

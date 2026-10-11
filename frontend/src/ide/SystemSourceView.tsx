@@ -4,8 +4,8 @@
 // editor), since system contracts aren't editable workspace files.
 import { useEffect, useState, type CSSProperties } from "react";
 import { Copy, Check } from "lucide-react";
-import { color, font } from "../landing/tokens";
-import { Card } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card } from "../ui/modals";
 import { CodeEditor } from "./editor";
 
 const line: CSSProperties = { fontFamily: font.mono, fontSize: 11.5 };

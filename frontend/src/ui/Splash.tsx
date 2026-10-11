@@ -2,7 +2,7 @@
 // display time or completion timer, so a cached editor passes through immediately while a cold load stays
 // visible until the corresponding project, Monaco, compiler and engine tasks settle.
 import type { CSSProperties } from "react";
-import { color, font } from "../landing/tokens";
+import { color, font } from "./tokens";
 
 // The qinit logo as a 5×7 pixel map (same mark as landing's PixelQMark). Value 2 = the accent deploy node.
 const Q_MAP = [

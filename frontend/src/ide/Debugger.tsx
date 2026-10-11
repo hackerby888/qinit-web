@@ -4,8 +4,8 @@
 // timeline and logs. Qubic SC runs wasm to completion per entry, so the granularity is per-invocation /
 // per-effect, not per-source-line.
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { color, font } from "../landing/tokens";
-import { Card } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card } from "../ui/modals";
 import type { DebugStep } from "./engine";
 
 const line: CSSProperties = { fontFamily: font.mono, fontSize: 11.5, lineHeight: 1.6, wordBreak: "break-all" };

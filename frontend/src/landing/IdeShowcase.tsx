@@ -1,5 +1,5 @@
-import { Chip, NotchBox } from "./components";
-import { color, font } from "./tokens";
+import { Chip, NotchBox } from "../ui/primitives";
+import { color, font } from "../ui/tokens";
 import { IDE_FIRST_LINE, IDE_LINE_COUNT, IDE_SEG, IDE_TREE } from "./content";
 import { Segments, VoteDots } from "./illustrations";
 

@@ -3,7 +3,7 @@
 // chain to genesis, replays the writes, then checks each assertion → pass/fail. Persisted per browser.
 import { useState, type CSSProperties } from "react";
 import type { ContractIdlView as ContractIdl, EntryView as IdlEntry } from "./idl-view";
-import { color, font } from "../landing/tokens";
+import { color, font } from "../ui/tokens";
 import { InputFields } from "./InputFields";
 import type { InputDraft } from "./input-values";
 

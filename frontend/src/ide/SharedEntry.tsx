@@ -3,8 +3,8 @@
 // prompt and collaborate under their account name.
 import { useEffect, useState, type CSSProperties } from "react";
 import { useParams } from "react-router-dom";
-import { color, font } from "../landing/tokens";
-import { NeoBtn } from "./ui";
+import { color, font } from "../ui/tokens";
+import { NeoBtn } from "../ui/modals";
 import Ide from "./Ide";
 import { resolveShare, type ResolvedShare } from "./shareApi";
 import { fetchMe, type Me } from "./auth";

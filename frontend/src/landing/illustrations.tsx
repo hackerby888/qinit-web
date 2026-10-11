@@ -1,5 +1,5 @@
 import React, { type CSSProperties } from "react";
-import { color, font } from "./tokens";
+import { color, font } from "../ui/tokens";
 import { type Seg, SEG_COLOR } from "./content";
 
 // seeded PRNG so dot fields are stable across renders.

@@ -2,8 +2,8 @@
 // Backed by shareApi (the backend share endpoints). The engine note clarifies that only file edits are
 // shared; each collaborator keeps their own engine sandbox.
 import { useEffect, useState, type CSSProperties } from "react";
-import { color, font } from "../landing/tokens";
-import { Card, NeoBtn } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card, NeoBtn } from "../ui/modals";
 import { createShareLink, listShareLinks, revokeShareLink, shareUrlFor, type ShareLink, type ShareMode } from "./shareApi";
 
 const TTL_OPTIONS: { label: string; ms?: number }[] = [

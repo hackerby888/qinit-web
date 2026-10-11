@@ -1,8 +1,8 @@
 // Results overlay for the in-IDE .ts test runner — a pass/fail summary, then each test with its error and
 // captured console output.
 import { useEffect, type CSSProperties } from "react";
-import { color, font } from "../../landing/tokens";
-import { Card } from "../ui";
+import { color, font } from "../../ui/tokens";
+import { Card } from "../../ui/modals";
 import type { TestResult } from "./runner";
 
 const mono: CSSProperties = { fontFamily: font.mono, fontSize: 11.5 };

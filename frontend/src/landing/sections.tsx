@@ -1,6 +1,6 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { Chip, GlyphBadge, NotchBox, PixelButton, PixelQMark } from "./components";
-import { color, font } from "./tokens";
+import { Chip, GlyphBadge, NotchBox, PixelButton, PixelQMark } from "../ui/primitives";
+import { color, font } from "../ui/tokens";
 import { CHIPS, FEATURES, IDE_URL, NAV, PATH, PILLARS, REPO, TYPE_SEG } from "./content";
 import { DotField, Typewriter, VoteDots, VoxelStack } from "./illustrations";
 

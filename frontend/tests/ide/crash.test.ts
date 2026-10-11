@@ -4,7 +4,7 @@ import { test, expect, describe, beforeEach } from "bun:test";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { CrashBoundary, CrashOverlay } from "../../src/ide/CrashDialog";
-import { color } from "../../src/landing/tokens";
+import { color } from "../../src/ui/tokens";
 import {
   _resetCrash,
   buildReportText,

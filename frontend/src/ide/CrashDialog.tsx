@@ -5,8 +5,8 @@
 // for the fallback, so a dialog nested under it would be unmounted by the very crash it exists to report.
 import React, { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
-import { color, font } from "../landing/tokens";
-import { Card, NeoBtn } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card, NeoBtn } from "../ui/modals";
 import { buildReportText, currentCrash, dismissCrash, reportCrash, sensitiveKeys, subscribeCrash, type CrashReport } from "./crash";
 
 const ERROR_RED = "#f85149";

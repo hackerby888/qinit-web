@@ -1,7 +1,7 @@
 // Workspace static-analysis results, grouped by category. Each row jumps to the offending file/line. The
 // findings are computed by ./qpi/analyze (pure) and passed in; this component is presentation only.
 import { Fragment } from "react";
-import { color, font } from "../landing/tokens";
+import { color, font } from "../ui/tokens";
 import type { AnalysisFinding } from "./qpi/analyze";
 
 // Fixed display order — determinism + state first (the Qubic-specific invariants), then the rest.

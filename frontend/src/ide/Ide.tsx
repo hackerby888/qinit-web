@@ -8,9 +8,9 @@ import type { OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import type { EntryView as IdlEntry, ContractIdlView as ContractIdl } from "./idl-view";
 import { bytesToIdentity } from "@qinit/core";
-import { color, font, themeFlags } from "../landing/tokens";
-import { PixelQMark, KEYFRAMES } from "../landing/components";
-import { NeoBtn, Section } from "./ui";
+import { color, font, themeFlags } from "../ui/tokens";
+import { PixelQMark, KEYFRAMES } from "../ui/primitives";
+import { NeoBtn, Section } from "../ui/modals";
 import { CodeEditor } from "./editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editorThemes";
 import { FileExplorer } from "./FileExplorer";
@@ -19,9 +19,9 @@ import { fileLabel, dirOf, freeFilePath, freeName, occupiedNames, KEEP_FILE } fr
 import { stateCarryoverRejection } from "@qinit/proto/state-carryover";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
-import { Toasts } from "./Toasts";
+import { Toasts } from "../ui/Toasts";
 import { OfflineBanner } from "./OfflineBanner";
-import { notify, errorMessage } from "./notify";
+import { notify, errorMessage } from "../ui/notify";
 import { registerDiagnostic } from "./crash";
 import { useCollab, type CollabCtx, type Peer } from "./useCollab";
 import { colorFor, type CollabStatus } from "./collab";
@@ -51,7 +51,7 @@ import { useOverlays } from "./useOverlays";
 import { useTestRunner } from "./useTestRunner";
 import { genQinitDts } from "./tests/dts";
 import { crossContractDefinitionAt, setQpiWorkspaceFiles } from "./qpi/cross-contract";
-import { SplashScreen } from "./Splash";
+import { SplashScreen } from "../ui/Splash";
 import { ideStartupPending, ideStartupSteps, type StartupTaskStatus } from "./startup";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { SearchPanel } from "./SearchPanel";
@@ -63,7 +63,7 @@ import { failureLine, faultLine } from "./fault";
 import { getStore, projectStorageKey, StaleProjectError } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
-import "../landing/pixel.css";
+import "../ui/pixel.css";
 
 // Structural borders, read live at render so a theme swap (neo 3px ↔ flat 1px) takes effect without a
 // reload. Used across Ide() and the sibling EditorTabs(), so they stay module-level helpers rather than

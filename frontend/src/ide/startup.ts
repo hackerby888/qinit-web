@@ -1,4 +1,4 @@
-import type { SplashStep } from "./Splash";
+import type { SplashStep } from "../ui/Splash";
 
 export type StartupTaskStatus = "loading" | "done" | "error";
 

@@ -1,6 +1,6 @@
 // Landing data. qinit = a CLI framework + a browser IDE; both run the same compiler and contract engine.
 // Every claim here is one the CLI or Qubic Core backs: keep it that way when editing.
-import { color } from "./tokens";
+import { color } from "../ui/tokens";
 
 export const REPO = "https://github.com/hackerby888/qinit";
 export const IDE_URL = "/ide"; // the in-browser IDE route (ide.qinit.dev once live)

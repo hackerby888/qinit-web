@@ -2,7 +2,7 @@
 // toggle), lists matches grouped by file, and jumps the editor to a result. Navigate with ↑/↓ + Enter (or
 // click); mouse hover syncs the selection. Search state is owned by the parent so it persists across opens.
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { color, font } from "../landing/tokens";
+import { color, font } from "../ui/tokens";
 import { searchError, searchWorkspace } from "./search";
 
 const overlay: CSSProperties = {

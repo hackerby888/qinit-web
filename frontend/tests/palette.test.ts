@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { applyTheme, color } from "../src/landing/tokens";
+import { applyTheme, color } from "../src/ui/tokens";
 
 const ACCENT_KEYS = ["accent", "accentMid", "accentDeep", "accentShadow"] as const;
 

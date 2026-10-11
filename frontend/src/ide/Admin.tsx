@@ -2,8 +2,8 @@
 // unlocked it polls /api/admin/metrics every 2s and renders process/OS/collab tiles with sparklines and
 // an alert banner. Same neo-brutalist chrome as the IDE (Card/NeoBtn + tokens).
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { color, font } from "../landing/tokens";
-import { Card, NeoBtn } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card, NeoBtn } from "../ui/modals";
 import {
   AdminError,
   clearAdminToken,

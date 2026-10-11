@@ -2,8 +2,8 @@
 // and the command palette (Ctrl+Shift+P, lists IDE actions). The parent builds the mode-specific items; this
 // component owns the fuzzy filter, keyboard nav (↑/↓/Enter/Escape) and the matched-char highlight.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { color, font } from "../landing/tokens";
-import { Card } from "./ui";
+import { color, font } from "../ui/tokens";
+import { Card } from "../ui/modals";
 
 export interface PaletteItem {
   id: string;

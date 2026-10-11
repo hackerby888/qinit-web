@@ -4,10 +4,10 @@
 // cloud backend is added later.
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { color, font } from "../landing/tokens";
-import { PixelQMark, KEYFRAMES } from "../landing/components";
-import { Card, ConfirmModal, NeoBtn } from "./ui";
-import { SplashScreen, type SplashStep } from "./Splash";
+import { color, font } from "../ui/tokens";
+import { PixelQMark, KEYFRAMES } from "../ui/primitives";
+import { Card, ConfirmModal, NeoBtn } from "../ui/modals";
+import { SplashScreen, type SplashStep } from "../ui/Splash";
 import { isIdeModuleLoaded, loadIdeModule } from "./load";
 import { getStore, getLocalStore } from "./projects/store";
 import { captureAuthRedirect, fetchMe, login, logout, onAuthExpired, type Me } from "./auth";
@@ -16,10 +16,10 @@ import { exportProject, importProjectFile } from "./projects/io";
 import type { ProjectMeta } from "./projects/types";
 import { decodeSharedWorkspace, sharedLinkPresent } from "./workspace";
 import { STARTER } from "./examples";
-import { Toasts } from "./Toasts";
+import { Toasts } from "../ui/Toasts";
 import { OfflineBanner } from "./OfflineBanner";
-import { notify, errorMessage } from "./notify";
-import "../landing/pixel.css";
+import { notify, errorMessage } from "../ui/notify";
+import "../ui/pixel.css";
 
 function rel(ms: number): string {
   const d = Date.now() - ms;
