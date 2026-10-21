@@ -223,6 +223,7 @@ export const QPI_API: Method[] = [
   { label: "distributeDividends", insert: "distributeDividends(${1:amountPerShare})", detail: "bit", proc: true },
   { label: "nextId", insert: "nextId(${1:currentId})", detail: "id — next occupied spectrum id" },
   { label: "prevId", insert: "prevId(${1:currentId})", detail: "id" },
+  { label: "isFrozenIdentity", insert: "isFrozenIdentity(${1:id})", detail: "bit — true if the id is on the frozen list" },
   { label: "tick", insert: "tick()", detail: "uint32 — current tick" },
   { label: "epoch", insert: "epoch()", detail: "uint16 — current epoch" },
   { label: "year", insert: "year()", detail: "uint8" },
