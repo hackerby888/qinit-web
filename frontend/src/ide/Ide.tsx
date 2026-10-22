@@ -2539,7 +2539,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: hair(), background: color.panel, flex: "none", overflowX: "auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", borderBottom: hair(), background: color.panel, flex: "none", position: "relative", zIndex: 5 }}>
         <TrafficLights />
         <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textFaintDk, marginLeft: 6, flex: "none" }}>qinit ide — {projectName || "…"}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
