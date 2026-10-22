@@ -26,7 +26,7 @@ export function CallRow({ kind, id, entry, busy, disabled, output, detail, onRun
   const [vals, setVals] = useState<InputDraft>({});
   const [value, setValue] = useState(""); // empty, so the "0" placeholder shows as a hint
   const [slow, setSlow] = useState(false);
-  const accent = kind === "function" ? color.accent : color.secondary;
+  const accent = kind === "function" ? color.ok : color.action; // Call green, Run violet — the row's edge, dot, button and output share it
 
   useEffect(() => {
     setSlow(false);
