@@ -1,11 +1,10 @@
-// inline-style and label helpers shared by the shell and the panels it composes. the border and input
-// styles are functions so a live theme swap (neo 3px ↔ flat 1px) takes effect on the next render.
+// inline-style and label helpers shared by the shell and the panels it composes.
 import type { CSSProperties } from "react";
-import { color, font, themeFlags } from "../ui/tokens";
+import { color, font } from "../ui/tokens";
 
-// structural borders: 3px in neo, 1px in flat, read at render so a theme swap needs no reload.
-export const frame = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.ink}`;
-export const hair = (): string => `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
+// structural borders
+export const frame = (): string => `1px solid ${color.ink}`;
+export const hair = (): string => `1px solid ${color.hair}`;
 
 // a box with a heavier left edge, one explicit border per side: mixing `border` with `borderLeftWidth` made React warn on every rerender.
 export const edged = (edge: string, frameColor: string): CSSProperties => ({

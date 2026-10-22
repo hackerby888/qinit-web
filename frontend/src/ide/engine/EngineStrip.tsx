@@ -31,7 +31,7 @@ export function EngineStrip({ info, memory }: { info: { tick: number; epoch: num
   const ideBytes = memory ? memory.engine.linearMemoryBytes + (memory.pageHeapBytes ?? 0) : 0;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk }}>
-      <span style={{ width: 7, height: 7, flex: "none", background: live ? color.accent : color.swatchOff, animation: live ? "nodePulse 2s ease-in-out infinite" : undefined }} />
+      <span style={{ width: 7, height: 7, flex: "none", background: live ? color.ok : color.swatchOff, animation: live ? "nodePulse 2s ease-in-out infinite" : undefined }} />
       <span style={{ color: color.textMutedDk, letterSpacing: ".14em" }}>IN-PROCESS</span>
       {info ? (
         <>

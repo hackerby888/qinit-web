@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { color, font } from "../../ui/tokens";
-import { PixelQMark, KEYFRAMES } from "../../ui/primitives";
+import { QMark, KEYFRAMES } from "../../ui/primitives";
 import { Card, ConfirmModal, NeoBtn } from "../../ui/modals";
 import { SplashScreen, type SplashStep } from "../../ui/Splash";
 import { isIdeModuleLoaded, loadIdeModule } from "../load";
@@ -19,7 +19,7 @@ import { STARTER } from "../workspace/examples";
 import { Toasts } from "../../ui/Toasts";
 import { OfflineBanner } from "../cloud/OfflineBanner";
 import { notify, errorMessage } from "../../ui/notify";
-import "../../ui/pixel.css";
+import "../../ui/ide.css";
 
 function rel(ms: number): string {
   const d = Date.now() - ms;
@@ -326,7 +326,7 @@ export default function Projects() {
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 22px", height: 54, borderBottom: `3px solid ${color.ink}`, background: color.panelDeep }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
-          <PixelQMark size={22} />
+          <QMark size={22} />
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
         </Link>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>

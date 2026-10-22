@@ -1,0 +1,23 @@
+/* IDE chrome — fonts and the few global rules inline styles can't express. */
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
+
+@media (max-width: 880px) {
+  .pix-ide-body { grid-template-columns: 1fr !important; }
+  .pix-resizer { display: none !important; }
+}
+.pix-info-popover {
+  display: none;
+}
+
+.pix-info-hover:hover > .pix-info-popover,
+.pix-info-hover:focus > .pix-info-popover,
+.pix-info-hover:focus-within > .pix-info-popover {
+  display: flex;
+}
+.pix-call-spinner {
+  animation: pixCallSpin 0.75s linear infinite;
+}
+
+@keyframes pixCallSpin {
+  to { transform: rotate(360deg); }
+}

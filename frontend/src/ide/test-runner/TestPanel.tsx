@@ -38,7 +38,7 @@ export function TestPanel({ results, running, title, onClose, onRerun, onStop }:
             <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>TESTS</span>
             {title && <span style={{ ...mono, color: color.textMutedDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>}
             {!running && total > 0 && (
-              <span style={{ ...mono, color: allOk ? color.accent : "#f85149" }}>{allOk ? "✓" : "✗"} {pass}/{total} passed</span>
+              <span style={{ ...mono, color: allOk ? color.ok : "#f85149" }}>{allOk ? "✓" : "✗"} {pass}/{total} passed</span>
             )}
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               {running
@@ -54,9 +54,9 @@ export function TestPanel({ results, running, title, onClose, onRerun, onStop }:
             )}
 
             {results.map((r, i) => (
-              <div key={i} style={{ padding: "7px 16px", borderLeft: `3px solid ${r.ok ? color.accent : "#f85149"}` }}>
+              <div key={i} style={{ padding: "7px 16px", borderLeft: `3px solid ${r.ok ? color.ok : "#f85149"}` }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ ...mono, color: r.ok ? color.accent : "#f85149" }}>{r.ok ? "✓" : "✗"}</span>
+                  <span style={{ ...mono, color: r.ok ? color.ok : "#f85149" }}>{r.ok ? "✓" : "✗"}</span>
                   <span style={{ ...mono, color: color.textLight }}>{r.name}</span>
                   <span style={{ marginLeft: "auto", ...mono, fontSize: 10, color: color.textGhostDk }}>{r.ms}ms</span>
                 </div>

@@ -98,7 +98,7 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
                   >
                     <span style={{ color: color.textGhostDk, width: 16, flex: "none" }}>{idx + 1}</span>
                     <span style={{ color: on ? color.textLight : color.textMutedDk, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.contract}.{s.label}</span>
-                    <span style={{ marginLeft: "auto", flex: "none", color: s.ok ? color.accent : "#f85149" }}>{s.ok ? "✓" : "✗"}</span>
+                    <span style={{ marginLeft: "auto", flex: "none", color: s.ok ? color.ok : "#f85149" }}>{s.ok ? "✓" : "✗"}</span>
                   </div>
                 );
               })}

@@ -21,7 +21,7 @@ export interface EditorThemeMeta {
   id: EditorThemeId;
   label: string;
   group: EditorThemeGroup; // section in the picker (Auto / Light / Dark)
-  monacoName: string | null; // null = "match" (follow the UI chrome theme)
+  monacoName: string | null; // null = "match" (the house theme that matches the chrome)
   swatch: [string, string, string]; // preview dots: keyword / qpi-type / string
 }
 
@@ -38,11 +38,11 @@ export const EDITOR_THEMES: EditorThemeMeta[] = [
   { id: "darcula", label: "IntelliJ Darcula", group: "dark", monacoName: "darcula", swatch: ["#CC7832", "#FFC66D", "#6A8759"] },
 ];
 
-// Resolve a chosen theme id (+ the current neo/flat chrome theme) into the Monaco theme name to apply.
-// "match" follows the chrome; an unknown id falls back to the house dark theme.
-export function resolveMonacoTheme(id: EditorThemeId, chrome: "neo" | "flat"): string {
+// Resolve a chosen theme id into the Monaco theme name to apply. "match" is the house theme that matches the
+// chrome; an unknown id falls back to the house dark theme.
+export function resolveMonacoTheme(id: EditorThemeId): string {
   if (id === "match") {
-    return chrome === "flat" ? "qinit-flat" : "qinit-dark";
+    return "qinit-flat";
   }
 
   const meta = EDITOR_THEMES.find((t) => t.id === id);

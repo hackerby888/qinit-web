@@ -3,12 +3,11 @@ import { test, expect, describe } from "bun:test";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "../../../src/ide/editor/themes";
 
 describe("resolveMonacoTheme", () => {
-  test("`match` follows the chrome theme", () => {
-    expect(resolveMonacoTheme("match", "neo")).toBe("qinit-dark");
-    expect(resolveMonacoTheme("match", "flat")).toBe("qinit-flat");
+  test("`match` is the house theme that matches the chrome", () => {
+    expect(resolveMonacoTheme("match")).toBe("qinit-flat");
   });
 
-  test("each preset resolves to its own monaco theme name, ignoring chrome", () => {
+  test("each preset resolves to its own monaco theme name", () => {
     const presets: [EditorThemeId, string][] = [
       ["qinit-dark", "qinit-dark"],
       ["qinit-light", "qinit-light"],
@@ -21,13 +20,12 @@ describe("resolveMonacoTheme", () => {
     ];
 
     for (const [id, name] of presets) {
-      expect(resolveMonacoTheme(id, "neo")).toBe(name);
-      expect(resolveMonacoTheme(id, "flat")).toBe(name);
+      expect(resolveMonacoTheme(id)).toBe(name);
     }
   });
 
   test("an unknown id falls back to the house dark theme", () => {
-    expect(resolveMonacoTheme("bogus" as EditorThemeId, "neo")).toBe("qinit-dark");
+    expect(resolveMonacoTheme("bogus" as EditorThemeId)).toBe("qinit-dark");
   });
 });
 

@@ -8,8 +8,8 @@ import type { OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import type { EntryView as IdlEntry } from "./calls/idl-view";
 import { bytesToIdentity } from "@qinit/core";
-import { color, font, themeFlags } from "../ui/tokens";
-import { PixelQMark, KEYFRAMES } from "../ui/primitives";
+import { color, font } from "../ui/tokens";
+import { QMark, KEYFRAMES } from "../ui/primitives";
 import { NeoBtn, Section } from "../ui/modals";
 import { CodeEditor } from "./editor/editor";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editor/themes";
@@ -62,7 +62,7 @@ import { failureLine, faultLine } from "./engine/fault";
 import { getStore, projectStorageKey, StaleProjectError } from "./projects/store";
 import type { Project } from "./projects/types";
 import type { DecodedState as StateDump } from "@qinit/inspector/state-read";
-import "../ui/pixel.css";
+import "../ui/ide.css";
 import { frame, hair, selectStyle, shortId } from "./chrome";
 import { EditorTabs } from "./EditorTabs";
 import { CallRow } from "./calls/CallRow";
@@ -126,7 +126,7 @@ function DividerCollapse({ side, onCollapse }: { side: "left" | "right"; onColla
 
 // The collab presence strip — stacked peer avatars + a connection/live status pill in the editor toolbar.
 function CollabBar({ status, peers, mode, selfName, selfColor }: { status: CollabStatus; peers: Peer[]; mode: "view" | "edit"; selfName: string; selfColor: string }) {
-  const dot = status === "connected" ? color.accent : status === "connecting" ? color.yellow : "#f85149";
+  const dot = status === "connected" ? color.ok : status === "connecting" ? color.yellow : "#f85149";
   const label = status === "connected" ? (mode === "view" ? "viewing" : "live") : status === "connecting" ? "connecting…" : "reconnecting…";
   const all = [{ name: `${selfName} (you)`, color: selfColor }, ...peers];
   return (
@@ -179,8 +179,6 @@ type ToolButtonProps = {
 };
 
 function ToolButton({ children, onClick, variant = "ghost", disabled = false }: ToolButtonProps) {
-  const [press, setPress] = useState(0);
-  const off = disabled ? 0 : press === 2 ? 0 : press === 1 ? 2 : 3;
   const accent = variant === "accent";
   const bg = disabled ? color.swatchOff : accent ? color.accent : color.panel;
   const fg = disabled ? color.textFaintDk : accent ? color.void : color.textLight;
@@ -188,24 +186,10 @@ function ToolButton({ children, onClick, variant = "ghost", disabled = false }: 
   return (
     <button
       onClick={disabled ? undefined : onClick}
-      onMouseEnter={() => setPress(1)}
-      onMouseLeave={() => setPress(0)}
-      onMouseDown={() => setPress(2)}
-      onMouseUp={() => setPress(1)}
       disabled={disabled}
-      style={{
-        border: "none",
-        background: accent ? color.accentDeep : color.ink,
-        padding: 2,
-        cursor: disabled ? "default" : "pointer",
-        filter: themeFlags.flat ? "none" : `drop-shadow(${off}px ${off}px 0 ${accent ? color.accentShadow : "#000"})`,
-        transform: themeFlags.flat ? "none" : `translate(${3 - off}px,${3 - off}px)`,
-        transition: "transform .1s steps(2), filter .1s steps(2)",
-      }}
+      style={{ border: `1px solid ${accent ? color.accent : color.ink}`, background: bg, color: fg, fontFamily: font.display, fontSize: 14, fontWeight: 600, padding: "6px 16px", cursor: disabled ? "default" : "pointer", flex: "none" }}
     >
-      <span style={{ display: "block", background: bg, color: fg, fontFamily: font.display, fontSize: 14, padding: "6px 16px" }}>
-        {children}
-      </span>
+      {children}
     </button>
   );
 }
@@ -297,8 +281,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [editorReady, setEditorReady] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
 
-  // IDE chrome palette + editor syntax theme (persisted; the chrome initializer applies the palette pre-paint).
-  const { theme, editorTheme, toggleTheme, pickEditorTheme } = useIdeTheme();
+  // editor syntax theme (persisted)
+  const { editorTheme, pickEditorTheme } = useIdeTheme();
 
   const [ws, setWs] = useState<Workspace>({ files: [], active: "" });
   const [projectName, setProjectName] = useState("");
@@ -2495,14 +2479,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       <div className="pix-topbar" style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 16px", height: 54, borderBottom: frame(), background: color.panelDeep, flex: "none", overflowX: "auto", overflowY: "hidden", whiteSpace: "nowrap" }}>
         <Link to="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
-          <PixelQMark size={22} />
+          <QMark size={22} />
           <span style={{ fontFamily: font.display, fontSize: 19, color: color.textLightHi }}>qinit <span style={{ color: color.accent }}>ide</span></span>
         </Link>
         <span style={{ width: 1, height: 22, background: color.hair2 }} />
         <Link to="/ide" title="All projects" style={{ fontFamily: font.mono, fontSize: 12, color: color.textGhostDk, textDecoration: "none" }}>← projects</Link>
         <span style={{ width: 8, height: 8, background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 15, color: color.textLightHi }}>{projectName || "…"}</span>
-        {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.accent }}>✓ saved</span>}
+        {saved && <span style={{ fontFamily: font.mono, fontSize: 11, color: color.ok }}>✓ saved</span>}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
           {activeKind === "test" ? (
             <ToolButton variant="accent" onClick={() => void runTestFile()} disabled={!!testRun?.running}>
@@ -2520,13 +2504,6 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           <ToolButton onClick={share}>Share</ToolButton>
           <ToolButton onClick={() => setShowTxs(true)}>≡ txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
           <ThemePicker value={editorTheme} onPick={pickEditorTheme} />
-          <button
-            onClick={toggleTheme}
-            title={theme === "flat" ? "Switch the UI chrome to neo-brutalist" : "Switch the UI chrome to flat minimal"}
-            style={{ border: `1px solid ${color.hair2}`, background: color.panel, color: color.textMutedDk, fontFamily: font.mono, fontSize: 11, padding: "5px 9px", cursor: "pointer", flex: "none" }}
-          >
-            {theme === "flat" ? "◐ flat" : "◑ neo"}
-          </button>
           <Link to="/docs" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
         </div>
       </div>
@@ -2608,7 +2585,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 120 }}>
-            <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme, theme)} onChange={editSource} onMount={onEditorMount} />
+            <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme)} onChange={editSource} onMount={onEditorMount} />
           </div>
 
           {/* bottom panel — Problems (active file markers) + Analysis (workspace-wide static analysis) */}
@@ -2709,7 +2686,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
             {phase === "compiling" && (
               <div style={{ display: "flex", alignItems: "center", gap: 7, fontFamily: font.mono, fontSize: 12, color: color.textMutedDk }}>
-                <span style={{ width: 7, height: 7, flex: "none", background: color.accent, animation: "nodePulse 1.4s ease-in-out infinite" }} />
+                <span style={{ width: 7, height: 7, flex: "none", background: color.ok, animation: "nodePulse 1.4s ease-in-out infinite" }} />
                 compiling in the browser…
               </div>
             )}
@@ -2855,7 +2832,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                 <div style={{ color: color.textGhostDk }}>— compile &amp; run to see output —</div>
               ) : (
                 log.map((line, i) => (
-                  <div key={i} style={{ wordBreak: "break-word", color: line.includes("failed") || line.includes("error") ? "#f85149" : line.startsWith("deployed") ? color.accent : color.textMutedDk }}>
+                  <div key={i} style={{ wordBreak: "break-word", color: line.includes("failed") || line.includes("error") ? "#f85149" : line.startsWith("deployed") ? color.ok : color.textMutedDk }}>
                     <span style={{ color: color.textGhostDk }}>›</span> {line}
                   </div>
                 ))
@@ -2867,13 +2844,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
-        <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.accent : phase === "error" ? "#f85149" : color.textFaintDk }}>
+        <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.ok : phase === "error" ? "#f85149" : color.textFaintDk }}>
           ● {fault ? "halted" : phase === "ready" ? `deployed ${builtName}` : phase === "compiling" ? `building ${builtName}` : phase === "error" ? `error — ${builtName} not deployed` : "ready"}
         </span>
         <span>{fileLabel(ws.active)}</span>
         <span>{KIND_LABEL[activeKind]}</span>
         {diag.state !== "idle" && activeKind === "contract" && (
-          <span style={{ color: diag.state === "error" ? "#f85149" : diag.state === "ok" ? color.accent : color.textMutedDk }}>
+          <span style={{ color: diag.state === "error" ? "#f85149" : diag.state === "ok" ? color.ok : color.textMutedDk }}>
             {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ compiles" : `✕ ${diag.count} compile error${diag.count === 1 ? "" : "s"}`}
           </span>
         )}
@@ -2885,7 +2862,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       {showTxs && <TxExplorer txs={txLog} onClose={() => setShowTxs(false)} onDebug={(steps, title) => { setShowTxs(false); setDebug({ steps, title, onBack: () => { setDebug(null); setShowTxs(true); } }); }} />}
       {engineLogOpen && <EngineLog log={engineLog} onClose={() => setEngineLogOpen(false)} onClear={() => setEngineLog([])} />}
-      {sysView && <SystemSourceView name={sysView.name} index={sysView.index} source={sysView.source} theme={resolveMonacoTheme(editorTheme, theme)} onClose={() => setSysView(null)} />}
+      {sysView && <SystemSourceView name={sysView.name} index={sysView.index} source={sysView.source} theme={resolveMonacoTheme(editorTheme)} onClose={() => setSysView(null)} />}
 
       {shareOpen && id && <ShareDialog projectId={id} isLive={!!collab} peerCount={collabApi.peers.length} onGoLive={() => { void goLive(); }} onClose={() => setShareOpen(false)} />}
 

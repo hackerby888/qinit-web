@@ -3,8 +3,8 @@
 // folders are virtual (a path prefix), with a hidden `.keep` placeholder holding empty ones open.
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
 import { Crosshair, ChevronsDownUp, ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, FileCode, FilePlus, Pencil, Trash2 } from "lucide-react";
-import { color, font, themeFlags } from "../../ui/tokens";
-import { PixelQMark } from "../../ui/primitives";
+import { color, font } from "../../ui/tokens";
+import { QMark } from "../../ui/primitives";
 import type { WorkspaceFile } from "./workspace";
 import { ConfirmModal } from "../../ui/modals";
 import { buildFileTree, newFileName, normalizeDir, fileLabel, dirOf, KEEP_FILE, type TreeNode } from "./filetree";
@@ -79,7 +79,7 @@ export function FileExplorer({ files, active, source, newFileSignal, projectName
   }, [revealSeq]);
 
   // Built per render so a live theme swap recolors the explorer (and thins the divider in flat).
-  const HAIR = `${themeFlags.flat ? 1 : 3}px solid ${color.hair}`;
+  const HAIR = `1px solid ${color.hair}`;
   const HOVER = "#ffffff10";
   const SEL = "#ffffff1f"; // multi-select highlight
   const DROP = `${color.accent}33`;
@@ -724,7 +724,7 @@ function Outline({ source, onJump }: { source: string; onJump: (name: string) =>
 
   return (
     // Stop the explorer's right-click menu from firing over the outline — these are symbols, not files.
-    <div onContextMenu={(e) => e.stopPropagation()} style={{ marginTop: 14, borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, paddingTop: 10 }}>
+    <div onContextMenu={(e) => e.stopPropagation()} style={{ marginTop: 14, borderTop: `1px solid ${color.hair}`, paddingTop: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 14px 6px" }}>
         <span style={{ width: 9, height: 9, flex: "none", background: color.accent }} />
         <span style={{ fontFamily: font.display, fontSize: 13, letterSpacing: ".02em", color: color.textLightHi }}>OUTLINE</span>
@@ -758,7 +758,7 @@ const SHOW_SPONSOR_SLOT: boolean = false;
 
 function AdSlot() {
   return (
-    <div style={{ flex: "none", borderTop: `${themeFlags.flat ? 1 : 2}px solid ${color.hair}`, padding: "8px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
+    <div style={{ flex: "none", borderTop: `1px solid ${color.hair}`, padding: "8px 12px 12px", display: "flex", flexDirection: "column", gap: 5 }}>
       <span style={{ fontFamily: font.mono, fontSize: 8.5, letterSpacing: ".18em", color: color.textGhostDk }}>SPONSORED</span>
       <a
         href="https://qubic.org"
@@ -767,7 +767,7 @@ function AdSlot() {
         title="Qubic"
         style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 7, width: "66%", alignSelf: "center", aspectRatio: "1 / 1", border: `1px solid ${color.hair2}`, background: color.void, textDecoration: "none" }}
       >
-        <PixelQMark size={30} />
+        <QMark size={30} />
         <span style={{ fontFamily: font.display, fontSize: 14, letterSpacing: ".02em", color: color.textLightHi }}>Qubic</span>
       </a>
     </div>

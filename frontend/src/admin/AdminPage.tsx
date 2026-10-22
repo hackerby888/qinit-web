@@ -23,7 +23,7 @@ const CRIT = "#f85149";
 const POLL_MS = 2000;
 
 const STATUS_COLOR: Record<HealthStatus, string> = {
-  ok: color.accent,
+  ok: color.ok,
   warn: color.yellow,
   crit: CRIT,
 };

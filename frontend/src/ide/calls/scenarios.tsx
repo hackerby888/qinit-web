@@ -185,7 +185,7 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
               <span onClick={() => setOpen(isOpen ? null : s.id)} style={{ cursor: "pointer", color: color.textGhostDk, fontFamily: font.mono, fontSize: 11 }}>{isOpen ? "▾" : "▸"}</span>
               <span style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textLight }}>{s.name}</span>
               <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>{s.calls.length} call{s.calls.length === 1 ? "" : "s"} · {s.asserts.length} assert{s.asserts.length === 1 ? "" : "s"}</span>
-              {badge && <span style={{ fontFamily: font.mono, fontSize: 10.5, color: r?.error ? "#f85149" : allOk ? color.accent : "#f85149" }}>{badge}</span>}
+              {badge && <span style={{ fontFamily: font.mono, fontSize: 10.5, color: r?.error ? "#f85149" : allOk ? color.ok : "#f85149" }}>{badge}</span>}
               <button onClick={() => onRun(s)} disabled={running === s.id} title="Reset chain, replay calls, check assertions" style={{ marginLeft: "auto", border: `2px solid ${color.ink}`, background: color.accent, color: color.void, fontFamily: font.display, fontSize: 11, padding: "2px 9px", cursor: running === s.id ? "default" : "pointer" }}>
                 {running === s.id ? "…" : "▶ run"}
               </button>
@@ -205,7 +205,7 @@ export function ScenarioPanel({ scenarios, results, running, idl, contractName, 
                     <div key={`a${i}`} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: font.mono, fontSize: 10.5 }}>
                       <span style={{ color: color.accent }}>expect</span>
                       <span style={{ color: color.textMutedDk }}>{a.fnName}({Object.entries(a.input).map(([k, v]) => `${k}=${v}`).join(", ")}).{a.field} {a.op} {a.expected}</span>
-                      {ar && <span style={{ color: ar.ok ? color.accent : "#f85149" }}>{ar.ok ? "✓" : `✗ got ${ar.actual}`}</span>}
+                      {ar && <span style={{ color: ar.ok ? color.ok : "#f85149" }}>{ar.ok ? "✓" : `✗ got ${ar.actual}`}</span>}
                       <button onClick={() => onDeleteAssert(s.id, i)} title="Remove" style={{ marginLeft: "auto", border: "none", background: "transparent", color: color.textGhostDk, cursor: "pointer", fontFamily: font.mono, fontSize: 12 }}>×</button>
                     </div>
                   );
