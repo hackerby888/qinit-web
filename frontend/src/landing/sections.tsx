@@ -111,9 +111,9 @@ export function Pillars() {
             </div>
             <p className="mt-5 leading-relaxed text-slate">{p.body}</p>
             <ul className="mt-5 space-y-2.5">{p.points.map((pt) => <CheckRow key={pt}>{pt}</CheckRow>)}</ul>
-            <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-ink2 px-3.5 py-2 font-mono text-[13px] text-bone">
+            <Go href={p.href} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-ink2 px-3.5 py-2 font-mono text-[13px] text-bone ring-1 ring-transparent transition hover:ring-grape/60">
               <span className="text-grape">{p.cmdmark}</span>{p.cmd}
-            </div>
+            </Go>
           </article>
         ))}
       </div>

@@ -16,7 +16,7 @@ export const NAV: { href: string; label: string }[] = [
 export const CHIPS = ["676 COMPUTORS", "INSTANT FINALITY", "15.5M TPS", "USEFUL POW"];
 
 // Two co-equal pillars: the CLI framework + the browser IDE.
-export type Pillar = { kicker: string; title: string; icon: LucideIcon; body: string; points: string[]; cmdmark: string; cmd: string };
+export type Pillar = { kicker: string; title: string; icon: LucideIcon; body: string; points: string[]; cmdmark: string; cmd: string; href: string };
 export const PILLARS: Pillar[] = [
   {
     kicker: "01 · TERMINAL",
@@ -26,6 +26,7 @@ export const PILLARS: Pillar[] = [
     points: ["Built-in compiler, cross-checked with Clang", "Local node with hot reload", "C++ and TypeScript tests from the start"],
     cmdmark: "$",
     cmd: "qinit new counter",
+    href: "/docs",
   },
   {
     kicker: "02 · BROWSER",
@@ -35,6 +36,7 @@ export const PILLARS: Pillar[] = [
     points: ["Full editor with QPI diagnostics", "Qubic contract engine in the page", "Compile, deploy, and test with no setup"],
     cmdmark: "→",
     cmd: "ide.qinit.dev",
+    href: IDE_URL,
   },
 ];
 
