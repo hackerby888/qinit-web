@@ -32,28 +32,18 @@ body {
 }
 ::selection { background: rgb(var(--accent) / 0.2); color: rgb(var(--ink)); }
 
-/* ---- fixed atmosphere: the landing's dots in both themes; dark adds a glow ---- */
+/* ---- fixed atmosphere: one soft green glow behind the hero; dark adds a far amber ember ---- */
 .bg-fx { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.dark .bg-fx::before { /* green glow */
+.bg-fx::before {
   content: ""; position: absolute; top: -360px; left: 50%; transform: translateX(-50%);
   width: 900px; height: 720px; border-radius: 9999px; filter: blur(150px);
-  background: radial-gradient(closest-side, rgb(var(--accent) / .20), transparent 70%);
+  background: radial-gradient(closest-side, rgb(var(--accent) / .10), transparent 70%);
 }
+.dark .bg-fx::before { background: radial-gradient(closest-side, rgb(var(--accent) / .20), transparent 70%); }
 .dark .bg-fx::after { /* lone amber ember, far + faint */
   content: ""; position: absolute; bottom: -260px; right: -120px;
   width: 540px; height: 540px; border-radius: 9999px; filter: blur(170px); opacity: .12;
   background: radial-gradient(closest-side, #FFB347, transparent 70%);
-}
-.bg-grid { /* the landing's small dots, edge to edge */
-  position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background-image: radial-gradient(#16190F0d 1.5px, transparent 1.5px);
-  background-size: 8px 8px;
-}
-.dark .bg-grid { /* sparse neutral dots that fade out below the fold, so they never sit behind long text */
-  background-image: radial-gradient(rgba(232,234,230,.13) 1px, transparent 1px);
-  background-size: 22px 22px;
-  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 35%, transparent 85%);
-  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, #000 35%, transparent 85%);
 }
 
 /* ---- light surfaces (class names preserved so both pages inherit) ---- */

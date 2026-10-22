@@ -81,7 +81,6 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-screen">
       <div className="bg-fx" />
-      <div className="bg-grid" />
       <header className="sticky top-0 z-20 border-b border-ink/[.08] bg-paper/80 backdrop-blur-xl">
         <nav aria-label="Primary" className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3.5 sm:px-6">
           <Link to="/" className="flex shrink-0 items-center gap-2.5">

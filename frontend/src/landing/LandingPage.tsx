@@ -5,7 +5,6 @@ export default function LandingPage() {
   return (
     <div className="relative min-h-screen">
       <div className="bg-fx" />
-      <div className="bg-grid" />
       <Nav />
       <main>
         <Hero />
