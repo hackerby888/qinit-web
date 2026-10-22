@@ -340,6 +340,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const { testRun, setTestRun, scenarios, setScenarios, scenResults, setScenResults, runningScen, setRunningScen } = useTestRunner();
   const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
+  const [epochJumping, setEpochJumping] = useState(false); // ⤓ epoch in flight: the button shows the tick progress and refuses a second jump
+  const epochJumpRef = useRef(false);
   const [speed, setSpeed] = useState(1); // auto-ticks per second
   const [epochLen, setEpochLen] = useState(0); // ticks per epoch the running chain uses, read from the node
   const [pendingEpochLen, setPendingEpochLen] = useState(0); // what the next reset will build with
@@ -1291,12 +1293,19 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   const advanceEpoch = () => guarded("epoch advance", async () => {
     const eng = engineRef.current;
-    if (!eng) {
+    if (!eng || epochJumpRef.current) {
       return;
     }
-    const info = await eng.advanceEpoch();
-    appendLog(`advanced to epoch ${info.epoch} at tick ${info.tick} — fired END_EPOCH → BEGIN_EPOCH`);
-    await refreshEngineViews();
+    epochJumpRef.current = true;
+    setEpochJumping(true);
+    try {
+      const info = await eng.advanceEpoch();
+      appendLog(`advanced to epoch ${info.epoch} at tick ${info.tick} — fired END_EPOCH → BEGIN_EPOCH`);
+      await refreshEngineViews();
+    } finally {
+      epochJumpRef.current = false;
+      setEpochJumping(false);
+    }
   });
 
   // Staged rather than live: the chain rebuilds from genesis with the new length, so epoch 0 still starts
@@ -2676,6 +2685,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
                   onToggle={togglePause}
                   onStep={(n) => void stepTicks(n)}
                   onEpoch={() => void advanceEpoch()}
+                  epochJumping={epochJumping}
                   onEpochLen={changeEpochLength}
                   onReset={() => void resetChain()}
                   onReplay={() => void replayChain()}

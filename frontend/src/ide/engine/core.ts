@@ -308,10 +308,16 @@ export class IdeEngineCore {
     this.epochLengthValue = Math.max(0, Math.trunc(ticks));
   }
 
-  // jump into the next epoch with the node's own routine, which crosses the boundary (END_EPOCH -> epoch++ ->
-  // BEGIN_EPOCH); a tick target computed here once stopped on the epoch's last tick, one short of the switch.
+  // Jump into the next epoch: tick up to and across the boundary (END_EPOCH -> epoch++ -> BEGIN_EPOCH). The
+  // tick count mirrors the node's own advanceEpoch (one past the epoch's last tick; at least one, since a
+  // length shortened mid-epoch can leave the tick already past the switch point). It goes through step() so
+  // the UI sees live tick progress instead of one frozen counter for the whole jump.
   async advanceEpoch(): Promise<EngineTickInfo> {
-    await this.runEngineOperation(() => this.engine.advanceEpoch());
+    const length = this.engine.sim.epochLength;
+    if (length > 0) {
+      const { tick, initialTick } = this.engine.epochInfo();
+      await this.step(Math.max(1, initialTick + length + 1 - tick));
+    }
     const info = await this.info();
     this.onTick?.(info);
     return info;
