@@ -1,6 +1,6 @@
 // Shared IDE chrome — the bordered card, the section header, and the compact control button. Tuned for a
 // dense dark dashboard: static cards, hairline borders, no hover lift.
-import { type CSSProperties, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { color, font } from "./tokens";
 
 // A bordered surface. `shadow` / `shadowColor` are accepted for the callers that still pass them and ignored.
@@ -54,7 +54,7 @@ export function Section({ label, accent = color.accent, open, onToggle, right, b
   );
 }
 
-// Compact control button; `active` fills it with the accent.
+// Compact control button; `active` fills it with the accent, hovering lights its edge.
 export function NeoBtn({ children, onClick, title, disabled = false, active = false, accent = color.accent }: {
   children: ReactNode;
   onClick?: () => void;
@@ -63,15 +63,19 @@ export function NeoBtn({ children, onClick, title, disabled = false, active = fa
   active?: boolean;
   accent?: string;
 }) {
+  const [hover, setHover] = useState(false);
+  const lit = hover && !disabled && !active;
   return (
     <button
       onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       title={title}
       disabled={disabled}
       style={{
-        border: `1px solid ${active ? accent : color.hair2}`,
+        border: `1px solid ${active ? accent : lit ? color.action : color.hair2}`,
         background: active ? accent : color.void,
-        color: active ? color.void : disabled ? color.textFaintDk : color.textLight,
+        color: active ? color.void : disabled ? color.textFaintDk : lit ? color.textLightHi : color.textLight,
         fontFamily: font.mono,
         fontSize: 11,
         padding: "3px 8px",

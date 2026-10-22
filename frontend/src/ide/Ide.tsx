@@ -179,15 +179,19 @@ type ToolButtonProps = {
 };
 
 function ToolButton({ children, onClick, variant = "ghost", disabled = false }: ToolButtonProps) {
+  const [hover, setHover] = useState(false);
   const accent = variant === "accent";
-  const bg = disabled ? color.swatchOff : accent ? color.accent : color.panel;
-  const fg = disabled ? color.textFaintDk : accent ? color.void : color.textLight;
+  const bg = disabled ? color.swatchOff : accent ? color.action : color.panel;
+  const fg = disabled ? color.textFaintDk : accent ? color.void : hover ? color.textLightHi : color.textLight;
+  const edge = disabled ? color.ink : accent ? color.action : hover ? color.action : color.ink;
 
   return (
     <button
       onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       disabled={disabled}
-      style={{ border: `1px solid ${accent ? color.accent : color.ink}`, background: bg, color: fg, fontFamily: font.display, fontSize: 14, fontWeight: 600, padding: "6px 16px", cursor: disabled ? "default" : "pointer", flex: "none" }}
+      style={{ border: `1px solid ${edge}`, background: bg, color: fg, fontFamily: font.display, fontSize: 14, fontWeight: 600, padding: "6px 16px", cursor: disabled ? "default" : "pointer", flex: "none", opacity: accent && hover && !disabled ? 0.9 : 1 }}
     >
       {children}
     </button>

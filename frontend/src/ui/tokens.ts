@@ -10,10 +10,11 @@ export const color = {
   paper: "#e6edf3", // light surface (rare)
   white: "#f0f3f6",
 
-  // signal — monochrome
-  accent: "#e6edf3", // active / primary: active tab underline, primary button face, selected edge
+  // signal — monochrome structure, one colour for actions
+  accent: "#e6edf3", // active / current: active tab underline, selected edge, highlighted value
   accentDeep: "#30363d", // frames around dialogs and sections, the progress fill
-  ok: "#3fb950", // success — the only green left, used for small marks and dots
+  action: "#a78bfa", // something to press: primary buttons, hover edges — the site's violet, the CLI's accent
+  ok: "#3fb950", // success — the only green, used for small marks and dots
   secondary: "#a5b4c4", // slate — procedures, state and logs read apart from functions by tone, not hue
   yellow: "#d29922", // attention / warn / prints
 

@@ -529,7 +529,7 @@ export function FileExplorer({ files, active, source, newFileSignal, projectName
             >
               {guideLines(depth, false)}
               <span style={{ width: 12, flex: "none", display: "inline-flex", alignItems: "center", color: color.textGhostDk }}>{open ? <ChevronDown size={12} strokeWidth={2} /> : <ChevronRight size={12} strokeWidth={2} />}</span>
-              <span style={{ flex: "none", display: "inline-flex", alignItems: "center", color: hover === node.path ? color.accent : color.textGhostDk }}>{open ? <FolderOpen size={14} strokeWidth={2} /> : <Folder size={14} strokeWidth={2} />}</span>
+              <span style={{ flex: "none", display: "inline-flex", alignItems: "center", color: hover === node.path ? color.action : color.textGhostDk }}>{open ? <FolderOpen size={14} strokeWidth={2} /> : <Folder size={14} strokeWidth={2} />}</span>
               <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.label}</span>
               {hover === node.path && (
                 <button onClick={(e) => { e.stopPropagation(); if (!open) { toggle(node.path); } startAdd(node.path); }} title={`New file in ${node.path}`} style={iconBtn}><FilePlus size={13} strokeWidth={2} /></button>

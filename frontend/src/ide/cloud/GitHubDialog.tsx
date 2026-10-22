@@ -34,8 +34,8 @@ function Btn({ label, onClick, disabled, primary }: { label: string; onClick: ()
       onClick={onClick}
       disabled={disabled}
       style={{
-        border: `1px solid ${primary ? color.accent : color.hair2}`,
-        background: primary ? color.accent : "transparent",
+        border: `1px solid ${primary ? color.action : color.hair2}`,
+        background: primary ? color.action : "transparent",
         color: primary ? color.void : color.textLight,
         fontFamily: font.mono,
         fontSize: 12,

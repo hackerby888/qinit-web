@@ -53,9 +53,9 @@ export function EngineControls({ paused, speed, info, epochLen, pendingEpochLen,
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 5 }}>
           <NeoBtn onClick={onToggle} active={paused} title={paused ? "Resume auto-tick" : "Pause auto-tick"}>{paused ? "▶ run" : "⏸ pause"}</NeoBtn>
           <NeoBtn onClick={() => onStep(1)} title="Advance 1 tick">⏭ +1</NeoBtn>
-          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks"><span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><FastForward size={11} fill="currentColor" /> +10</span></NeoBtn>
-          <NeoBtn onClick={onEpoch} disabled={epochJumping} accent={color.secondary} title={epochJumping ? `Ticking to epoch ${(info?.epoch ?? 0) + 1}…` : `Jump into epoch ${(info?.epoch ?? 0) + 1} — fires END_EPOCH → BEGIN_EPOCH`}>
-            {epochJumping ? `⤓ ${within}/${epochLen}…` : "⤓ epoch"}
+          <NeoBtn onClick={() => onStep(10)} title="Advance 10 ticks"><span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: color.yellow }}><FastForward size={11} fill="currentColor" /> +10</span></NeoBtn>
+          <NeoBtn onClick={onEpoch} disabled={epochJumping} accent={color.action} title={epochJumping ? `Ticking to epoch ${(info?.epoch ?? 0) + 1}…` : `Jump into epoch ${(info?.epoch ?? 0) + 1} — fires END_EPOCH → BEGIN_EPOCH`}>
+            <span style={{ color: epochJumping ? undefined : color.action }}>{epochJumping ? `⤓ ${within}/${epochLen}…` : "⤓ epoch"}</span>
           </NeoBtn>
           <NeoBtn onClick={onReset} title="Reset chain to genesis (re-deploy, re-run INITIALIZE)">↺ reset</NeoBtn>
           <NeoBtn onClick={onReplay} title="Replay every tx this session from genesis">↻ replay</NeoBtn>

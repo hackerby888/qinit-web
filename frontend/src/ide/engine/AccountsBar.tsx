@@ -45,7 +45,7 @@ export function AccountsBar({ accounts, caller, onSelect, balances, onFund }: {
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontFamily: font.mono, fontSize: 10, color: color.textGhostDk }}>faucet</span>
           <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="qus" style={fieldInput()} />
-          <NeoBtn onClick={() => onFund(caller, amount)} active title="Credit this account from the testnet faucet">+Fund</NeoBtn>
+          <NeoBtn onClick={() => onFund(caller, amount)} active accent={color.action} title="Credit this account from the testnet faucet">+Fund</NeoBtn>
         </div>
     </div>
   );
