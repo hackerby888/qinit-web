@@ -111,7 +111,7 @@ export function Pillars() {
             </div>
             <p className="mt-5 leading-relaxed text-slate">{p.body}</p>
             <ul className="mt-5 space-y-2.5">{p.points.map((pt) => <CheckRow key={pt}>{pt}</CheckRow>)}</ul>
-            <Go href={p.href} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-ink2 px-3.5 py-2 font-mono text-[13px] text-bone ring-1 ring-transparent transition hover:ring-grape/60">
+            <Go href={p.href} className="mt-6 inline-flex items-center gap-2 rounded-lg bg-ink2 px-3.5 py-2 font-mono text-[13px] text-bone transition hover:bg-ink2/80 hover:text-white">
               <span className="text-grape">{p.cmdmark}</span>{p.cmd}
             </Go>
           </article>
@@ -199,7 +199,7 @@ export function Path() {
 export function Cta() {
   return (
     <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
-      <div className="gborder rounded-2xl">
+      <div>
         <div className="relative overflow-hidden rounded-2xl screen px-6 py-16 text-center sm:py-20">
           <div className="pointer-events-none absolute -top-48 left-1/2 h-80 w-[36rem] -translate-x-1/2 rounded-full grad-bg opacity-20 blur-3xl" />
           <h2 className="relative font-display text-3xl font-bold tracking-tight text-bone sm:text-4xl">Ship your first Qubic contract today.</h2>

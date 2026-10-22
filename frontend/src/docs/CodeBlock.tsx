@@ -35,7 +35,7 @@ export function CodeBlock({ code, label, prompt }: { code: string; label?: strin
   };
   const html = highlight(code, label);
   return (
-    <div className="gborder rounded-2xl">
+    <div>
       <div className="overflow-hidden rounded-2xl screen">
         <div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-2.5">
           <span className="h-3 w-3 rounded-full bg-faint/70" />

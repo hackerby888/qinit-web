@@ -13,7 +13,7 @@ function makeRng(seed = 19) {
 // A dark terminal / editor window: the same chrome as the docs' CodeBlock.
 export function Window({ title, right, className = "", children }: { title: string; right?: ReactNode; className?: string; children: ReactNode }) {
   return (
-    <div className={`gborder rounded-2xl ${className}`}>
+    <div className={className}>
       <div className="overflow-hidden rounded-2xl screen">
         <div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-2.5">
           <span className="h-3 w-3 rounded-full bg-faint/70" />

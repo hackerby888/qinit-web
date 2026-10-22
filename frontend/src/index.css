@@ -60,15 +60,6 @@ body {
 /* dark "screen" surface for the terminal + code blocks (dark cards on a light page) */
 .screen { @apply rounded-2xl border border-white/10 bg-ink2 shadow-screen; }
 
-/* subtle brand-gradient hairline ring overlay (no layout shift) */
-.gborder { position: relative; }
-.gborder::before {
-  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
-  background: linear-gradient(135deg, rgb(var(--grad-from) / .5), rgb(var(--grad-to) / .25) 50%, transparent 72%);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
-}
-
 /* ---- outline button ---- */
 .btn-ghost {
   @apply inline-flex items-center justify-center gap-2 rounded-full border border-ink/20 px-5 py-2.5 text-sm font-medium text-ink transition;
