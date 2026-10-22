@@ -217,7 +217,7 @@ export function Footer() {
       <div className="mx-auto flex max-w-7xl flex-col gap-5 px-4 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div className="flex flex-wrap items-center gap-3">
           <Wordmark />
-          <span className="font-mono text-[11px] text-faint">independent · community framework · not affiliated with Qubic</span>
+          <span className="font-mono text-[11px] text-faint">open source · part of the Qubic ecosystem</span>
         </div>
         <nav aria-label="Footer" className="flex gap-6 text-sm text-slate">
           <Link to="/docs" className="transition hover:text-ink">Docs</Link>
