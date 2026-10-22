@@ -78,6 +78,12 @@ body {
 }
 .btn-ghost:hover { @apply border-ink/40 bg-snow; }
 
+/* ---- solid button ---- */
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-paper transition;
+}
+.btn-primary:hover { @apply bg-ink/85; }
+
 /* mono pill / eyebrow */
 .chip {
   @apply inline-flex items-center gap-2 rounded-full border border-ink/10 bg-card px-3 py-1 font-mono text-xs text-slate shadow-card;

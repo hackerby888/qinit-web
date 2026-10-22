@@ -9,8 +9,8 @@ const GREEN = {
   accentShadow: "#16401F", // hard-shadow color for accent buttons on dark
 };
 
-// The original "neo-brutalist" palette — the single source of truth for the landing, the projects
-// gallery and the IDE chrome's default look.
+// The original "neo-brutalist" palette — the single source of truth for the projects gallery and the IDE
+// chrome's default look.
 const NEO = {
   // surfaces
   void: "#070908", // darkest bg (nav, hero, dark sections, footer)
@@ -78,7 +78,7 @@ const FLAT: typeof NEO = {
 // The live, mutable active palette. Every chrome read goes through this object; applyTheme() swaps its
 // values in place so existing inline `color.*` reads pick up the change on the next render. Initialised
 // from the <html> data-ide-theme attribute (set inline in index.html before the JS bundle loads) so the
-// IDE starts in the right palette without a flash; defaults to NEO (landing / gallery / non-IDE routes).
+// IDE starts in the right palette without a flash; defaults to NEO (gallery / non-IDE routes).
 function readInitialTheme(): ThemeName {
   if (typeof window !== "undefined" && (window as any).__QINIT_IDE_THEME__ === "flat") return "flat";
   return "neo";

@@ -9,7 +9,7 @@ Landing page for [qinit](https://github.com/hackerby888/qinit) — how to instal
 
 `frontend/src` groups code by what it does; one folder is one subsystem:
 
-- `ui/` — the shared pixel design system (tokens, primitives, modals, toasts, splash)
+- `ui/` — the IDE's pixel design system (tokens, primitives, modals, toasts, splash); the landing and the docs use the Tailwind theme in `index.css`
 - `crash/` — the crash reporter `main.tsx` installs before React renders
 - `landing/`, `docs/`, `admin/` — one route each
 - `ide/` — the browser IDE. `Ide.tsx` is the shell; `cloud/` holds everything behind `BACKEND_ENABLED`; `compile/`, `engine/`, `calls/`, `workspace/`, `projects/`, `editor/`, `qpi/` and `test-runner/` are its subsystems

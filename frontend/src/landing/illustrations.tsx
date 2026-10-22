@@ -1,6 +1,5 @@
-import React, { type CSSProperties } from "react";
-import { color, font } from "../ui/tokens";
-import { type Seg, SEG_COLOR } from "./content";
+import React, { type ReactNode } from "react";
+import { type Seg } from "./content";
 
 // seeded PRNG so dot fields are stable across renders.
 function makeRng(seed = 19) {
@@ -11,101 +10,52 @@ function makeRng(seed = 19) {
   };
 }
 
-// §6a — the isometric "quorum block" voxel stack (hero, right).
-export function VoxelStack() {
-  const hw = 32, hh = 16, vh = 40, cx = 120;
-  const palettes = [
-    { top: color.accent, left: color.accentMid, right: color.accentDeep },
-    { top: color.secondary, left: color.secondaryDeep, right: color.secondaryDk },
-    { top: color.accent, left: color.accentMid, right: color.accentDeep },
-  ];
-  const cubes = [0, 1, 2].map((i) => {
-    const cy = 160 - i * vh;
-    const p = palettes[i];
-    return {
-      top: `${cx},${cy} ${cx + hw},${cy + hh} ${cx},${cy + 2 * hh} ${cx - hw},${cy + hh}`,
-      left: `${cx - hw},${cy + hh} ${cx},${cy + 2 * hh} ${cx},${cy + 2 * hh + vh} ${cx - hw},${cy + hh + vh}`,
-      right: `${cx + hw},${cy + hh} ${cx},${cy + 2 * hh} ${cx},${cy + 2 * hh + vh} ${cx + hw},${cy + hh + vh}`,
-      p, dotX: cx - 3, dotY: cy + hh - 3,
-    };
-  });
-  const ringDots = [0, 1, 2, 3, 4, 5].map((i) => {
-    const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-    return { x: Math.round(120 + Math.cos(a) * 58) - 3, y: Math.round(64 + Math.sin(a) * 58 * 0.62) - 3, delay: (i * 0.4).toFixed(2) };
-  });
-
+// A dark terminal / editor window: the same chrome as the docs' CodeBlock.
+export function Window({ title, right, className = "", children }: { title: string; right?: ReactNode; className?: string; children: ReactNode }) {
   return (
-    <svg viewBox="0 0 240 320" width="290" height="387" fill="none" style={{ animation: "bob 6.5s ease-in-out infinite" }}>
-      <ellipse cx="120" cy="290" rx="80" ry="20" fill="#000000" opacity="0.35" />
-      {ringDots.map((r, i) => (
-        <rect key={i} x={r.x} y={r.y} width="6" height="6" fill={color.accent} style={{ animation: "nodePulse 2.8s ease-in-out infinite", animationDelay: `${r.delay}s` }} />
-      ))}
-      {cubes.map((c, i) => (
-        <g key={i}>
-          <polygon points={c.left} fill={c.p.left} stroke={color.void} strokeWidth="2" />
-          <polygon points={c.right} fill={c.p.right} stroke={color.void} strokeWidth="2" />
-          <polygon points={c.top} fill={c.p.top} stroke={color.void} strokeWidth="2" />
-          <rect x={c.dotX} y={c.dotY} width="6" height="6" fill={color.void} opacity="0.3" />
-        </g>
-      ))}
-      <rect x="108" y="20" width="22" height="22" rx="2" transform="rotate(45 119 31)" fill={color.accent} stroke={color.void} strokeWidth="2"
-        style={{ transformBox: "fill-box", transformOrigin: "center", animation: "twk 2.6s ease-in-out infinite" }} />
-    </svg>
+    <div className={`gborder rounded-2xl ${className}`}>
+      <div className="overflow-hidden rounded-2xl screen">
+        <div className="flex items-center gap-2 border-b border-white/[.07] px-4 py-2.5">
+          <span className="h-3 w-3 rounded-full bg-faint/70" />
+          <span className="h-3 w-3 rounded-full bg-amber/70" />
+          <span className="h-3 w-3 rounded-full bg-green/70" />
+          <span className="ml-2 font-mono text-xs text-faint">{title}</span>
+          {right && <span className="ml-auto font-mono text-[11px] text-mist">{right}</span>}
+        </div>
+        {children}
+      </div>
+    </div>
   );
 }
 
-// scattered animated dot field — decorative background for dark bands.
-export function DotField({ opacity = 0.7 }: { opacity?: number }) {
-  const rng = makeRng(19);
-  const cols = 11, rows = 6, W = 1280, H = 560;
-  const dots: { x: number; y: number; s: number; fill: string; delay: string }[] = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (rng() < 0.32) continue;
-      const big = rng() < 0.16;
-      dots.push({
-        x: Math.round(20 + (c * (W - 40)) / (cols - 1) + (rng() - 0.5) * 44),
-        y: Math.round(20 + (r * (H - 40)) / (rows - 1) + (rng() - 0.5) * 38),
-        s: big ? 7 : 4,
-        fill: rng() < 0.18 ? color.secondary : color.accent,
-        delay: (rng() * 4).toFixed(2),
-      });
-    }
-  }
-  return (
-    <svg viewBox="0 0 1280 560" preserveAspectRatio="xMidYMid slice" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", opacity }}>
-      {dots.map((d, i) => (
-        <rect key={i} x={d.x} y={d.y} width={d.s} height={d.s} fill={d.fill} style={{ animation: "nodePulse 5s ease-in-out infinite", animationDelay: `${d.delay}s` }} />
-      ))}
-    </svg>
-  );
-}
-
-// a grid of vote/execution cells — most accent (active), a few off — fading in (voteIn).
+// a grid of vote/execution cells — most lit (active), a few off — fading in (vote).
 export function VoteDots({ count, cols, seed = 7, dur = 2.3 }: { count: number; cols: number; seed?: number; dur?: number }) {
   const rng = makeRng(seed);
   const cells = Array.from({ length: count }, () => ({ on: rng() > 0.16, delay: (rng() * 2).toFixed(2) }));
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gap: 4 }}>
+    <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols},1fr)` }}>
       {cells.map((c, i) => (
-        <div key={i} style={{ aspectRatio: "1", background: c.on ? color.accent : color.dotOff, animation: `voteIn ${dur}s ease-in-out infinite`, animationDelay: `${c.delay}s` }} />
+        <div key={i} className={`aspect-square animate-vote rounded-[3px] ${c.on ? "bg-green" : "bg-white/10"}`} style={{ animationDuration: `${dur}s`, animationDelay: `${c.delay}s` }} />
       ))}
     </div>
   );
 }
 
+// segment role -> the docs' highlight.js classes, so the landing code uses the same palette as the docs.
+const SEG_CLASS: Record<Seg["r"], string> = { def: "", sec: "hljs-keyword", acc: "hljs-title", mut: "hljs-comment", str: "hljs-string" };
+
 // render colored code segments (optionally a prefix length for the typewriter).
 function renderSegs(segs: Seg[], shown: number, withCursor: boolean) {
   let rem = shown;
-  const parts: React.ReactNode[] = [];
+  const parts: ReactNode[] = [];
   segs.forEach((s, i) => {
     if (rem <= 0 && shown !== Infinity) return;
     const text = shown === Infinity ? s.t : s.t.slice(0, rem);
     if (shown !== Infinity) rem -= s.t.length;
-    parts.push(<span key={i} style={{ color: SEG_COLOR[s.r], fontWeight: s.b ? 700 : 400 }}>{text}</span>);
+    parts.push(<span key={i} className={`${SEG_CLASS[s.r]} ${s.b ? "font-semibold" : ""}`}>{text}</span>);
   });
   if (withCursor) {
-    parts.push(<span key="cur" style={{ display: "inline-block", width: 8, height: 15, background: color.accent, marginLeft: 2, transform: "translateY(2px)", animation: "qblink 1.1s steps(1) infinite" }} />);
+    parts.push(<span key="cur" className="ml-0.5 inline-block h-[15px] w-2 translate-y-[2px] animate-blink bg-green" />);
   }
   return parts;
 }
@@ -114,10 +64,10 @@ export function Segments({ segs }: { segs: Seg[] }) {
   return <>{renderSegs(segs, Infinity, false)}</>;
 }
 
-// §6b — auto-typing code: ~26ms/char, types the contract once and holds (blinking cursor, no reset). The
+// auto-typing code: ~26ms/char, types the contract once and holds (blinking cursor, no reset). The
 // viewport is a fixed height with overflow clipped; as the cursor types past the bottom we scroll to follow
 // it, so the box never resizes and earlier lines slide up out of view instead of growing the panel.
-export function Typewriter({ segs, style }: { segs: Seg[]; style?: CSSProperties }) {
+export function Typewriter({ segs, className = "" }: { segs: Seg[]; className?: string }) {
   const full = segs.reduce((n, s) => n + s.t.length, 0);
   const [n, setN] = React.useState(0);
   const ref = React.useRef<HTMLPreElement>(null);
@@ -176,5 +126,9 @@ export function Typewriter({ segs, style }: { segs: Seg[]; style?: CSSProperties
     }
   }, [n]);
 
-  return <pre ref={ref} style={{ margin: 0, fontFamily: font.mono, color: "#C9D1CB", ...style }}>{renderSegs(segs, n, true)}</pre>;
+  return (
+    <pre ref={ref} className={`m-0 whitespace-pre font-mono ${className}`}>
+      <code className="hljs">{renderSegs(segs, n, true)}</code>
+    </pre>
+  );
 }

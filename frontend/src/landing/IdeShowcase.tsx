@@ -1,7 +1,7 @@
-import { Chip, NotchBox } from "../ui/primitives";
-import { color, font } from "../ui/tokens";
-import { IDE_FIRST_LINE, IDE_LINE_COUNT, IDE_SEG, IDE_TREE } from "./content";
-import { Segments, VoteDots } from "./illustrations";
+import { Play } from "lucide-react";
+import { IDE_FIRST_LINE, IDE_LINE_COUNT, IDE_SEG, IDE_TREE, type TreeRow } from "./content";
+import { Segments, VoteDots, Window } from "./illustrations";
+import { Heading } from "./sections";
 
 // what the engine panel shows after one Inc and one Get on the starter contract.
 const STATS: [string, string, boolean][] = [
@@ -11,72 +11,61 @@ const STATS: [string, string, boolean][] = [
   ["state", "counter 1", false],
 ];
 
+const DOT: Record<TreeRow["kind"], string> = { dir: "bg-faint", contract: "bg-green", test: "bg-amber" };
+
 export function IdeShowcase() {
   return (
-    <section id="ide" style={{ background: color.void, color: color.textLight, padding: "64px 32px 70px", borderTop: `3px solid ${color.ink}`, borderBottom: `3px solid ${color.ink}`, backgroundImage: `radial-gradient(${color.accent}0d 1.5px, transparent 1.5px)`, backgroundSize: "9px 9px" }}>
-      <div style={{ maxWidth: 1140, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 38 }}>
-          <Chip tone="panel">
-            <span style={{ width: 8, height: 8, background: color.accent }} /> Browser-based IDE
-          </Chip>
-          <h2 style={{ fontFamily: font.display, margin: "18px 0 10px", fontSize: 42, fontWeight: 600, color: color.textLightHi }}>Write, test, deploy — all in your browser.</h2>
-          <p style={{ margin: "0 auto", maxWidth: 580, fontSize: 17, lineHeight: 1.6, color: color.textMutedDk }}>
-            A full IDE with the Qubic <span style={{ color: color.accent }}>contract engine built in</span>. Your contract compiles and runs in the page, with the same compiler and engine as the CLI. No installs, no setup.
-          </p>
-        </div>
+    <section id="ide" className="mx-auto max-w-7xl scroll-mt-20 px-4 py-16 sm:px-6 lg:py-20">
+      <Heading
+        chip="Browser IDE"
+        title="Write, test, deploy — all in your browser."
+        sub={<>A full IDE with the Qubic <span className="text-green-deep">contract engine built in</span>. Your contract compiles and runs in the page, with the same compiler and engine as the CLI. No installs, no setup.</>}
+      />
 
-        <NotchBox frame={color.accentDeep} face={color.panel} shadow={8} lift={false} style={{ filter: `drop-shadow(8px 8px 0 ${color.accentShadow})` }} faceStyle={{ overflow: "hidden" }}>
-          {/* title bar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "11px 16px", borderBottom: `3px solid ${color.hair}`, background: color.panelDeep }}>
-            <span style={{ width: 11, height: 11, background: color.accent }} />
-            <span style={{ width: 11, height: 11, background: color.swatchOff }} />
-            <span style={{ width: 11, height: 11, background: color.swatchOff }} />
-            <span style={{ fontFamily: font.mono, fontSize: 12, marginLeft: 8, color: color.textFaintDk }}>qinit ide — counter</span>
-            <span style={{ marginLeft: "auto", fontFamily: font.mono, fontSize: 11, color: color.textGhostDk }}>ide.qinit.dev</span>
+      <Window title="qinit ide — counter" right="ide.qinit.dev" className="mt-12">
+        {/* body: file tree | editor | engine panel */}
+        <div className="grid min-h-[340px] md:grid-cols-[180px_1fr_220px]">
+          <div className="hidden border-r border-white/[.07] py-4 font-mono text-[12.5px] text-mist md:block">
+            <div className="px-4 pb-2 text-[10.5px] uppercase tracking-[0.12em] text-faint">Explorer</div>
+            {IDE_TREE.map((t) => (
+              <div key={t.label} style={{ paddingLeft: t.pad }} className={`flex items-center gap-2 py-1 pr-4 ${t.active ? "bg-green/10 text-green" : ""}`}>
+                <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[t.kind]}`} />{t.label}
+              </div>
+            ))}
           </div>
 
-          {/* body: file tree | editor | engine panel */}
-          <div className="pix-ide-body" style={{ display: "grid", gridTemplateColumns: "188px 1fr 230px", minHeight: 340 }}>
-            <div className="pix-ide-tree" style={{ borderRight: `3px solid ${color.hair}`, padding: "16px 0", fontFamily: font.mono, fontSize: 12.5, color: color.textMutedDk }}>
-              <div style={{ padding: "0 16px 10px", color: color.textGhostDk, letterSpacing: ".1em", fontSize: 10.5 }}>EXPLORER</div>
-              {IDE_TREE.map((t) => (
-                <div key={t.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 16px", paddingLeft: t.pad, background: t.active ? `${color.accent}1a` : "transparent", color: t.color }}>
-                  <span style={{ width: 8, height: 8, flex: "none", background: t.dot }} />{t.label}
+          <div className="flex min-w-0 overflow-hidden font-mono text-[13px] leading-[1.85] md:border-r md:border-white/[.07]">
+            <div className="select-none px-3 py-4 text-right text-faint/60">
+              {Array.from({ length: IDE_LINE_COUNT }, (_, i) => <div key={i}>{IDE_FIRST_LINE + i}</div>)}
+            </div>
+            <pre className="m-0 min-w-0 overflow-x-auto py-4 pr-4"><code className="hljs"><Segments segs={IDE_SEG} /></code></pre>
+          </div>
+
+          <div className="hidden flex-col gap-4 p-4 md:flex">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-faint">Engine</div>
+            <VoteDots count={52} cols={13} seed={11} dur={2.2} />
+            <div className="font-mono text-[11.5px] leading-7 text-mist">
+              {STATS.map(([k, v, hot]) => (
+                <div key={k} className="flex justify-between">
+                  <span className="text-faint">{k}</span>
+                  <span className={hot ? "text-green" : ""}>{v}</span>
                 </div>
               ))}
             </div>
-
-            <div style={{ display: "flex", fontFamily: font.mono, fontSize: 13, lineHeight: 1.85, borderRight: `3px solid ${color.hair}`, overflow: "hidden" }}>
-              <div style={{ padding: "16px 12px 16px 16px", color: "#3D443E", textAlign: "right", userSelect: "none", background: "#0C0F0D" }}>
-                {Array.from({ length: IDE_LINE_COUNT }, (_, i) => <div key={i}>{IDE_FIRST_LINE + i}</div>)}
-              </div>
-              <pre style={{ margin: 0, padding: 16, color: "#C9D1CB", overflowX: "auto" }}><Segments segs={IDE_SEG} /></pre>
-            </div>
-
-            <div className="pix-ide-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ fontFamily: font.mono, fontSize: 10.5, letterSpacing: ".1em", color: color.textGhostDk }}>ENGINE</div>
-              <VoteDots count={52} cols={13} seed={11} dur={2.2} />
-              <div style={{ fontFamily: font.mono, fontSize: 11.5, color: color.textMutedDk, lineHeight: 1.7 }}>
-                {STATS.map(([k, v, hot]) => (
-                  <div key={k} style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: color.textGhostDk }}>{k}</span>
-                    <span style={{ color: hot ? color.accent : color.textMutedDk }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: "auto", background: color.accent, color: color.void, fontFamily: font.display, fontSize: 15, textAlign: "center", padding: 9, border: `3px solid ${color.ink}` }}>▶ Compile</div>
+            <div className="mt-auto inline-flex items-center justify-center gap-2 rounded-lg bg-green py-2 text-sm font-semibold text-ink2">
+              <Play className="h-3.5 w-3.5" fill="currentColor" /> Compile
             </div>
           </div>
+        </div>
 
-          {/* status bar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "8px 16px", borderTop: `3px solid ${color.hair}`, background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk }}>
-            <span style={{ color: color.accent }}>● ready</span>
-            <span>Counter.h</span>
-            <span>C++ (QPI)</span>
-            <span style={{ marginLeft: "auto" }}>✓ compiled in 0.6s</span>
-          </div>
-        </NotchBox>
-      </div>
+        {/* status bar */}
+        <div className="flex items-center gap-4 whitespace-nowrap border-t border-white/[.07] px-4 py-2 font-mono text-[11px] text-faint">
+          <span className="text-green">● ready</span>
+          <span className="hidden sm:inline">Counter.h</span>
+          <span className="hidden sm:inline">C++ (QPI)</span>
+          <span className="ml-auto">✓ compiled in 0.6s</span>
+        </div>
+      </Window>
     </section>
   );
 }
