@@ -13,14 +13,15 @@ export default {
         ink: v("ink"), // primary text + hairline source
         slate: v("slate"), // secondary text
         faint: v("faint"), // tertiary / captions
-        "green-deep": v("accent"), // accent on the page (links, signals)
+        accent: v("accent"), // brand violet on the page (links, icons, signals)
         // constant tokens (same in both themes)
         ink2: "#0F1411", // dark "screen" surface (terminal / code)
         graphite: "#161C18", // dark screen alt
         bone: "#E8EAE6", // primary text on dark screens
         mist: "#8A938C", // secondary text on dark screens
-        green: "#3FB950", // phosphor on dark screens / lattice
+        green: "#3FB950", // "ok" status on dark screens, as in the CLI
         amber: "#FFB347", // confirm signal — rationed
+        grape: "#A78BFA", // brand on dark screens (the CLI's accent)
       },
       fontFamily: {
         display: ["Space Grotesk", "Geist", "ui-sans-serif", "system-ui", "sans-serif"],

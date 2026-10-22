@@ -44,14 +44,14 @@ export function CodeBlock({ code, label, prompt }: { code: string; label?: strin
           {label && <span className="ml-2 font-mono text-xs text-faint">{label}</span>}
           <button
             onClick={copy}
-            className="ml-auto rounded-md border border-white/10 bg-white/[.04] px-2.5 py-1 font-mono text-xs text-mist transition hover:border-green/40 hover:text-bone"
+            className="ml-auto rounded-md border border-white/10 bg-white/[.04] px-2.5 py-1 font-mono text-xs text-mist transition hover:border-grape/40 hover:text-bone"
           >
             {copied ? "copied ✓" : "copy"}
           </button>
         </div>
         <pre className="overflow-x-auto px-5 py-4 font-mono text-[13px] leading-relaxed">
           <code className="hljs">
-            {prompt && <span className="select-none text-green">$ </span>}
+            {prompt && <span className="select-none text-grape">$ </span>}
             <span dangerouslySetInnerHTML={{ __html: html }} />
           </code>
         </pre>

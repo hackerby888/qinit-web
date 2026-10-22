@@ -23,9 +23,9 @@ const toneClass = (t?: Line["tone"]) => (t === "ok" ? "text-green" : t === "dim"
 function Row({ line, partial, cursor }: { line: Line; partial?: string; cursor?: boolean }) {
   return (
     <div className="whitespace-pre-wrap break-words">
-      {line.prompt && <span className="select-none text-green">$ </span>}
+      {line.prompt && <span className="select-none text-grape">$ </span>}
       <span className={toneClass(line.tone)}>{partial ?? line.text}</span>
-      {cursor && <span className="ml-0.5 inline-block h-[14px] w-[7px] translate-y-[2px] animate-blink bg-green align-middle" aria-hidden />}
+      {cursor && <span className="ml-0.5 inline-block h-[14px] w-[7px] translate-y-[2px] animate-blink bg-grape align-middle" aria-hidden />}
     </div>
   );
 }

@@ -11,7 +11,7 @@ const STATS: [string, string, boolean][] = [
   ["state", "counter 1", false],
 ];
 
-const DOT: Record<TreeRow["kind"], string> = { dir: "bg-faint", contract: "bg-green", test: "bg-amber" };
+const DOT: Record<TreeRow["kind"], string> = { dir: "bg-faint", contract: "bg-grape", test: "bg-amber" };
 
 export function IdeShowcase() {
   return (
@@ -19,7 +19,7 @@ export function IdeShowcase() {
       <Heading
         chip="Browser IDE"
         title="Write, test, deploy — all in your browser."
-        sub={<>A full IDE with the Qubic <span className="text-green-deep">contract engine built in</span>. Your contract compiles and runs in the page, with the same compiler and engine as the CLI. No installs, no setup.</>}
+        sub={<>A full IDE with the Qubic <span className="text-accent">contract engine built in</span>. Your contract compiles and runs in the page, with the same compiler and engine as the CLI. No installs, no setup.</>}
       />
 
       <Window title="qinit ide — counter" right="ide.qinit.dev" className="mt-12">
@@ -28,7 +28,7 @@ export function IdeShowcase() {
           <div className="hidden border-r border-white/[.07] py-4 font-mono text-[12.5px] text-mist md:block">
             <div className="px-4 pb-2 text-[10.5px] uppercase tracking-[0.12em] text-faint">Explorer</div>
             {IDE_TREE.map((t) => (
-              <div key={t.label} style={{ paddingLeft: t.pad }} className={`flex items-center gap-2 py-1 pr-4 ${t.active ? "bg-green/10 text-green" : ""}`}>
+              <div key={t.label} style={{ paddingLeft: t.pad }} className={`flex items-center gap-2 py-1 pr-4 ${t.active ? "bg-grape/10 text-grape" : ""}`}>
                 <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[t.kind]}`} />{t.label}
               </div>
             ))}
@@ -52,7 +52,7 @@ export function IdeShowcase() {
                 </div>
               ))}
             </div>
-            <div className="mt-auto inline-flex items-center justify-center gap-2 rounded-lg bg-green py-2 text-sm font-semibold text-ink2">
+            <div className="mt-auto inline-flex items-center justify-center gap-2 rounded-lg grad-bg py-2 text-sm font-semibold text-white">
               <Play className="h-3.5 w-3.5" fill="currentColor" /> Compile
             </div>
           </div>

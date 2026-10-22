@@ -22,7 +22,7 @@ function Wordmark() {
 
 function IconTile({ icon: Icon }: { icon: LucideIcon }) {
   return (
-    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-green-deep/10 text-green-deep">
+    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
       <Icon className="h-5 w-5" strokeWidth={1.8} />
     </span>
   );
@@ -31,7 +31,7 @@ function IconTile({ icon: Icon }: { icon: LucideIcon }) {
 function CheckRow({ children }: { children: ReactNode }) {
   return (
     <li className="flex items-start gap-2.5 text-[15px] text-slate">
-      <Check className="mt-0.5 h-4 w-4 shrink-0 text-green-deep" strokeWidth={2.5} />
+      <Check className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={2.5} />
       <span>{children}</span>
     </li>
   );
@@ -75,9 +75,9 @@ export function Hero() {
   return (
     <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 lg:grid-cols-[1.1fr_.9fr] lg:gap-16 lg:pb-24 lg:pt-24">
       <div className="animate-fadeup">
-        <span className="chip"><span className="h-2 w-2 rounded-full bg-green-deep" />Framework + browser IDE</span>
+        <span className="chip"><span className="h-2 w-2 rounded-full bg-accent" />Framework + browser IDE</span>
         <h1 className="mt-6 font-display text-4xl font-bold leading-[1.05] tracking-tight text-ink sm:text-5xl lg:text-6xl">
-          A <span className="text-green-deep">framework</span> and an <span className="text-green-deep">IDE</span> for Qubic smart contracts.
+          A <span className="grad-text">framework</span> and an <span className="grad-text">IDE</span> for Qubic smart contracts.
         </h1>
         <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate">
           qinit is two tools in one: a CLI that builds, tests, and deploys Qubic contracts from your terminal, and an IDE that does the same in your browser.
@@ -87,7 +87,7 @@ export function Hero() {
           <Link to="/docs" className="btn-ghost">Read the docs</Link>
         </div>
         <ul className="mt-8 flex flex-wrap gap-2">
-          {CHIPS.map((c) => <li key={c} className="chip"><span className="h-1.5 w-1.5 rounded-full bg-green-deep" />{c}</li>)}
+          {CHIPS.map((c) => <li key={c} className="chip"><span className="h-1.5 w-1.5 rounded-full bg-accent" />{c}</li>)}
         </ul>
       </div>
       <Terminal className="animate-fadeup [animation-delay:120ms]" />
@@ -112,7 +112,7 @@ export function Pillars() {
             <p className="mt-5 leading-relaxed text-slate">{p.body}</p>
             <ul className="mt-5 space-y-2.5">{p.points.map((pt) => <CheckRow key={pt}>{pt}</CheckRow>)}</ul>
             <div className="mt-6 inline-flex items-center gap-2 rounded-lg bg-ink2 px-3.5 py-2 font-mono text-[13px] text-bone">
-              <span className="text-green">{p.cmdmark}</span>{p.cmd}
+              <span className="text-grape">{p.cmdmark}</span>{p.cmd}
             </div>
           </article>
         ))}
@@ -128,7 +128,7 @@ export function NetworkStrip() {
         <div className="max-w-md">
           <h3 className="font-display text-xl font-bold text-bone">Built for how Qubic runs.</h3>
           <p className="mt-2 text-sm leading-relaxed text-mist">
-            On mainnet, <span className="text-green">676 computors</span> run every contract as native code, and a tick is final once a quorum of 451 agrees. qinit gives you that chain on your laptop, one tick at a time.
+            On mainnet, <span className="text-grape">676 computors</span> run every contract as native code, and a tick is final once a quorum of 451 agrees. qinit gives you that chain on your laptop, one tick at a time.
           </p>
         </div>
         <div className="w-full max-w-xl md:flex-1"><VoteDots count={40} cols={20} dur={2.4} /></div>
@@ -184,7 +184,7 @@ export function Path() {
         {PATH.map((p) => (
           <Link key={p.title} to={p.href} className="glass glass-hover block p-6">
             <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-green-deep/10 font-mono text-sm font-semibold text-green-deep">{p.step}</span>
+              <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent/10 font-mono text-sm font-semibold text-accent">{p.step}</span>
               <span className="font-display text-xl font-bold text-ink">{p.title}</span>
             </div>
             <div className="mt-4 inline-block rounded-md bg-snow px-2 py-1 font-mono text-xs text-ink">{p.cmd}</div>
@@ -201,10 +201,10 @@ export function Cta() {
     <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6">
       <div className="gborder rounded-2xl">
         <div className="relative overflow-hidden rounded-2xl screen px-6 py-16 text-center sm:py-20">
-          <div className="pointer-events-none absolute -top-48 left-1/2 h-80 w-[36rem] -translate-x-1/2 rounded-full bg-green/20 blur-3xl" />
+          <div className="pointer-events-none absolute -top-48 left-1/2 h-80 w-[36rem] -translate-x-1/2 rounded-full grad-bg opacity-20 blur-3xl" />
           <h2 className="relative font-display text-3xl font-bold tracking-tight text-bone sm:text-4xl">Ship your first Qubic contract today.</h2>
           <p className="relative mx-auto mt-4 max-w-md text-mist">Free, open source, and ready the moment you install it.</p>
-          <Link to="/docs" className="relative mt-8 inline-flex items-center gap-2 rounded-full bg-green px-6 py-3 text-sm font-semibold text-ink2 transition hover:bg-green/90">Install qinit</Link>
+          <Link to="/docs" className="relative mt-8 inline-flex items-center gap-2 rounded-full grad-bg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90">Install qinit</Link>
         </div>
       </div>
     </section>

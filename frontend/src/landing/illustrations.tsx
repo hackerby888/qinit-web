@@ -28,14 +28,25 @@ export function Window({ title, right, className = "", children }: { title: stri
   );
 }
 
-// a grid of vote/execution cells — most lit (active), a few off — fading in (vote).
+// The CLI's default gradient. Vote grids always sit on a dark surface, so the dark-theme ends apply in both themes.
+const GRAD = ["#7c5cff", "#22d3ee"];
+function lerp(from: string, to: string, t: number): string {
+  const ch = (i: number) => Math.round(parseInt(from.slice(i, i + 2), 16) * (1 - t) + parseInt(to.slice(i, i + 2), 16) * t).toString(16).padStart(2, "0");
+  return `#${ch(1)}${ch(3)}${ch(5)}`;
+}
+
+// a grid of vote/execution cells — most lit (active, the gradient sweeping left to right), a few off — fading in (vote).
 export function VoteDots({ count, cols, seed = 7, dur = 2.3 }: { count: number; cols: number; seed?: number; dur?: number }) {
   const rng = makeRng(seed);
   const cells = Array.from({ length: count }, () => ({ on: rng() > 0.16, delay: (rng() * 2).toFixed(2) }));
   return (
     <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${cols},1fr)` }}>
       {cells.map((c, i) => (
-        <div key={i} className={`aspect-square animate-vote rounded-[3px] ${c.on ? "bg-green" : "bg-white/10"}`} style={{ animationDuration: `${dur}s`, animationDelay: `${c.delay}s` }} />
+        <div
+          key={i}
+          className={`aspect-square animate-vote rounded-[3px] ${c.on ? "" : "bg-white/10"}`}
+          style={{ background: c.on ? lerp(GRAD[0], GRAD[1], (i % cols) / (cols - 1)) : undefined, animationDuration: `${dur}s`, animationDelay: `${c.delay}s` }}
+        />
       ))}
     </div>
   );
@@ -55,7 +66,7 @@ function renderSegs(segs: Seg[], shown: number, withCursor: boolean) {
     parts.push(<span key={i} className={`${SEG_CLASS[s.r]} ${s.b ? "font-semibold" : ""}`}>{text}</span>);
   });
   if (withCursor) {
-    parts.push(<span key="cur" className="ml-0.5 inline-block h-[15px] w-2 translate-y-[2px] animate-blink bg-green" />);
+    parts.push(<span key="cur" className="ml-0.5 inline-block h-[15px] w-2 translate-y-[2px] animate-blink bg-grape" />);
   }
   return parts;
 }
