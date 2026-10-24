@@ -6,6 +6,8 @@ order: 1
 
 Qinit is one CLI for building, testing, deploying, and inspecting **Qubic contracts**.
 
+> **`qinit deploy` targets your local node only.** Mainnet and public testnets run contracts compiled into Qubic Core; going live means [shipping to Qubic Core](/docs/core-integration).
+
 ## Install
 
 Linux and macOS:

@@ -25,6 +25,8 @@ qinit gen
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
+The class is named after `contractName`, the name the contract deploys under, not after the struct in the header.
+
 `qinit gen` writes:
 
 ```text

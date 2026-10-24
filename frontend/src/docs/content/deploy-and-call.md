@@ -14,6 +14,8 @@ qinit ls
 
 `build` writes Wasm and IDL artifacts under `dist/`. `deploy` builds again when needed, deploys dependencies first, and checks that the live slot contains the expected code hash.
 
+> Local node only. Mainnet and public testnets run contracts compiled into Qubic Core; see [Ship to Qubic Core](/docs/core-integration).
+
 ```text
 [deployed · 1]
 ╭────────────────────────────────────────────────────────────────────╮

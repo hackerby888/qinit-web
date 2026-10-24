@@ -58,6 +58,8 @@ The project root also has `qinit.json`, so commands need no repeated flags:
 }
 ```
 
+`contractName` is the name the contract deploys under. It defaults to the struct and may differ from it; the struct is always read from the header.
+
 ## What each part does
 
 - `StateData` is persistent contract state.

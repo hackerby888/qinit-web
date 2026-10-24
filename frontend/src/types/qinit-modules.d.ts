@@ -338,6 +338,7 @@ declare module "@qinit/compiler/analyzer" {
     idl?: import("@qinit/compiler/browser").ContractIdl;
   };
   export function detectContractName(source: string): string | undefined;
+  export function declaredStateType(source: string): string | undefined;
   // the analyzer codes core's native verifier refuses; a browser fails a build on them instead.
   export const VERIFIER_RULES: ReadonlySet<string>;
   export function verifierViolations(diagnostics: readonly SourceAnalysisDiagnostic[], source: string): SourceAnalysisDiagnostic[];

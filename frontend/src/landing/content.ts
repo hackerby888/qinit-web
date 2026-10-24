@@ -42,7 +42,7 @@ export const PILLARS: Pillar[] = [
 
 export type Feature = { icon: LucideIcon; title: string; body: string };
 export const FEATURES: Feature[] = [
-  { icon: Rocket, title: "One-command deploy", body: "qinit deploy builds the contract, deploys what it depends on first, and verifies the live code hash." },
+  { icon: Rocket, title: "One-command deploy", body: "qinit deploy builds the contract, deploys it and its dependencies to your local node, and verifies the live code hash." },
   { icon: GitCompareArrows, title: "Two compilers, one source", body: "A built-in compiler for instant builds, and Clang to cross-check before you ship. Same C++ header." },
   { icon: Cpu, title: "In-process engine", body: "A Qubic node simulator inside the same binary. Nothing to download, nothing to configure." },
   { icon: RefreshCw, title: "Hot reload", body: "qinit dev redeploys on every save and keeps the state. Tight feedback loops." },

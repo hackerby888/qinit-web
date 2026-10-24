@@ -17,6 +17,15 @@ const build = async (source: string, name = "Counter", callees: Array<{ name: st
 const inInc = (line: string) => COUNTER.replace("        state.mut().counter += 1;", `${line}\n        state.mut().counter += 1;`);
 const inState = (line: string) => COUNTER.replace("        uint64 counter;", `        uint64 counter;\n${line}`);
 
+// a copy of a core header keeps its struct; the file's stem is what the IDE deploys it as.
+test("a file whose stem differs from its struct builds and its IDL carries the stem", async () => {
+  const built = await build(COUNTER.replaceAll("Counter", "QUTIL"), "MyQutil");
+
+  expect(built.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+  expect(built.ok).toBe(true);
+  expect(built.idl?.name).toBe("MyQutil");
+});
+
 test("the starter builds, with its IDL and the layout facts a redeploy check reads", async () => {
   const built = await build(COUNTER);
 

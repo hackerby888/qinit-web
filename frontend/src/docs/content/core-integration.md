@@ -161,3 +161,20 @@ On a fresh checkout the branch is `qinit/mytoken-update`.
 - A **bugfix** that leaves the state alone can ship at any time.
 - A **state change** needs `OldStateData` and `MIGRATE` in the contract, and a `contractStateChangeInfos` entry in `contract_def.h`. See [Migrate state](/docs/migrate-state).
 - **New features** need the computors' approval again, but no second IPO.
+
+## Develop a live system contract
+
+A contract that is already part of core (QUTIL, QX, …) is developed as an ordinary project. Its struct and every name prefixed with it stay as core has them; only the deploy name is yours:
+
+```bash
+qinit new MyQutil
+cp $CORE/src/contracts/QUtil.h MyQutil/contracts/MyQutil.h
+cd MyQutil
+qinit build
+```
+
+The header still declares `struct QUTIL`, so core's verifier accepts every `QUTIL_*` name, and the build applies the rules core's own contracts build under. `build`, `test`, `dev`, `deploy`, `call` and `gtest` work as for any project. The contract deploys as `MyQutil` into a free slot on the simulator and on a core-lite node alike; the native QUTIL stays at its own slot, since a node embeds its system contracts as compiled code.
+
+Another contract in the same project that calls `QUTIL::` binds to your header, not to the native one. Core's own contracts keep calling the native slot.
+
+`qinit gtest` runs core's own suite against your header once `test/contract_qutil.cpp` is copied to `tests/MyQutil.test.cpp`. To ship the change back, run `qinit integrate` from the project: it recognises the registered contract and opens the `qinit/qutil-update` branch, or copy the header into your core checkout and open the pull request from there.

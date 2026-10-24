@@ -56,7 +56,7 @@ Most commands run inside a project and read `qinit.json` from the current direct
 | Field | Meaning |
 |---|---|
 | `contract` | The contract header, for example `contracts/Counter.h`. |
-| `contractName` | The contract's name. It must match the struct in the header. |
+| `contractName` | The name the contract deploys under. Defaults to the struct in the header and may differ from it. |
 | `slot` | The slot to deploy at. Leave it out and Qinit picks one. |
 | `rpc` | The node's RPC URL. |
 | `coreDir` | A Qubic Core checkout to take the headers from. |
@@ -67,7 +67,7 @@ When a value can come from more than one place, Qinit takes the first one that i
 | Setting | Order |
 |---|---|
 | Contract file | the file on the command line or `--contract`, then `contract` in `qinit.json` |
-| Contract name | always the struct the header declares; `--contract-name` and `contractName` must agree with it. At most 31 characters. |
+| Contract name | `--contract-name`, then `contractName` in `qinit.json`, then the struct the header declares. An identifier of at most 31 characters. The struct itself is always read from the header; `--state-type` must match it. |
 | Slot | `--slot`, then `slot` in `qinit.json`, then a free slot Qinit picks |
 | Node | `--rpc`, then `rpc` in `qinit.json`, then `http://127.0.0.1:41841` |
 | Core headers | `--core-dir`, then `coreDir` in `qinit.json`, then the `QINIT_CORE` environment variable, then the headers `qinit setup` cached |
@@ -88,7 +88,7 @@ These flags mean the same on every command that takes them. The command tables b
 | `--rpc <url>` | The node to talk to. |
 | `--seed <seed>` | The seed that signs transactions: 55 lowercase letters. |
 | `--contract <file.h>` | The contract header. The same as giving the file as an argument. |
-| `--contract-name <name>` | The contract name. It must match the struct in the header. |
+| `--contract-name <name>` | The name the contract deploys under. Defaults to the struct in the header. |
 | `--slot <n>` | The contract's slot. |
 | `--core-dir <path>` | A Qubic Core checkout to take the headers from. |
 | `--callee <Name>=<header>[@<slot>]` | A contract this one calls, when its header is outside the project. Repeatable. See [Call another contract](/docs/inter-contract). |

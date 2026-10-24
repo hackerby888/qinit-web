@@ -2,7 +2,7 @@
 // then apply the rules `qinit build` applies. Kept apart from the worker's message plumbing so a test can run it.
 import { compileContractWithTypeScript as compileContract } from "@qinit/compiler/browser";
 import type { ContractIdl, CompileDiagnostic } from "@qinit/compiler/browser";
-import { analyzeContract, detectContractName, verifierViolations } from "@qinit/compiler/analyzer";
+import { analyzeContract, declaredStateType, detectContractName, verifierViolations } from "@qinit/compiler/analyzer";
 import { buildGateDiagnostics } from "@qinit/build/compile/build-rules";
 import { initK12, k12Sync } from "@qinit/core";
 import type { CompileDiagnostic as IdeDiagnostic } from "./result";
@@ -31,7 +31,7 @@ function buildRefusals(req: WorkerCompileRequest, callees: ContractIdl[], callee
 
   const { diagnostics } = analyzeContract({
     source: req.source,
-    contractName: req.name,
+    contractName: declaredStateType(req.source) ?? req.name,
     slot: req.slot,
     callees: callees.length ? callees : undefined,
     calleeSources: calleeSources.length ? calleeSources : undefined,
@@ -67,9 +67,10 @@ export async function buildContract(req: WorkerCompileRequest): Promise<{ res: W
     const callees: ContractIdl[] = [];
     const calleeSources: Array<{ name: string; source: string; slot: number }> = [];
     for (const c of [...(req.callees ?? [])].sort((a, b) => a.slot - b.slot)) {
+      // the compiler goes by the struct the header declares; the file's stem is only what the IDE calls it
       const cr = await compileContract({
         source: c.source,
-        contractName: c.name,
+        contractName: declaredStateType(c.source) ?? c.name,
         slot: c.slot,
         arenaSizeBytes: ARENA_SIZE_BYTES,
         callees: callees.length ? callees : undefined,
@@ -82,12 +83,12 @@ export async function buildContract(req: WorkerCompileRequest): Promise<{ res: W
         return fail({ error: `callee ${c.name} did not produce a deployable artifact` });
       }
       callees.push(cr.idl);
-      calleeSources.push({ name: c.name, source: c.source, slot: c.slot });
+      calleeSources.push({ name: declaredStateType(c.source) ?? c.name, source: c.source, slot: c.slot });
     }
 
     const r = await compileContract({
       source: req.source,
-      contractName: req.name,
+      contractName: declaredStateType(req.source) ?? req.name,
       slot: req.slot,
       arenaSizeBytes: ARENA_SIZE_BYTES,
       callees: callees.length ? callees : undefined,
@@ -102,7 +103,8 @@ export async function buildContract(req: WorkerCompileRequest): Promise<{ res: W
       return fail({ diagnostics, error: "compiler did not produce IDL" });
     }
 
-    const idl = toContractIdlView(r.idl);
+    // the IDL carries the name the IDE deploys under, as `qinit build` names it after the project
+    const idl = toContractIdlView({ ...r.idl, name: req.name });
 
     await initK12();
     const hash = toHex(k12Sync(r.wasm));
