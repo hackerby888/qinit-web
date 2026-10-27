@@ -42,7 +42,7 @@ qinit deploy
 ```text
 [deploy failed]
 ╭──────────────────────────────────────────────────────────────────────────────╮
-│ state layout changed — was 8 B (uint64), now 16 B (uint64, uint64) — and     │
+│ state layout changed — was 8 B, now 16 B (added 1: uint64 at the end) — and  │
 │ Counter has no MIGRATE handler, so the old state bytes would be              │
 │ reinterpreted under the new offsets. Add a MIGRATE handler, restart the node │
 │  for a clean slot, or pass --allow-state-carryover to keep the bytes as they │
