@@ -647,8 +647,8 @@ With no arguments, `call` opens a guided picker: contract, entry, input. It then
 |---|---|
 | `--fn` | Call a function. It reads state and needs no signature. |
 | `--proc` | Call a procedure. Qinit signs a transaction, sends it and waits until it is processed. |
-| `--in "<values>"` | The input values, each with its type: `"0id, 100uint64"`. The type is optional when Qinit knows the entry's schema. |
-| `--args <json>` | The input as JSON, instead of `--in`. |
+| `--in "<values>"` | The input values, each with its type: `"0id, 100uint64"`. An asset name is the name then `asset` (`MYTOKasset`, packed into the `uint64` QX expects). The type is optional when Qinit knows the entry's schema. |
+| `--args <json>` | The input as JSON, instead of `--in`. An asset name is written `"asset:MYTOK"`. |
 | `--out <type>` | Read the output as this type. Needed only to read it as another type of the same size, or when Qinit has no schema for the contract. |
 | `--amount <n>` | QU to send with a procedure call, as its invocation reward. |
 | `--tick <n>` | The tick the transaction targets. Default: the current tick plus 3. |
