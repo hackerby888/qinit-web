@@ -26,6 +26,17 @@ qinit ls
 
 `ls` shows every deployed contract with its slot, entry counts, version, and fee reserve. Redeploying the same contract name reuses its slot and bumps `ver`.
 
+The slot is reused only by the project that deployed it. A second project with the same `contractName` is refused before anything is uploaded, so it cannot inherit the first one's state:
+
+```text
+[deploy failed]
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ slot 31 already runs a 'Counter' this project never deployed (no entry in    │
+│ qinit.idl.json) — another project with the same contractName owns it; rename │
+│  contractName in qinit.json, or pass --slot 31 to take the slot over         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+```
+
 ## Interactive calls
 
 ```bash

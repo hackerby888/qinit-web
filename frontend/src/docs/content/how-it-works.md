@@ -40,7 +40,7 @@ On your local node a contract is deployed as Wasm into a slot, which is what mak
 
 ## What deploy proves
 
-`qinit deploy` resolves inter-contract dependencies, assigns slots, builds Wasm, uploads it, activates it, then checks the live code hash. A matching contract name reuses its existing slot.
+`qinit deploy` resolves inter-contract dependencies, assigns slots, builds Wasm, uploads it, activates it, then checks the live code hash. A matching contract name reuses its existing slot when this project deployed it; a same-named contract from another project is refused.
 
 On the first deployment, state starts at zero and `INITIALIZE` runs. On a redeploy, `INITIALIZE` does not run again and the state is kept. If `StateData` changed shape, the deploy is refused until the contract defines `OldStateData` and `MIGRATE`. See [Migrate state](/docs/migrate-state).
 

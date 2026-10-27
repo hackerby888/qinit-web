@@ -48,7 +48,7 @@ Both choices are saved. To switch for one command only, pass `--compiler` or `--
 ## The Qubic model
 
 - Contracts are QPI C++ headers. Qinit compiles them to Wasm for your local node.
-- A contract lives at a numbered **slot**. Redeploying the same name reuses its slot.
+- A contract lives at a numbered **slot**. Redeploying the same name from the same project reuses its slot.
 - A **function** reads immediately. A **procedure** is a signed transaction processed at a future tick.
 - Inputs use QPI types such as `uint64`, `sint64`, `id`, `bit`, and `m256i`.
 
