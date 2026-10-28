@@ -83,14 +83,13 @@ const SP_LABEL: Record<number, string> = {
   9: "POST_INCOMING_TRANSFER", 10: "SET_SHAREHOLDER_PROPOSAL", 11: "SET_SHAREHOLDER_VOTES",
 };
 
-function stepLabel(kind: number, entry: number): string {
+// `name` is the registered entry's name when the trace decoder resolved it, e.g. `function #1 (Get)`
+function stepLabel(kind: number, entry: number, name?: string): string {
   if (kind === 2) {
     return SP_LABEL[entry] ?? `sysproc #${entry}`;
   }
-  if (kind === 0) {
-    return `function #${entry}`;
-  }
-  return `procedure #${entry}`;
+  const numbered = kind === 0 ? `function #${entry}` : `procedure #${entry}`;
+  return name ? `${numbered} (${name})` : numbered;
 }
 
 const formatLog = (log: Awaited<ReturnType<typeof describeTrace>>["logs"][number]) => {
@@ -424,7 +423,7 @@ export class IdeEngineCore {
       contract: src.name,
       kind: entry.kind,
       entry: entry.entry,
-      label: stepLabel(entry.kind, entry.entry),
+      label: stepLabel(entry.kind, entry.entry, view.entryName),
       ok: entry.ok,
       caller: view.caller,
       in: view.inDecoded,

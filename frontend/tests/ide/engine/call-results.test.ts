@@ -68,7 +68,7 @@ test("every call keeps its own trace past the 64th", async () => {
 
   const read = await engine.callFunctionDetailed(counter.slot, "1", counter.idl.functions["1"], {});
   expect(read.output).toBe(70n);
-  expect(read.detail?.steps.map((step) => step.label)).toEqual(["function #1"]);
+  expect(read.detail?.steps.map((step) => step.label)).toEqual(["function #1 (Get)"]);
 });
 
 // W5: steps arrive in completion order, callee first, and the summary took the first procedure frame.
@@ -88,7 +88,7 @@ test("a procedure that calls another contract is summarised by its own frame, th
   expect(detail.caller).toBe(caller.id);
   expect(detail.diff).toEqual([{ label: "bumps", text: "0 → 1" }]);
   expect(detail.hostCalls.some((line) => line.startsWith("invokeProcedure"))).toBe(true);
-  expect(detail.callees.map((callee) => `${callee.contract}.${callee.label}`)).toEqual(["Counter.procedure #1"]);
+  expect(detail.callees.map((callee) => `${callee.contract}.${callee.label}`)).toEqual(["Counter.procedure #1 (Inc)"]);
   expect(detail.callees[0].diff).toEqual([{ label: "counter", text: "0 → 1" }]);
 });
 
