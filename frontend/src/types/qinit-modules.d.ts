@@ -119,6 +119,7 @@ declare module "@qinit/inspector" {
   }
   export function mergePrints(frames: readonly { contract: string; cheats: readonly DecodedCheat[] }[]): DecodedCheat[];
   export interface DecodedTrace {
+    entryName?: string;
     inDecoded: string;
     outDecoded: string;
     caller: string;
