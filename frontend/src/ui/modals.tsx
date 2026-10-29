@@ -73,7 +73,7 @@ export function NeoBtn({ children, onClick, title, disabled = false, active = fa
       title={title}
       disabled={disabled}
       style={{
-        border: `1px solid ${active ? accent : lit ? color.action : color.hair2}`,
+        border: `1px solid ${active ? accent : lit ? color.textMutedDk : color.hair2}`,
         background: active ? accent : color.void,
         color: active ? color.void : disabled ? color.textFaintDk : lit ? color.textLightHi : color.textLight,
         fontFamily: font.mono,
