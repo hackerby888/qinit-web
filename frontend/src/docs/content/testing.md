@@ -96,4 +96,8 @@ qinit test
 
 `qinit test` starts its own node, deploys the contract, and generates the typed client the test imports into `tests/.qinit/`. That folder is rewritten on every run, so the client always matches the contract.
 
+One run is one deployment. Every spec file shares the contract's state and the node's tick, so a spec that needs a known starting point sets it up in a `beforeAll` rather than assuming a fresh contract. The whole `bun test` output is kept in `tests/.qinit/last-run.log`; the screen shows the last lines of it.
+
+A procedure call returns more than a confirmation. `included` says the transaction was in its tick, which is also true for one whose body never ran, such as a call from an unfunded seed or to a contract that ran out of fees. `executed` says the node's trace holds the dispatch, so the body ran; `output` and `trap` come from that same trace. A spec that spawns `qinit` passes `env: process.env`, or the child starts as Bun instead.
+
 It uses your saved runtime and compiler. Change them with `qinit runtime` and `qinit compiler`, or pass `--runtime core` or `--compiler clang` for one run.
