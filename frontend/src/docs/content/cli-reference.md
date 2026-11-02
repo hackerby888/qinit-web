@@ -481,6 +481,7 @@ qinit dev [<file.h>]
 
 | Flag | What it does |
 |---|---|
+| `--allow-state-carryover` | Redeploy over a changed `StateData` layout without a `MIGRATE` handler, keeping the old state bytes. |
 | `--contract`, `--contract-name`, `--slot`, `--core-dir`, `--rpc`, `--seed`, `--callee`, `--compiler`, `--skip-verify` | See [Shared options](#shared-options). |
 
 See [Hot reload](/docs/hot-reload).
@@ -924,6 +925,7 @@ qinit test [<file.h>]
 | `--node-mode <n>` | Core: the node mode. |
 | `--peers <addr>` | Core: a peer address. |
 | `--wait <s>` | Core: how long to wait for the node to start, in seconds. |
+| `--allow-state-carryover` | Redeploy over a changed `StateData` layout without a `MIGRATE` handler, keeping the old state bytes. |
 | `--contract`, `--contract-name`, `--slot`, `--core-dir`, `--rpc`, `--seed`, `--callee`, `--compiler`, `--runtime`, `--skip-verify` | See [Shared options](#shared-options). |
 
 ```bash
