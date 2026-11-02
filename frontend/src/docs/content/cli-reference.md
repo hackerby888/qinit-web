@@ -1016,6 +1016,7 @@ qinit system [ls | add <name…> | rm <name…>]
 | `--state <name>=<path>` | With `add`: start a system contract from a raw state file. Repeatable. |
 | `--force` | With `rm`: remove a system contract even when a deployed contract calls it. |
 | `--compiler <clang\|typescript>` | The compiler the simulator builds system contracts with. |
+| `--core-dir <path>` | A Qubic Core checkout to take the system contracts from. |
 | `--rpc <url>` | The node to talk to. |
 
 ```bash
