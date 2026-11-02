@@ -48,6 +48,8 @@ Drop `--filter` to run every test in the file.
 
 The contract is built with your saved compiler. Change it for good with `qinit compiler clang`, or for one run with `--compiler clang`. The C++ test harness itself is always built with Clang.
 
+The test file is compiled for wasm32: `long`, `size_t` and pointers are 4 bytes there and 8 on core, so hold amounts, ticks and indices in `sint64`/`uint64`, never in `long`.
+
 ## RPC workflow: `qinit test`
 
 Use this for deployment and generated-client behavior: the test talks to a node the way an application does.
