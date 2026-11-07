@@ -209,6 +209,7 @@ declare module "@qinit/core" {
   export function k12Sync(bytes: Uint8Array): Uint8Array;
   export function describeContractError(message: string): string;
   export function assertLine(message: string): number | undefined;
+  export const DEFAULT_WASM_SLOT_LAYOUT: Readonly<{ slotBase: number; slotCount: number }>;
 }
 
 declare module "@qinit/compiler/browser" {

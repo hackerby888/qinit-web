@@ -2,8 +2,11 @@
 // lower-index rule for callees, and the callee sources a build needs.
 import type { ContractIdlView as ContractIdl } from "../calls/idl-view";
 import { contractFile } from "../workspace/workspace";
+import { DEFAULT_WASM_SLOT_LAYOUT } from "@qinit/core";
 
-export const SLOT_BASE = 28; // first dynamic slot; each distinct contract gets the next free one
+// first dynamic slot; each distinct contract gets the next free one. The in-page node runs on the same default
+// layout, so the shell's slot picks and the engine's window agree.
+export const SLOT_BASE = DEFAULT_WASM_SLOT_LAYOUT.slotBase;
 
 export type DeployedContract = { name: string; slot: number; address: string; idl: ContractIdl; source: string; wasm: Uint8Array; calls?: string[] };
 
