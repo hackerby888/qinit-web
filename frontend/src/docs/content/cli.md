@@ -54,6 +54,7 @@ qinit compiler clang
 
 ```bash
 qinit node status
+qinit node logs
 qinit tick
 qinit ls
 qinit explorer

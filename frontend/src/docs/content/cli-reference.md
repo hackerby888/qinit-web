@@ -201,7 +201,7 @@ re-run to confirm: qinit uninstall --yes
 
 ## Node
 
-`qinit node` manages the local node. It has four subcommands; with none, it runs `status`. All four take these flags and produce **JSON**:
+`qinit node` manages the local node. It has five subcommands; with none, it runs `status`. All five take these flags and produce **JSON**:
 
 | Flag | What it does |
 |---|---|
@@ -258,7 +258,7 @@ See [Control the local chain](/docs/local-chain).
 
 ### qinit node status
 
-Shows whether the node is up, and its tick and epoch. Exits with `1` when the node is down.
+Shows whether the node is up, which runtime it is, where it listens, and its tick and epoch. `pid` and `log` are the process and log file of a node started on this machine. Exits with `1` when the node is down; the `rpc`, `pid` and `log` rows still print, so a node that died can be looked into.
 
 ```bash
 qinit node status
@@ -266,16 +266,24 @@ qinit node status
 
 ```text
 [node up ✓]
-╭────────────────────────────────────────────────────╮
-│ ✓ rpc: up, ticking                                 │
-│                                                    │
-│ tick            2705                               │
-│ epoch           1                                  │
-│ epoch last tick 5401  (2696 left)                  │
-│ contract slots  0 armed / 48                       │
-│ synced          headers local · node qinit-v0.0.52 │
-╰────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────╮
+│ ✓ rpc: up, ticking                                  │
+│                                                     │
+│ runtime         simulator (in-process)              │
+│ rpc             http://127.0.0.1:41841              │
+│ pid             157776                              │
+│ log             /home/you/.cache/qinit/run/node.log │
+│ tick            2705                                │
+│ epoch           1                                   │
+│ epoch last tick 5401  (2696 left)                   │
+│ contract slots  0 armed / 48                        │
+│ synced          headers local · node qinit-v0.0.52  │
+╰─────────────────────────────────────────────────────╯
 ```
+
+| Flag | What it does |
+|---|---|
+| `--scratch-dir <path>` | Report the pid and log of the node that uses this data directory. Default: the node started for this RPC URL. |
 
 ### qinit node stop
 
@@ -303,6 +311,28 @@ Downloads the node binary for the Core runtime and caches it, without starting i
 ```bash
 qinit node get [--ref <tag>]
 ```
+
+### qinit node logs
+
+Prints the end of the node's log file as plain text. The path is the `log` row of `qinit node status`.
+
+```bash
+qinit node logs --lines 3
+```
+
+```text
+qinit simulator: rpc http://127.0.0.1:41841 · peer 127.0.0.1:31841
+[debug] tick 2702 tick: tick 2702 begin · 0 tx
+[debug] tick 2702 tick: tick 2702 end
+```
+
+| Flag | What it does |
+|---|---|
+| `--lines <n>` | How many of the last lines to print. Default: 50. |
+| `--follow` | Keep printing as the node writes. Stop with Ctrl-C. Not available with `--json`. |
+| `--scratch-dir <path>` | Read the log of the node that uses this data directory. Default: the node started for this RPC URL. |
+
+With `--json`, the lines come back as `logLines` next to the `log` path.
 
 ### qinit tick
 
