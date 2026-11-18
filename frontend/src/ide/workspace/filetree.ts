@@ -152,8 +152,9 @@ export function occupiedNames(paths: string[]): Set<string> {
   return taken;
 }
 
-// Return `path` if free, else the next free "<stem>-2", "<stem>-3"… variant (suffix before the extension for
-// files, at the end for folders). Used to keep both items when a drag-move would collide.
+// Return `path` if free, else the next free "<stem>_2", "<stem>_3"… variant (suffix before the extension for
+// files, at the end for folders). Used to keep both items when a drag-move would collide. An underscore, because
+// a contract is named after its file and the name has to be a C++ identifier.
 export function freeName(taken: Set<string>, path: string, isDir: boolean): string {
   if (!taken.has(path)) {
     return path;
@@ -174,7 +175,7 @@ export function freeName(taken: Set<string>, path: string, isDir: boolean): stri
   }
 
   for (let i = 2; ; i++) {
-    const candidate = `${dir}${stem}-${i}${ext}`;
+    const candidate = `${dir}${stem}_${i}${ext}`;
     if (!taken.has(candidate)) {
       return candidate;
     }

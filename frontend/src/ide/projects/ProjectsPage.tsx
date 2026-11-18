@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
 import { QMark, KEYFRAMES } from "../../ui/primitives";
 import { Card, ConfirmModal, NeoBtn } from "../../ui/modals";
 import { SplashScreen, type SplashStep } from "../../ui/Splash";
@@ -424,15 +425,7 @@ export default function Projects() {
 
 // Sign-in modal — one entry point that fans out to the OAuth providers. Backdrop / Escape close it.
 function LoginModal({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   return (
     <div

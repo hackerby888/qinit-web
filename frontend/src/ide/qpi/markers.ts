@@ -79,7 +79,11 @@ export function attachQpiDiagnostics(monaco: typeof Monaco, editor: Monaco.edito
     if (timer) {
       clearTimeout(timer);
     }
-    timer = setTimeout(() => runQpiDiagnostics(monaco, model), 200);
+    timer = setTimeout(() => {
+      if (!model.isDisposed()) {
+        runQpiDiagnostics(monaco, model);
+      }
+    }, 200);
   };
 
   const onContent = editor.onDidChangeModelContent(schedule);

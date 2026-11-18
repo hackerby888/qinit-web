@@ -17,8 +17,8 @@ test("imported file names are cleaned, and a name already taken gets a free one"
   expect(cleaned.files).toEqual([
     file("etc/passwd.h", "a"),
     file("Counter.h", "d"),
-    file("Counter-2.h", "e"),
-    file("lib/Counter-3.h", "f"),
+    file("Counter_2.h", "e"),
+    file("lib/Counter_3.h", "f"),
     file("notes.md", "g"),
   ]);
   expect(cleaned.active).toBe("Counter.h");

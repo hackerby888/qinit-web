@@ -67,13 +67,21 @@ describe("occupiedNames / freeName", () => {
   });
 
   test("freeName suffixes a colliding file before the extension, in the same folder", () => {
-    const taken = occupiedNames(["lib/a.h", "lib/a-2.h"]);
-    expect(freeName(taken, "lib/a.h", false)).toBe("lib/a-3.h");
+    const taken = occupiedNames(["lib/a.h", "lib/a_2.h"]);
+    expect(freeName(taken, "lib/a.h", false)).toBe("lib/a_3.h");
   });
 
   test("freeName suffixes a colliding folder at the end", () => {
     const taken = occupiedNames(["lib/x.h"]); // folder "lib" is occupied
-    expect(freeName(taken, "lib", true)).toBe("lib-2");
+    expect(freeName(taken, "lib", true)).toBe("lib_2");
+  });
+
+  // a contract is named after its file, so a name the IDE makes up has to be a C++ identifier ("Counter-2" is not).
+  test("a name freeName makes for a contract is still a valid contract name", () => {
+    const taken = occupiedNames(["Counter.h", "Counter_copy.h"]);
+    for (const made of [freeName(taken, "Counter.h", false), freeName(taken, "Counter_copy.h", false)]) {
+      expect(made.replace(/\.h$/, "")).toMatch(/^[A-Za-z_]\w*$/);
+    }
   });
 });
 
@@ -158,12 +166,12 @@ describe("freeFilePath", () => {
   const taken = () => occupiedNames(existing);
 
   test("a pasted contract steps past a stem another contract holds, not just a taken path", () => {
-    expect(freeFilePath(taken(), existing, "b/Thing.h")).toBe("b/Thing-2.h");
-    expect(freeFilePath(taken(), [...existing, "c/Thing-2.h"], "b/Thing.h")).toBe("b/Thing-3.h");
+    expect(freeFilePath(taken(), existing, "b/Thing.h")).toBe("b/Thing_2.h");
+    expect(freeFilePath(taken(), [...existing, "c/Thing_2.h"], "b/Thing.h")).toBe("b/Thing_3.h");
   });
 
   test("a plain file only needs a free path", () => {
     expect(freeFilePath(taken(), existing, "b/notes.md")).toBe("b/notes.md");
-    expect(freeFilePath(taken(), existing, "notes.md")).toBe("notes-2.md");
+    expect(freeFilePath(taken(), existing, "notes.md")).toBe("notes_2.md");
   });
 });

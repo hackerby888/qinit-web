@@ -3,6 +3,8 @@
 // the owner-authed backend proxy, so a signed-out user is shown a sign-in prompt instead.
 import { useState, type CSSProperties } from "react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
+import { copyText } from "../../ui/clipboard";
 import { importRepo, exportGist, type RepoFile } from "./github-api";
 
 const overlay: CSSProperties = {
@@ -58,6 +60,7 @@ export function GitHubDialog({ files, signedIn, initialTab, onImport, onSignIn, 
   onClose: () => void;
 }) {
   const [tab, setTab] = useState<"import" | "export">(initialTab);
+  useEscape(onClose);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -177,7 +180,7 @@ export function GitHubDialog({ files, signedIn, initialTab, onImport, onSignIn, 
               {gistUrl && (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, border: `1px solid ${color.hair}`, padding: "8px 10px" }}>
                   <a href={gistUrl} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, fontFamily: font.mono, fontSize: 12, color: color.accent, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{gistUrl}</a>
-                  <Btn label="Copy" onClick={() => navigator.clipboard.writeText(gistUrl)} />
+                  <Btn label="Copy" onClick={() => void copyText(gistUrl)} />
                 </div>
               )}
             </>

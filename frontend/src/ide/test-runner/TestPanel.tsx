@@ -1,8 +1,9 @@
 // Results overlay for the in-IDE .ts test runner — a pass/fail summary, then each test with its error and
 // captured console output.
-import { useEffect, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { color, font } from "../../ui/tokens";
 import { Card } from "../../ui/modals";
+import { useEscape } from "../../ui/use-escape";
 import type { TestResult } from "./runner";
 
 const mono: CSSProperties = { fontFamily: font.mono, fontSize: 11.5 };
@@ -15,15 +16,7 @@ export function TestPanel({ results, running, title, onClose, onRerun, onStop }:
   onRerun: () => void;
   onStop: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   const pass = results.filter((r) => r.ok).length;
   const total = results.length;

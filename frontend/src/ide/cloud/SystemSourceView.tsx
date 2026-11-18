@@ -2,9 +2,11 @@
 // SYSTEM CONTRACTS picker. The source is what the in-browser compiler builds when the contract is
 // toggled on — shown in a read-only Monaco surface (same C++/QPI grammar + theme as the main
 // editor), since system contracts aren't editable workspace files.
-import { useEffect, useState, type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Copy, Check } from "lucide-react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
+import { copyText } from "../../ui/clipboard";
 import { Card } from "../../ui/modals";
 import { CodeEditor } from "../editor/editor";
 
@@ -20,18 +22,13 @@ export function SystemSourceView({ name, index, source, theme, onClose }: {
   const [copied, setCopied] = useState(false);
   const lines = source.split("\n").length;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   const copy = () => {
-    void navigator.clipboard.writeText(source).then(() => {
+    void copyText(source).then((ok) => {
+      if (!ok) {
+        return;
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     });

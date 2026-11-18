@@ -4,6 +4,7 @@
 // which carry the heavy per-tx call detail — this is the lifecycle/activity timeline.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
 import { Card } from "../../ui/modals";
 import type { EngineLogEvent } from "./proxy";
 
@@ -39,15 +40,7 @@ export function EngineLog({ log, onClose, onClear }: { log: EngineLogEvent[]; on
   const stick = useRef(true);
   const shown = log.filter((e) => RANK[e.level] >= min);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   // Auto-scroll to the newest line as the stream grows — but ONLY while pinned to the bottom (stick.current).
   // A user who scrolled up keeps their position; new events accrue below without moving the viewport.

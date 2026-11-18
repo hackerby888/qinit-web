@@ -3,6 +3,7 @@
 // click); mouse hover syncs the selection. Search state is owned by the parent so it persists across opens.
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
 import { searchError, searchWorkspace } from "./search";
 
 const overlay: CSSProperties = {
@@ -64,12 +65,11 @@ export function SearchPanel({ files, query, caseSensitive, regex, onQuery, onCas
     inputRef.current?.select();
   }, []);
 
-  // ↑/↓ move the selection, Enter jumps to it, Esc closes — handled on the panel so it works whatever has focus.
+  useEscape(onClose);
+
+  // ↑/↓ move the selection and Enter jumps to it — handled on the panel so it works whatever has focus.
   const onPanelKey = (e: ReactKeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
-    } else if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown") {
       e.preventDefault();
       setSel((s) => Math.min(flat.length - 1, s + 1));
     } else if (e.key === "ArrowUp") {

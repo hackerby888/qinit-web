@@ -1,8 +1,9 @@
 // Tx / tick explorer — a block-explorer view of the in-process chain this session. Every processed
 // transaction, newest first, grouped under its tick: which contract.procedure ran, the caller, whether
 // money moved, and a one-glance state-diff count. Click a row to step through it in the debugger.
-import { useEffect, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
 import { Card } from "../../ui/modals";
 import type { TxDetail, DebugStep } from "./proxy";
 
@@ -21,15 +22,7 @@ const shortId = (id: string): string => (id && id.length > 12 ? `${id.slice(0, 6
 const line: CSSProperties = { fontFamily: font.mono, fontSize: 11.5 };
 
 export function TxExplorer({ txs, onClose, onDebug }: { txs: TxRow[]; onClose: () => void; onDebug: (steps: DebugStep[], title: string) => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useEscape(onClose);
 
   // Group newest-first by tick, preserving the incoming (newest-first) order of rows within a tick.
   const ticks: number[] = [];

@@ -2,6 +2,7 @@
 // dense dark dashboard: static cards, hairline borders, no hover lift.
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { color, font } from "./tokens";
+import { useEscape } from "./use-escape";
 
 // A bordered surface. `shadow` / `shadowColor` are accepted for the callers that still pass them and ignored.
 export function Card({ children, frame = color.hair2, face = color.panel, borderWidth, style, faceStyle }: {
@@ -91,13 +92,13 @@ export function NeoBtn({ children, onClick, title, disabled = false, active = fa
 // in-app confirm for a destructive action — the IDE's own look in place of the browser's window.confirm. Enter (the
 // focused confirm button) confirms, Esc or a backdrop click cancels.
 export function ConfirmModal({ message, confirmLabel = "Delete", onYes, onCancel }: { message: string; confirmLabel?: string; onYes: () => void; onCancel: () => void }) {
+  useEscape(onCancel);
   return (
     <div onClick={onCancel} style={{ position: "fixed", inset: 0, background: "#000000A0", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }}>
       <div
         role="alertdialog"
         aria-label={message}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => { if (e.key === "Escape") { onCancel(); } }}
         style={{ width: 330, maxWidth: "90%", background: color.panelDeep, border: `1px solid ${color.hair2}`, boxShadow: "6px 6px 0 #000", padding: 18, display: "flex", flexDirection: "column", gap: 16 }}
       >
         <span style={{ fontFamily: font.mono, fontSize: 13, color: color.textLight, lineHeight: 1.5 }}>{message}</span>

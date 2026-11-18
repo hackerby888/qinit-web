@@ -3,6 +3,7 @@
 // shared; each collaborator keeps their own engine sandbox.
 import { useEffect, useState, type CSSProperties } from "react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
 import { Card, NeoBtn } from "../../ui/modals";
 import { createShareLink, listShareLinks, revokeShareLink, shareUrlFor, type ShareLink, type ShareMode } from "./share-api";
 
@@ -67,15 +68,9 @@ export function ShareDialog({ projectId, isLive, peerCount, onGoLive, onClose }:
 
   useEffect(() => {
     void refresh();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEscape(onClose);
 
   const create = async (mode: ShareMode) => {
     setBusy(mode);

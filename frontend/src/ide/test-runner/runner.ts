@@ -52,10 +52,15 @@ function stripModuleSyntax(src: string): string {
 }
 
 // the clients a file imports from "./.qinit" that no build has produced yet.
-function unbuiltContracts(source: string, built: Record<string, TestContract>): string[] {
+// The contracts a test file imports from "./.qinit": every imported name but the `provider` helper.
+export function importedContracts(source: string): string[] {
   const imported = [...source.matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']\.\/\.qinit["']/g)].flatMap((match) => match[1].split(","));
   const names = imported.map((name) => name.trim().replace(/^type\s+/, "").split(/\s+as\s+/)[0]).filter(Boolean);
-  return names.filter((name) => name !== "provider" && !(name in built));
+  return names.filter((name) => name !== "provider");
+}
+
+function unbuiltContracts(source: string, built: Record<string, TestContract>): string[] {
+  return importedContracts(source).filter((name) => !(name in built));
 }
 
 async function transpile(source: string): Promise<{ js: string } | { error: string }> {

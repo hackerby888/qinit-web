@@ -6,6 +6,7 @@
 import React, { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { color, font } from "../ui/tokens";
+import { useEscape } from "../ui/use-escape";
 import { Card, NeoBtn } from "../ui/modals";
 import { buildReportText, currentCrash, dismissCrash, reportCrash, sensitiveKeys, subscribeCrash, type CrashReport } from "./crash";
 
@@ -21,18 +22,7 @@ export function CrashOverlay(): JSX.Element | null {
 
   useEffect(() => subscribeCrash(setReport), []);
 
-  useEffect(() => {
-    if (!report) {
-      return;
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        dismissCrash();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [report]);
+  useEscape(dismissCrash, !!report);
 
   // Rebuilt whenever the report changes or the opt-in flips; buildReportText reads live store state, so the
   // count stays true even after the emit throttle stops re-rendering.

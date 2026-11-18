@@ -4,6 +4,8 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement, type MouseEvent as ReactMouseEvent } from "react";
 import { Crosshair, ChevronsDownUp, ChevronRight, ChevronDown, Folder, FolderOpen, FolderPlus, FileCode, FilePlus, Pencil, Trash2 } from "lucide-react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
+import { copyText } from "../../ui/clipboard";
 import { QMark } from "../../ui/primitives";
 import type { WorkspaceFile } from "./workspace";
 import { ConfirmModal } from "../../ui/modals";
@@ -454,7 +456,7 @@ export function FileExplorer({ files, active, source, newFileSignal, projectName
       { sep: true },
       { label: "Cut", onClick: () => doCut(path) },
       { label: "Copy", onClick: () => doCopy(path) },
-      { label: "Copy Path", onClick: () => void navigator.clipboard.writeText(path) },
+      { label: "Copy Path", onClick: () => void copyText(path) },
       { sep: true },
       { label: "New File…", onClick: () => startAdd(dirOf(path)) },
       { label: "New Folder…", onClick: () => startMkdir(dirOf(path)) },
@@ -671,14 +673,12 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Me
     const close = () => onClose();
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { onClose(); } };
-    window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("resize", close);
-      window.removeEventListener("keydown", onKey);
     };
   }, [x, y, onClose]);
+  useEscape(onClose);
 
   return (
     <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} style={{ position: "fixed", inset: 0, zIndex: 400 }}>

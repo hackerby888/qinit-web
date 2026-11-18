@@ -3,6 +3,7 @@
 // component owns the fuzzy filter, keyboard nav (↑/↓/Enter/Escape) and the matched-char highlight.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { color, font } from "../ui/tokens";
+import { useEscape } from "../ui/use-escape";
 import { Card } from "../ui/modals";
 
 export interface PaletteItem {
@@ -112,14 +113,12 @@ export function CommandPalette({ items, placeholder, onClose }: { items: Palette
     } else if (e.key === "Enter") {
       e.preventDefault();
       pick(sel);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      onClose();
     }
   };
+  useEscape(onClose);
 
   return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#00000099", zIndex: 60, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "12vh" }}>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "#00000099", zIndex: 210, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "12vh" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(620px, 92vw)" }}>
         <Card frame={color.accentDeep} shadow={6} faceStyle={{ display: "flex", flexDirection: "column", maxHeight: "62vh" }}>
           <input

@@ -12,6 +12,7 @@ import { color, font } from "../ui/tokens";
 import { QMark, KEYFRAMES } from "../ui/primitives";
 import { NeoBtn, Section } from "../ui/modals";
 import { CodeEditor } from "./editor/editor";
+import { disposeStaleModels, fileOfModel } from "./editor/models";
 import { resolveMonacoTheme, EDITOR_THEMES, type EditorThemeId } from "./editor/themes";
 import { FileExplorer } from "./workspace/FileExplorer";
 import { shareUrl, baseName, contractFile, fileKind, newFileSource, type Workspace, type WorkspaceFile } from "./workspace/workspace";
@@ -20,6 +21,7 @@ import { stateCarryoverRejection } from "@qinit/proto/state-carryover";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { analyzeWorkspace, severityCounts } from "./qpi/analyze";
 import { Toasts } from "../ui/Toasts";
+import { copyText } from "../ui/clipboard";
 import { OfflineBanner } from "./cloud/OfflineBanner";
 import { notify, errorMessage } from "../ui/notify";
 import { registerDiagnostic } from "../crash/crash";
@@ -41,14 +43,14 @@ import { Debugger } from "./engine/Debugger";
 import { SystemSourceView } from "./cloud/SystemSourceView";
 import { TxExplorer, type TxRow } from "./engine/TxExplorer";
 import { EngineLog } from "./engine/EngineLog";
-import { runTests, type TestContract } from "./test-runner/runner";
+import { runTests, importedContracts, type TestContract } from "./test-runner/runner";
 import { TestPanel } from "./test-runner/TestPanel";
 import { useIdeLayout } from "./use-ide-layout";
 import { useIdeTheme } from "./use-ide-theme";
 import { useWorkspaceSearch } from "./use-workspace-search";
 import { useProblemsPanel, type ProblemItem } from "./use-problems-panel";
 import { useOverlays } from "./use-overlays";
-import { useTestRunner } from "./use-test-runner";
+import { useTestRunner, type TestRun } from "./use-test-runner";
 import { genQinitDts } from "./test-runner/dts";
 import { crossContractDefinitionAt, setQpiWorkspaceFiles } from "./qpi/cross-contract";
 import { SplashScreen } from "../ui/Splash";
@@ -271,6 +273,29 @@ function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: Edi
   );
 }
 
+// What the background build last said about the open contract. "failed" is a build that gave no verdict (the
+// compiler crashed, timed out or never loaded), which is not the same as a clean one.
+interface BuildDiag {
+  state: "idle" | "checking" | "ok" | "error" | "failed";
+  count: number;
+  note?: string;
+}
+
+function diagLabel(diag: BuildDiag): string {
+  switch (diag.state) {
+    case "checking":
+      return "◌ checking…";
+    case "ok":
+      return "✓ compiles";
+    case "failed":
+      return "✕ couldn't compile";
+    case "error":
+      return `✕ ${diag.count} compile error${diag.count === 1 ? "" : "s"}`;
+    default:
+      return "";
+  }
+}
+
 function PanelHint() {
   return (
     <div style={{ fontFamily: font.body, fontSize: 13, lineHeight: 1.6, color: color.textMutedDk }}>
@@ -331,7 +356,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const [engineLog, setEngineLog] = useState<EngineLogEvent[]>([]); // the virtual engine's diagnostic stream, for the ENGINE-log popup
   const [engineLogOpen, setEngineLogOpen] = useState(false);
   const { testRun, setTestRun, scenarios, setScenarios, scenResults, setScenResults, runningScen, setRunningScen } = useTestRunner();
-  const [diag, setDiag] = useState<{ state: "idle" | "checking" | "ok" | "error"; count: number }>({ state: "idle", count: 0 });
+  const [diag, setDiag] = useState<BuildDiag>({ state: "idle", count: 0 });
   const [paused, setPaused] = useState(false);
   const [epochJumping, setEpochJumping] = useState(false); // ⤓ epoch in flight: the button shows the tick progress and refuses a second jump
   const epochJumpRef = useRef(false);
@@ -366,7 +391,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const activeNameRef = useRef(""); // active file name (with extension) — keys the dirty-tracking `built` map
   const filesRef = useRef<{ name: string; source: string }[]>([]); // live workspace files, for resolving callees off the render path
   const autoSeqRef = useRef(0);
-  const autoSentRef = useRef<string>("");   // last source we POSTed — dedupe undo/redo/whitespace churn
+  const autoSentRef = useRef<string>("");   // last file + source we POSTed — dedupe undo/redo/whitespace churn
   const autoBusyRef = useRef(false);        // single in-flight
   const autoDirtyRef = useRef(false);       // an edit landed mid-compile -> trailing re-run
   const warmRef = useRef<{ source: string; name: string; res: CompileResult } | null>(null); // warm deploy artifact
@@ -460,6 +485,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   useEffect(() => {
     setQpiWorkspaceFiles(ws.files);
   }, [ws.files]);
+
+  // Monaco keeps a model per file path and the editor reuses the one it finds. Drop a model once its file is
+  // gone, and all of them when the project changes, so a file never opens on the text an earlier file of
+  // that name left behind.
+  const fileNames = ws.files.map((f) => f.name).join("\n");
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (monaco) {
+      disposeStaleModels(monaco, new Set(fileNames.split("\n")));
+    }
+  }, [fileNames]);
+
+  useEffect(() => () => {
+    const monaco = monacoRef.current;
+    if (monaco) {
+      disposeStaleModels(monaco, new Set());
+    }
+  }, [id]);
 
   useEffect(() => () => {
     editorOpenerRef.current?.dispose();
@@ -555,19 +598,20 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
   // Write the current editor state into the loaded project document and persist it. Shared by the debounced
   // auto-save, the Ctrl+S handler and the flush when the tab is hidden. Nothing changed means nothing written,
-  // so opening a project does not touch it.
-  const persistProject = useCallback((): void => {
+  // so opening a project does not touch it. Resolves true when the project is stored as it now stands, so
+  // "saved" is only said when it is.
+  const persistProject = useCallback((): Promise<boolean> => {
     if (collab) {
-      return; // in collab the server is the sole cloud writer (avoids double-write clobber)
+      return Promise.resolve(true); // in collab the server is the sole cloud writer (avoids double-write clobber)
     }
     const p = projectRef.current;
     if (!p || conflictRef.current) {
-      return; // a conflict waits for the developer's choice; saving now would pick for them
+      return Promise.resolve(false); // a conflict waits for the developer's choice; saving now would pick for them
     }
     const content = contentOf({ name: projectName, files: ws.files, scenarios, systemContracts: sysSel });
     const ui = JSON.stringify([ws.active, openTabs]);
     if (content === savedRef.current.content && ui === savedRef.current.ui) {
-      return;
+      return Promise.resolve(true);
     }
     p.files = ws.files;
     p.active = ws.active;
@@ -575,22 +619,24 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     p.scenarios = scenarios;
     p.systemContracts = sysSel;
     p.name = projectName;
-    void getStore().save(p).then(
+    return getStore().save(p).then(
       () => {
         savedRef.current = { content, ui };
+        return true;
       },
       (e) => {
         if (!(e instanceof StaleProjectError)) {
           notify.error(errorMessage(e, "Auto-save failed — your latest changes aren't saved"));
-          return;
+          return false;
         }
         // another tab saved first. The same content means only its view differs: take its timestamp and save ours.
         if (contentOf(e.stored) === content || content === savedRef.current.content) {
           p.updatedAt = e.stored.updatedAt;
           if (contentOf(e.stored) !== content) adoptProject(e.stored);
-          return;
+          return false;
         }
         setConflict(e.stored);
+        return false;
       },
     );
   }, [ws, openTabs, scenarios, sysSel, projectName, collab]);
@@ -600,7 +646,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     if (!loaded) {
       return;
     }
-    const t = setTimeout(persistProject, 400);
+    const t = setTimeout(() => void persistProject(), 400);
     return () => clearTimeout(t);
   }, [persistProject, loaded]);
 
@@ -610,9 +656,10 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   const persistRef = useRef(persistProject);
   persistRef.current = persistProject;
 
-  // the debounce leaves a 400 ms window in which a reload or a closed tab lost the last keystrokes: save when the page goes away.
+  // the debounce leaves a 400 ms window in which a reload, a closed tab or a link out of the IDE lost the last
+  // keystrokes: save when the page goes away, and when the IDE itself is left.
   useEffect(() => {
-    const flush = () => persistRef.current();
+    const flush = () => void persistRef.current();
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
     };
@@ -621,8 +668,19 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     return () => {
       window.removeEventListener("pagehide", flush);
       document.removeEventListener("visibilitychange", onVisibility);
+      flush();
     };
   }, []);
+
+  // Save now and flash "✓ saved" once it is stored. A save that is paused by a conflict or that failed says nothing
+  // here. Reads only a ref and a setter, so the copy the Ctrl+S listener holds never goes stale.
+  const saveNow = () => {
+    void persistRef.current().then((stored) => {
+      if (stored) {
+        setSaved(true);
+      }
+    });
+  };
 
   // the same project open in another tab: when that tab saves, take its version if this tab has nothing unsaved,
   // and ask when both have changes. Before this the last tab to save silently overwrote the other.
@@ -668,15 +726,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       adoptProject(theirs);
     } else {
       mine.updatedAt = theirs.updatedAt; // this copy now knowingly replaces theirs
-      persistRef.current();
+      void persistRef.current();
     }
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        persistRef.current();
-        setSaved(true);
+        saveNow();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -712,6 +769,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
     return () => {
       engineGenerationRef.current++;
+      testStopRef.current?.abort();
       const engine = engineRef.current;
       engineRef.current = null;
       engineInitRef.current = null;
@@ -939,7 +997,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     });
   };
 
-  // Copy a file to a fresh "<stem>-copy.<ext>" name (next free suffix) in the same folder, and open it.
+  // Copy a file to a fresh "<stem>_copy.<ext>" name (next free suffix) in the same folder, and open it. An
+  // underscore, so the copy of a contract still has a name the compiler takes.
   const duplicateFile = (path: string) => {
     const f = ws.files.find((x) => x.name === path);
     if (!f) {
@@ -953,7 +1012,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     const ext = dot > 0 ? label.slice(dot) : "";
 
     const names = ws.files.map((x) => x.name);
-    const name = freeFilePath(occupiedNames(names), names, `${dir ? `${dir}/` : ""}${stem}-copy${ext}`);
+    const name = freeFilePath(occupiedNames(names), names, `${dir ? `${dir}/` : ""}${stem}_copy${ext}`);
 
     setOpenTabs((prev) => (prev.includes(name) ? prev : [...prev, name]));
     if (collab) {
@@ -1136,12 +1195,8 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   };
 
   const copyLink = async (url: string, note: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      appendLog(`${note}: ${url}`);
-    } catch {
-      appendLog(`${note}: ${url}`);
-    }
+    const copied = await copyText(url);
+    appendLog(copied ? `${note}: ${url}` : `share link (not copied — copy it from here): ${url}`);
   };
 
   // Owner of a signed-in cloud project opens the share dialog (view/edit links, expiry, revoke, go live).
@@ -1841,7 +1896,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
 
     for (const [file, found] of byFile) {
-      const model = monaco.editor.getModels().find((m: Monaco.editor.ITextModel) => m.uri.path.replace(/^\/+/, "") === file);
+      const model = monaco.editor.getModels().find((m: Monaco.editor.ITextModel) => fileOfModel(m) === file);
       if (!model) {
         continue;
       }
@@ -1883,7 +1938,9 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       return;
     }
 
-    if (!src.trim() || src === autoSentRef.current) {
+    // keyed on the file as well: a copy of a contract has the same source but is a different build.
+    const sent = `${fileName}\n${src}`;
+    if (!src.trim() || sent === autoSentRef.current) {
       return;
     }
     if (autoBusyRef.current) {
@@ -1892,7 +1949,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
 
     autoBusyRef.current = true;
-    autoSentRef.current = src;
+    autoSentRef.current = sent;
     const seq = ++autoSeqRef.current;
     setDiag((d) => ({ ...d, state: "checking" }));
 
@@ -1910,12 +1967,19 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       autoDirtyRef.current = false;
       void runAutoCompile(); // pick up the newest buffer
     }
-    if (seq !== autoSeqRef.current || !res) {
-      return; // superseded by a newer run, or the request failed — don't flap the markers
+    if (seq !== autoSeqRef.current) {
+      return; // superseded by a newer run
+    }
+
+    const errs = res ? res.diagnostics.filter((d) => d.severity === "error").length : 0;
+    if (!res || (!res.ok && errs === 0)) {
+      // no verdict on this source: keep the markers it had, say so, and let the next pause try it again.
+      autoSentRef.current = "";
+      setDiag({ state: "failed", count: 0, note: res?.error ?? "the in-browser compiler did not answer" });
+      return;
     }
 
     applyBuildMarkers(fileName, res.diagnostics);
-    const errs = res.diagnostics.filter((d) => d.severity === "error").length;
     setDiag({ state: errs ? "error" : "ok", count: errs });
 
     if (res.ok && res.wasm && res.idl) {
@@ -2025,10 +2089,12 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       return engineInitRef.current; // a start is already in flight — share it
     }
     const generation = engineGenerationRef.current;
+    let created: IdeEngine | null = null;
     const pending = (async () => {
       const { IdeEngine } = await import("./engine/proxy");
       if (generation !== engineGenerationRef.current) throw new Error("virtual node initialization superseded");
       const eng = new IdeEngine();
+      created = eng;
       const active = () => generation === engineGenerationRef.current;
       const requireActive = () => {
         if (active()) return;
@@ -2107,31 +2173,36 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         await deploySystem(eng, name).catch(() => false);
       }
       requireActive();
+      setEngineStartup("done");
       return eng;
     })();
     engineInitRef.current = pending;
     void pending.catch(() => {
-      if (engineInitRef.current === pending) engineInitRef.current = null;
+      // a start that failed part-way left an engine with no accounts behind. Reusing it kept the accounts panel
+      // empty until a reload: drop it, so the next call starts a whole one.
+      if (created && engineRef.current === created) {
+        engineRef.current = null;
+      }
+      created?.dispose();
+      if (engineInitRef.current === pending) {
+        engineInitRef.current = null;
+        setEngineStartup("error");
+      }
     });
     return pending;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reads only refs / stable setters; intentionally stable
   }, []);
 
-  // Bring the testnet panel up on load — accounts funded, clock ticking, controls usable before any deploy.
-  useEffect(() => {
-    let alive = true;
+  // Bring the testnet panel up on load — accounts funded, clock ticking, controls usable before any deploy. Also
+  // what "retry" runs after a start that failed. ensureEngine itself records how the start went.
+  const startEngine = useCallback(() => {
     setEngineStartup("loading");
-    void ensureEngine()
-      .then(() => {
-        if (alive) setEngineStartup("done");
-      })
-      .catch(() => {
-        if (alive) setEngineStartup("error");
-      });
-    return () => {
-      alive = false;
-    };
+    void ensureEngine().catch(() => undefined);
   }, [ensureEngine]);
+
+  useEffect(() => {
+    startEngine();
+  }, [startEngine]);
 
   // System-contract catalog for the picker (backend-served; [] if the backend/snapshot isn't available).
   useEffect(() => {
@@ -2142,17 +2213,18 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
   // resolves to the project's <Name>.h, which is deployed FIRST at a lower slot (the qubic lower-index rule),
   // so a single ▶ brings up the whole graph. Post-order DFS: callees land before their callers.
   // `freshSlotFor` names a contract to leave off the rebuilt chain first, so its new build lands on a clean slot
-  // (the developer's answer to a refused layout change).
-  const runCompile = async (freshSlotFor?: string) => {
-    const target = contractFile(filesRef.current, contractName);
+  // (the developer's answer to a refused layout change). `root` is the contract to build: the one the panel is
+  // about, unless a test run is bringing another one up to date. Resolves true once it is deployed.
+  const runCompile = async (freshSlotFor?: string, root: string = contractName): Promise<boolean> => {
+    const target = contractFile(filesRef.current, root);
     if (!target) {
       appendLog("nothing to build — open a contract (.h) file first");
-      return;
+      return false;
     }
 
     setPhase("compiling");
     setLayoutRefusal(null);
-    setBuiltName(contractName);
+    setBuiltName(root);
 
     const done = new Map<string, number>(); // name -> slot deployed this pass
     const visiting = new Set<string>(); // cycle guard
@@ -2203,14 +2275,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       if (fresh) {
         appendLog(`  compiled in browser (${Math.round(fresh.ms ?? 0)} ms)`);
       }
-      if (name === contractName) {
+      if (name === root) {
         setResult(res);
       }
       applyBuildMarkers(fileName, res.diagnostics);
       if (!res.ok || !res.wasm || !res.idl) {
         const errors = res.diagnostics.filter((d) => d.severity === "error");
         // surface the Problems panel automatically when the open contract has compile errors.
-        if (name === contractName && errors.some((d) => !d.file || d.file === fileName)) {
+        if (name === root && errors.some((d) => !d.file || d.file === fileName)) {
           setProblemsOpen(true);
         }
 
@@ -2269,15 +2341,15 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         markFault(null);
         clearSession();
         appendLog(halted
-          ? `chain was halted — reset to genesis before this build${culprit && culprit.name !== contractName ? `; ${culprit.name} halted it and is no longer deployed` : ""}`
+          ? `chain was halted — reset to genesis before this build${culprit && culprit.name !== root ? `; ${culprit.name} halted it and is no longer deployed` : ""}`
           : `chain reset to genesis — ${freshSlotFor} deploys on a clean slot`);
       }
 
-      fileOf(contractName); // refuses a stem two files share before anything is built
-      await deployNode(eng, contractName, target.source, target.name);
+      fileOf(root); // refuses a stem two files share before anything is built
+      await deployNode(eng, root, target.source, target.name);
 
       setDeployed(deployedRef.current);
-      setSelected(contractName);
+      setSelected(root);
       setEngineInfo(await eng.info());
       setPhase("ready");
       setBuilt((b) => {
@@ -2296,6 +2368,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       }
       setAssetsView(eng.assets()); // INITIALIZE may have issued assets on deploy
       updateQinitTypes(); // refresh the ./.qinit client types for .ts test completion
+      return true;
     } catch (e) {
       setPhase("error");
       const line = failureLine("deploy", e, !!faultRef.current);
@@ -2303,6 +2376,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       // the red panel repeats the console's reason; "0 compile problem(s)" was all it said for a failure that was not a compile error.
       const stopped = failed as CompileResult | null;
       setResult({ ok: false, diagnostics: stopped?.diagnostics ?? [], error: line.replace(/^deploy failed: /, "") });
+      return false;
     }
   };
 
@@ -2329,14 +2403,35 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
     }
   };
 
-  // Run the active .ts test file in-page against the engine. Contracts must have been built (Compile & Run)
-  // so deployedRef has their wasm/idl; the runner deploys each on a fresh chain per test.
+  // Run the active .ts test file in-page against the engine. The runner deploys each contract's built wasm on a
+  // fresh chain per test, so a contract edited since its last build is built again first: the tests would
+  // otherwise pass or fail on code that is no longer in the editor.
   const runTestFile = async () => {
     const title = ws.active;
     const stop = new AbortController();
     testStopRef.current = stop;
-    setTestRun({ results: [], running: true, title });
+    // closing the panel ends the run (closeTests): whatever it still reports must not bring the panel back.
+    const show = (run: TestRun) => {
+      if (testStopRef.current === stop) {
+        setTestRun(run);
+      }
+    };
+    show({ results: [], running: true, title });
     try {
+      for (const name of importedContracts(source)) {
+        const file = contractFile(filesRef.current, name);
+        if (!file || deployedRef.current[name]?.source === file.source) {
+          continue;
+        }
+        const built = await runCompile(undefined, name);
+        if (stop.signal.aborted) {
+          return;
+        }
+        if (!built) {
+          show({ results: [{ name: "(runner)", ok: false, ms: 0, error: `${name} did not build — fix it (see Problems and the console), then run the tests again`, logs: [] }], running: false, title });
+          return;
+        }
+      }
       const eng = await ensureEngine();
       const accs = await eng.ensureAccounts();
       const contracts: Record<string, TestContract> = {};
@@ -2345,17 +2440,30 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       }
       const results = await runTests(source, { eng, contracts, accounts: accs, onChainReset: () => chainReplaced("the test run") }, {
         signal: stop.signal,
-        onProgress: (partial) => setTestRun({ results: partial, running: true, title }),
+        onProgress: (partial) => show({ results: partial, running: true, title }),
       });
-      setTestRun({ results, running: false, title });
+      show({ results, running: false, title });
     } catch (e) {
-      setTestRun({ results: [{ name: "(runner)", ok: false, ms: 0, error: failureLine("the run", e, !!faultRef.current), logs: [] }], running: false, title });
+      show({ results: [{ name: "(runner)", ok: false, ms: 0, error: failureLine("the run", e, !!faultRef.current), logs: [] }], running: false, title });
     } finally {
       void guarded("refresh", refreshEngineViews);
     }
   };
 
+  // Closing the results panel ends the run it shows. Left running, the run reopened the panel with its next
+  // result and a second run could be started on the same chain.
+  const closeTests = () => {
+    testStopRef.current?.abort();
+    testStopRef.current = null;
+    setTestRun(null);
+  };
+
   const sel = selected ? deployed[selected] : null;
+
+  // the deployed build is older than its file: calls and scenarios still run the older code, and the footer says so.
+  const builtFile = contractFile(ws.files, builtName);
+  const builtDeploy = deployed[builtName];
+  const deployStale = !fault && phase === "ready" && !!builtFile && !!builtDeploy && builtDeploy.source !== builtFile.source;
 
   const runFunction = async (id: string, entry: IdlEntry, input: InputDraft) => {
     const eng = engineRef.current;
@@ -2456,7 +2564,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
             { id: "epoch", label: "Engine: advance epoch", run: () => void advanceEpoch() },
             { id: "reset", label: "Engine: reset chain", run: () => void resetChain() },
             { id: "replay", label: "Engine: replay session", run: () => void replayChain() },
-            { id: "save", label: "Save project", hint: "Ctrl S", run: () => { persistRef.current(); setSaved(true); } },
+            { id: "save", label: "Save project", hint: "Ctrl S", run: saveNow },
             { id: "format", label: "Format document", hint: "Shift Alt F", run: () => void editorRef.current?.getAction("editor.action.formatDocument")?.run() },
             { id: "search", label: "Search in files", hint: "Ctrl Shift F", run: () => setSearchOpen(true) },
             { id: "analysis", label: "Static analysis: scan workspace", run: () => openBottom("analysis") },
@@ -2513,7 +2621,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
           <ToolButton onClick={share}>Share</ToolButton>
           <ToolButton onClick={() => setShowTxs(true)}>≡ txs{txLog.length ? ` ${txLog.length}` : ""}</ToolButton>
           <ThemePicker value={editorTheme} onPick={pickEditorTheme} />
-          <Link to="/docs" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
+          <Link to="/docs" target="_blank" rel="noreferrer" title="Docs open in a new tab, so the chain in this one keeps running" style={{ fontFamily: font.mono, fontSize: 12, color: color.textMutedDk, textDecoration: "none", marginLeft: 4 }}>Docs</Link>
         </div>
       </div>
 
@@ -2594,7 +2702,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
         <div style={{ display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: color.panel }}>
           <EditorTabs tabs={openTabs} active={ws.active} dirty={isDirty} onSelect={selectFile} onClose={closeTab} />
           <div style={{ flex: 1, minHeight: 120 }}>
-            <CodeEditor value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme)} onChange={editSource} onMount={onEditorMount} />
+            <CodeEditor key={id} value={source} path={ws.active} collab={!!collab} readOnly={collab?.mode === "view"} theme={resolveMonacoTheme(editorTheme)} onChange={editSource} onMount={onEditorMount} />
           </div>
 
           {/* bottom panel — Problems (active file markers) + Analysis (workspace-wide static analysis) */}
@@ -2684,6 +2792,13 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
               <Section label="ACCOUNTS" accent={color.hair2} borderWidth={2} open={!collapsed.accounts} onToggle={() => toggleSection("accounts")}>
                 <AccountsBar accounts={accounts} caller={caller} onSelect={setCaller} balances={balances} onFund={(id, qus) => void fundFromFaucet(id, qus)} />
               </Section>
+            )}
+
+            {engineStartup === "error" && (
+              <div role="alert" style={{ border: "1px solid #f85149", background: "#f8514914", padding: "8px 10px", fontFamily: font.mono, fontSize: 11.5, color: "#f85149", lineHeight: 1.6, wordBreak: "break-word", display: "flex", flexDirection: "column", gap: 6 }}>
+                <span>● The in-page node did not start, so nothing can be deployed or called yet.</span>
+                <span><NeoBtn onClick={startEngine} title="Start the in-page node again">↻ retry</NeoBtn></span>
+              </div>
             )}
 
             {fault && (
@@ -2853,14 +2968,14 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: 30, borderTop: frame(), background: color.panelDeep, fontFamily: font.mono, fontSize: 11, color: color.textFaintDk, flex: "none" }}>
-        <span style={{ color: fault ? "#f85149" : phase === "ready" ? color.ok : phase === "error" ? "#f85149" : color.textFaintDk }}>
-          ● {fault ? "halted" : phase === "ready" ? `deployed ${builtName}` : phase === "compiling" ? `building ${builtName}` : phase === "error" ? `error — ${builtName} not deployed` : "ready"}
+        <span title={deployStale ? "This file changed after the build was deployed. Compile & Run to bring the chain up to date." : undefined} style={{ color: fault ? "#f85149" : deployStale ? color.yellow : phase === "ready" ? color.ok : phase === "error" ? "#f85149" : color.textFaintDk }}>
+          ● {fault ? "halted" : phase === "ready" ? `deployed ${builtName}${deployStale ? " · edited since" : ""}` : phase === "compiling" ? `building ${builtName}` : phase === "error" ? `error — ${builtName} not deployed` : "ready"}
         </span>
         <span>{fileLabel(ws.active)}</span>
         <span>{KIND_LABEL[activeKind]}</span>
         {diag.state !== "idle" && activeKind === "contract" && (
-          <span style={{ color: diag.state === "error" ? "#f85149" : diag.state === "ok" ? color.ok : color.textMutedDk }}>
-            {diag.state === "checking" ? "◌ checking…" : diag.state === "ok" ? "✓ compiles" : `✕ ${diag.count} compile error${diag.count === 1 ? "" : "s"}`}
+          <span title={diag.state === "failed" ? diag.note : undefined} style={{ color: diag.state === "error" || diag.state === "failed" ? "#f85149" : diag.state === "ok" ? color.ok : color.textMutedDk }}>
+            {diagLabel(diag)}
           </span>
         )}
         {result?.hash && <span>hash {result.hash.slice(0, 12)}</span>}
@@ -2875,7 +2990,7 @@ export default function Ide({ collab: initialCollab }: { collab?: CollabCtx } = 
 
       {shareOpen && id && <ShareDialog projectId={id} isLive={!!collab} peerCount={collabApi.peers.length} onGoLive={() => { void goLive(); }} onClose={() => setShareOpen(false)} />}
 
-      {testRun && <TestPanel results={testRun.results} running={testRun.running} title={testRun.title} onClose={() => setTestRun(null)} onRerun={() => void runTestFile()} onStop={() => testStopRef.current?.abort()} />}
+      {testRun && <TestPanel results={testRun.results} running={testRun.running} title={testRun.title} onClose={closeTests} onRerun={() => void runTestFile()} onStop={() => testStopRef.current?.abort()} />}
 
       {palette && (
         <CommandPalette

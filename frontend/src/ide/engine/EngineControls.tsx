@@ -1,5 +1,6 @@
 // Deterministic testnet controls (Remix has none — we own the chain in-page). Pause/step time, jump an
 // epoch to fire BEGIN/END_EPOCH hooks, and reset/replay the whole session against a fresh chain.
+import { useState } from "react";
 import { FastForward } from "lucide-react";
 import { color, font } from "../../ui/tokens";
 import { NeoBtn } from "../../ui/modals";
@@ -24,6 +25,18 @@ export function EngineControls({ paused, speed, info, epochLen, pendingEpochLen,
   // the node's own epoch bounds: the first tick moves with every switch, so `tick % length` drifts.
   const within = info ? Math.min(epochLen, tick - info.epochFirstTick) : 0;
   const pct = epochLen > 0 ? (within / epochLen) * 100 : 0;
+
+  // what is being typed into ticks/epoch. Checking every keystroke refused an empty field, so the old number
+  // could not be deleted before typing a new one; it is checked when the field is left or Enter is pressed.
+  const [epochDraft, setEpochDraft] = useState<string | null>(null);
+  const commitEpochLen = () => {
+    if (epochDraft === null) {
+      return;
+    }
+    onEpochLen(epochDraft);
+    setEpochDraft(null);
+  };
+
   return (
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
         <div style={{ fontFamily: font.mono, fontSize: 10.5, color: color.textGhostDk }}>
@@ -42,8 +55,14 @@ export function EngineControls({ paused, speed, info, epochLen, pendingEpochLen,
           <input
             type="number"
             min={1}
-            value={pendingEpochLen}
-            onChange={(e) => onEpochLen(e.target.value)}
+            value={epochDraft ?? pendingEpochLen}
+            onChange={(e) => setEpochDraft(e.target.value)}
+            onBlur={commitEpochLen}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commitEpochLen();
+              }
+            }}
             title="Ticks per epoch. A short epoch reaches END_EPOCH without ticking thousands of times."
             style={{ width: 62, border: `1px solid ${color.hair2}`, background: color.void, color: color.textLight, fontFamily: font.mono, fontSize: 10.5, padding: "2px 4px", outline: "none" }}
           />

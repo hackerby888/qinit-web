@@ -5,6 +5,7 @@
 // per-effect, not per-source-line.
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { color, font } from "../../ui/tokens";
+import { useEscape } from "../../ui/use-escape";
 import { Card } from "../../ui/modals";
 import type { DebugStep } from "./proxy";
 
@@ -50,9 +51,7 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (e.key === "ArrowRight") {
+      if (e.key === "ArrowRight") {
         setI((x) => Math.min(steps.length - 1, x + 1));
       } else if (e.key === "ArrowLeft") {
         setI((x) => Math.max(0, x - 1));
@@ -60,7 +59,8 @@ export function Debugger({ steps, title, onClose, onJump, onBack }: { steps: Deb
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [steps.length, onClose]);
+  }, [steps.length]);
+  useEscape(onClose);
 
   const cur = steps[i];
   if (!cur) {

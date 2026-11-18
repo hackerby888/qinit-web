@@ -6,7 +6,7 @@ import { generateClient } from "../../../../../Qinit/packages/build/src/generate
 import { IdeEngine } from "../../../src/ide/engine/proxy";
 import { toContractIdlView } from "../../../src/ide/calls/idl-view";
 import { genQinitDts } from "../../../src/ide/test-runner/dts";
-import { runTests, type TestContract } from "../../../src/ide/test-runner/runner";
+import { runTests, importedContracts, type TestContract } from "../../../src/ide/test-runner/runner";
 import { runSandbox, type ProcedureOptions, type SandboxBridge, type SandboxContract, type SandboxEvent, type TestResult } from "../../../src/ide/test-runner/sandbox";
 
 // Deposit has an empty input and takes its payment from the transaction; Add has an input.
@@ -265,4 +265,12 @@ test("the editor's client typings give every field the type the CLI's generated 
   expect(ide).toContain("Deposit(argsOrOpts?: {} | { seed?: string; amount?: number | bigint; confirm?: boolean }, maybeOpts?: { seed?: string; amount?: number | bigint; confirm?: boolean }): Promise<");
   expect(ide).toContain("Add(args: { amount: bigint }, opts?: { seed?: string; amount?: number | bigint; confirm?: boolean }): Promise<");
   expect(ide).toContain("Stats(): Promise<{ total: bigint; deposits: bigint }>;");
+});
+
+// a test run rebuilds the contracts its file imports when they changed, so it has to read the same names the runner does.
+test("importedContracts lists the contracts a test file imports, without the provider helper", () => {
+  expect(importedContracts(`import { Counter, provider } from "./.qinit";`)).toEqual(["Counter"]);
+  expect(importedContracts(`import { Vault as V, type Bank, provider } from './.qinit';`)).toEqual(["Vault", "Bank"]);
+  expect(importedContracts(`import type { Counter } from "./.qinit";\nimport { test } from "bun:test";`)).toEqual(["Counter"]);
+  expect(importedContracts(`import { test, expect } from "bun:test";`)).toEqual([]);
 });
