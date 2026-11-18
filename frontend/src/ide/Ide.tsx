@@ -201,7 +201,9 @@ function ToolButton({ children, onClick, variant = "ghost", disabled = false }: 
 // Editor syntax-theme dropdown. A compact toolbar button (active label + 3-dot swatch) opening a popover of
 // presets; picking one persists + live-applies via the editor's theme prop.
 function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: EditorThemeId) => void }) {
-  const [open, setOpen] = useState(false);
+  // Where the open popover sits, or null when closed. It is fixed to the viewport because the top bar
+  // scrolls sideways and so clips anything that hangs below it.
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
   const current = EDITOR_THEMES.find((t) => t.id === value) ?? EDITOR_THEMES[0];
 
   const Dots = ({ colors }: { colors: [string, string, string] }) => (
@@ -217,7 +219,7 @@ function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: Edi
       key={t.id}
       onClick={() => {
         onPick(t.id);
-        setOpen(false);
+        setPos(null);
       }}
       style={{ display: "flex", alignItems: "center", gap: 9, width: "100%", border: "none", background: t.id === value ? "#ffffff10" : "transparent", color: t.id === value ? color.textLightHi : color.textLight, fontFamily: font.mono, fontSize: 11.5, padding: "6px 9px", cursor: "pointer", textAlign: "left" }}
     >
@@ -241,9 +243,12 @@ function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: Edi
   );
 
   return (
-    <div style={{ position: "relative", flex: "none" }}>
+    <div style={{ flex: "none" }}>
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({ top: r.bottom + 4, right: Math.max(4, window.innerWidth - r.right) });
+        }}
         title="Editor syntax theme"
         style={{ display: "flex", alignItems: "center", gap: 7, border: `1px solid ${color.hair2}`, background: color.panel, color: color.textMutedDk, fontFamily: font.mono, fontSize: 11, padding: "5px 9px", cursor: "pointer" }}
       >
@@ -252,10 +257,10 @@ function ThemePicker({ value, onPick }: { value: EditorThemeId; onPick: (id: Edi
         <span style={{ color: color.textGhostDk }}>▾</span>
       </button>
 
-      {open && (
+      {pos && (
         <>
-          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
-          <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 41, minWidth: 184, background: color.panelDeep, border: `1px solid ${color.hair2}`, boxShadow: "4px 4px 0 #000", padding: 4 }}>
+          <div onClick={() => setPos(null)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+          <div style={{ position: "fixed", top: pos.top, right: pos.right, zIndex: 41, minWidth: 184, background: color.panelDeep, border: `1px solid ${color.hair2}`, boxShadow: "4px 4px 0 #000", padding: 4 }}>
             {EDITOR_THEMES.filter((t) => t.group === "auto").map(row)}
             {section("Light", "light")}
             {section("Dark", "dark")}
