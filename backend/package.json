@@ -1,6 +1,7 @@
 {
   "name": "qinit-web-backend",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",

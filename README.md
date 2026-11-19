@@ -50,3 +50,11 @@ cd backend && bun install && cp .env.example .env && bun run dev    # http://loc
 cd frontend && bun run build      # -> frontend/dist (static)
 cd backend  && bun run start      # serve API; reverse-proxy /api to it, serve frontend/dist from a CDN/nginx
 ```
+
+## License
+
+The site and the browser IDE are released under the [MIT License](LICENSE).
+
+The IDE runs the Qinit compiler, which carries a QPI snapshot generated from Qubic Core's headers. That
+material is Qubic's, under the Anti-Military License. See
+[NOTICE.md](https://github.com/hackerby888/qinit/blob/main/NOTICE.md) in the Qinit repository.

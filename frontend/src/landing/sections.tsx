@@ -223,6 +223,7 @@ export function Footer() {
           <Link to="/docs" className="transition hover:text-ink">Docs</Link>
           <a href={REPO} className="transition hover:text-ink">GitHub</a>
           <a href={`${REPO}/releases`} className="transition hover:text-ink">Releases</a>
+          <a href={`${REPO}/blob/main/LICENSE`} className="transition hover:text-ink">MIT License</a>
           <Link to={IDE_URL} className="transition hover:text-ink">IDE</Link>
         </nav>
       </div>
