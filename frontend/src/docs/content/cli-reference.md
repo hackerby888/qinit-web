@@ -22,9 +22,9 @@ Three flags work on every command:
 |---|---|
 | `--help`, `-h` | Show the command's usage, flags and examples. |
 | `--json` | Print one JSON document instead of the terminal view. Only the commands marked **JSON** below produce one. |
-| `--plain` | Plain text, no colors or spinners. Qinit switches to it by itself when the output is not a terminal or `NO_COLOR` is set. |
+| `--plain` | Plain output: no gradients, tiles or animation. Qinit switches to it by itself when the output is not a terminal or `NO_COLOR` is set. Colors are dropped only when the output is not a terminal. |
 
-A JSON document is one line with `ok` and `error`, plus the command's own fields:
+A JSON document is one line with `ok` and `error`, plus the command's own fields. `qinit info` and `qinit version` are the exception: they print only their own fields.
 
 ```bash
 qinit call --fn Counter Get --json
@@ -47,7 +47,7 @@ starting with a '-', place it at the end of the command after '--', as in '--
 run `qinit call --help`
 ```
 
-A value that starts with `-` needs no special quoting: `--reply -1sint64` works.
+A value that starts with `-` and then a digit or a dot needs no special quoting: `--reply -1sint64` works.
 
 ## How Qinit picks defaults
 
@@ -67,7 +67,7 @@ When a value can come from more than one place, Qinit takes the first one that i
 | Setting | Order |
 |---|---|
 | Contract file | the file on the command line or `--contract`, then `contract` in `qinit.json` |
-| Contract name | `--contract-name`, then `contractName` in `qinit.json`, then the struct the header declares. An identifier of at most 31 characters. The struct itself is always read from the header; `--state-type` must match it. |
+| Contract name | `--contract-name`, then `contractName` in `qinit.json`, then the struct the header declares. `contractName` counts only when the contract file comes from `qinit.json` as well: a file named on the command line is its own contract. An identifier of at most 31 characters. The struct itself is always read from the header; `--state-type` must match it. |
 | Slot | `--slot`, then `slot` in `qinit.json`, then a free slot Qinit picks |
 | Node | `--rpc`, then `rpc` in `qinit.json`, then `http://127.0.0.1:41841` |
 | Core headers | `--core-dir`, then `coreDir` in `qinit.json`, then the `QINIT_CORE` environment variable, then the headers `qinit setup` cached |
@@ -77,7 +77,9 @@ When a value can come from more than one place, Qinit takes the first one that i
 
 Only `qinit node run` and `qinit test` choose a runtime. Every other command talks to whichever node answers at the RPC URL.
 
-If the saved seed has no balance, `deploy` and `call --proc` sign with the node's funded seed instead. A seed passed with `--seed` is never replaced.
+Three commands differ on the Core headers. `qinit node run` does not read `QINIT_CORE`, and takes `coreDir` from `qinit.json` only on the simulator and without `--ref`. `qinit doctor` and `qinit info` do not read `coreDir` from `qinit.json`.
+
+If the saved seed has no balance, `deploy` and `call --proc` sign with the node's funded seed instead. A seed passed with `--seed` is never replaced. Two commands differ: `qinit test` gives its tests `--seed`, or else the node's funded seed, and does not use the saved seed. `qinit sign` uses `--seed` or the saved seed, and fails when there is neither.
 
 ## Shared options
 
@@ -111,7 +113,7 @@ qinit setup [--force]
 |---|---|
 | `--force` | Install updates without asking. |
 
-When updates are available, `setup` asks before installing them. Without a terminal it skips them unless you pass `--force`. Set `QINIT_NO_UPDATE` to turn the update check off.
+When updates are available, `setup` asks before installing them. Without a terminal it skips them unless you pass `--force`. Set `QINIT_NO_UPDATE` to turn the update check off: `setup` then installs only what is missing. `--force` still checks.
 
 ### qinit doctor
 
@@ -175,7 +177,7 @@ qinit clean --dry-run
 
 ### qinit uninstall
 
-Removes the `qinit` binary and its cache.
+Removes the `qinit` binary and its cache. The config directory, with the saved seed and your saved choices, is left in place.
 
 ```bash
 qinit uninstall [--yes] [--keep-cache] [--dry-run]
@@ -237,18 +239,18 @@ qinit node run
 | Flag | What it does |
 |---|---|
 | `--restart` | Start a fresh node even if one is running. |
-| `--keep` | Keep the existing node data. |
+| `--keep` | Keep the node's data directory instead of clearing it. The simulator holds its chain in memory, so contract state does not survive a restart either way: carry it over with `qinit state --dump` and `qinit deploy --state`. |
 | `--offline` | Use the cached files and make no network request. |
 | `--scratch-dir <path>` | Where the node keeps its data and log. Default: `run` in the cache directory. |
 | `--wait <s>` | How long to wait for the node to start, in seconds. |
 | `--runtime <core\|simulator>` | The runtime for this run. |
 | `--compiler <clang\|typescript>` | The compiler the simulator builds system contracts with. |
-| `--tick-ms <n>` | Simulator: milliseconds per tick. `0` is as fast as possible. |
+| `--tick-ms <n>` | Simulator: milliseconds per tick. `0` is as fast as possible. Default: `1000`. |
 | `--fees <metered\|off>` | Simulator: charge execution fees or not. Default: `metered`. |
 | `--history-ticks <n>` | Simulator: how many finalized ticks to keep. Default: all of them. |
 | `--full-tick` | Simulator: record quorum and votes for empty ticks too. |
 | `--peer-port <n>` | Simulator: the peer port. Default: `31841`. |
-| `--core-dir <path>` | Core: the Core checkout. The Core runtime also needs `--node-bin`. |
+| `--core-dir <path>` | The Core checkout to take the headers from. On the Core runtime it also needs `--node-bin`. |
 | `--node-bin <path>` | Core: a node binary to run instead of the downloaded one. |
 | `--http-port <n>` | Core: the node's HTTP port. Default: the port in `--rpc`. |
 | `--node-mode <n>` | Core: the node mode. |
@@ -321,9 +323,9 @@ qinit node logs --lines 3
 ```
 
 ```text
-qinit simulator: rpc http://127.0.0.1:41841 · peer 127.0.0.1:31841
-[debug] tick 2702 tick: tick 2702 begin · 0 tx
 [debug] tick 2702 tick: tick 2702 end
+[debug] tick 2703 tick: tick 2703 begin · 0 tx
+[debug] tick 2703 tick: tick 2703 end
 ```
 
 | Flag | What it does |
@@ -603,13 +605,13 @@ qinit integrate [<file.h>] [--asset <symbol> --construction-epoch <n>]
 
 | Flag | What it does |
 |---|---|
-| `--out <dir>` | The Qubic Core checkout. Default: `../<Name>-core`. |
+| `--out <dir>` | The Qubic Core checkout. Default: `../<Name>-core`, where `<Name>` is the struct the header declares. |
 | `--asset <symbol>` | The contract's asset symbol. |
 | `--construction-epoch <n>` | The first epoch the contract is active. |
 | `--destruction-epoch <n>` | The first epoch it is inactive. Default: `10000`. |
 | `--contract`, `--contract-name`, `--no-build-rules` | See [Shared options](#shared-options). |
 
-In a terminal, `integrate` asks for the asset symbol and the construction epoch when you leave them out. See [Ship to Qubic Core](/docs/core-integration).
+For a contract that is new to the checkout, `integrate` asks in a terminal for the asset symbol, the construction epoch and the destruction epoch when you leave them out, offering `10000` for the last. Without a terminal the first two are required and the destruction epoch is `10000`. See [Ship to Qubic Core](/docs/core-integration).
 
 ## Deploy and interact
 
@@ -686,7 +688,7 @@ With no arguments, `call` opens a guided picker: contract, entry, input. It then
 | `--no-settle` | Return as soon as the transaction is sent, without waiting. |
 | `--trace` | Show the state changes and the contract calls the call made. |
 | `--trace-full` | Like `--trace`, and include container details. |
-| `--all` | Show fields that are zero or empty too. |
+| `--all` | Show every item of a long output. Without it a list stops at 32 items. |
 | `--rpc`, `--seed` | See [Shared options](#shared-options). |
 
 ```bash
@@ -907,7 +909,7 @@ An argument opens the explorer on that tick, transaction or identity.
 |---|---|
 | `1` `2` `3` `4` | Overview, contracts, identity, wallet |
 | `/` | Find a tick, transaction or identity |
-| `s` | Send, from an identity |
+| `s` | Send to the identity on screen |
 | `r` | Refresh |
 | `t` | Next color theme |
 | arrows, Enter, Esc | Move, open, go back |
@@ -932,7 +934,8 @@ With no contract, `debug` shows the calls of every contract.
 |---|---|
 | up, down | Select a call |
 | `x` | Hide the selected call |
-| Ctrl-T | Show or hide internal calls |
+| Shift-up, Shift-down, PageUp, PageDown | Scroll the state changes |
+| Ctrl-T | Show or hide container internals in the state changes |
 | `q`, Esc | Quit |
 
 See [Inspect & debug](/docs/inspect-and-debug).
@@ -966,6 +969,7 @@ qinit test
 ✓ node          simulator @ http://127.0.0.1:42143
 ✓ deploy        Counter @ slot 31
 ✓ sdk           tests/.qinit/ (1 fn / 1 proc)
+✓ types         @types/bun present
 ✓ tests         all passed
 
 [bun test ✓]
@@ -985,7 +989,7 @@ qinit test
 ╰─────────────────────────────────╯
 ```
 
-On the simulator, `test` starts its own in-process node, so your running node is left alone. See [Test a contract](/docs/testing).
+On the simulator, `test` starts its own in-process node, so your running node is left alone. With `--rpc`, it uses the simulator already running at that URL instead, and deploys into it. See [Test a contract](/docs/testing).
 
 ### qinit gtest
 
@@ -1225,13 +1229,14 @@ flags
   --fn             make a read-only call
   --proc           send a signed call and wait for it
   --args <json>    JSON input
-  --in "<values>"  input values, e.g. "0id, 100uint64" (id: 0, 60 A-Z chars, or
-64 hex); the type may be omitted when the entry's schema is known
+  --in "<values>"  input values, e.g. "0id, 100uint64, MYTOKasset" (id: 0, 60
+A-Z chars, or 64 hex; asset: the name then asset, a packed uint64); the type may
+ be omitted when the entry's schema is known
   --out <type>     output type
   --amount <n>     transfer amount
   --trace          show state changes and contract calls
   --trace-full     include container details
-  --all            show zero and empty fields
+  --all            show every item of a long output
   --no-settle      return without waiting for processing
   --rpc <url>      RPC URL
   --seed <seed>    signer seed
@@ -1255,7 +1260,7 @@ Qinit keeps your saved choices in its config directory: `~/.config/qinit` on Lin
 | `compiler-backend` | The saved compiler. |
 | `theme` | The saved color theme. |
 
-Downloads and node data go in the cache directory, `~/.cache/qinit`. `qinit clean` empties it.
+Downloads and node data go in the cache directory, `~/.cache/qinit`. `qinit clean --yes` removes it.
 
 | Path | Holds |
 |---|---|
