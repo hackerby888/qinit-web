@@ -56,11 +56,15 @@ const md: Components = {
         ? <a href={href} className="text-ink underline underline-offset-2 transition hover:text-accent">{children}</a>
         : <a href={href} target="_blank" rel="noreferrer" className="text-ink underline underline-offset-2 transition hover:text-accent">{children}</a>,
   blockquote: ({ children }) => <div className="my-5 rounded-xl border-l-2 border-ink/25 bg-snow/60 px-4 py-3 text-sm text-ink [&_p]:my-0 [&_p]:text-slate">{children}</div>,
-  code: ({ className, children }) => {
+  code: ({ className, children, node }) => {
     const lang = /language-(\w+)/.exec(className ?? "")?.[1];
     if (lang) {
       const code = String(children).replace(/\n$/, "");
-      return <div className="my-5"><CodeBlock code={code} label={lang} prompt={["bash", "sh", "zsh", "shell"].includes(lang) && !code.includes("\n")} /></div>;
+      const block = <CodeBlock code={code} label={lang} prompt={["bash", "sh", "zsh", "shell"].includes(lang) && !code.includes("\n")} />;
+      // a fence opened as ```cpp fold <label> stays closed under its label until the reader opens it
+      const fold = /^fold +(.+)$/.exec(node?.data?.meta ?? "")?.[1];
+      if (fold) return <details className="my-5"><summary className="cursor-pointer text-sm font-medium text-ink transition hover:text-accent">{fold}</summary><div className="mt-3">{block}</div></details>;
+      return <div className="my-5">{block}</div>;
     }
     return <code className="rounded bg-snow px-1.5 py-0.5 font-mono text-[13px] text-ink">{children}</code>;
   },

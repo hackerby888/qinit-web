@@ -54,11 +54,28 @@ Goal met. With no `seed` given, the client signs with the local node's funded id
 New requirement: remember how much the contract has paid out. Add a field at the end of `StateData`, and one line in `Withdraw` before `raised` is cleared:
 
 ```cpp
-        uint64 paidOut;
+    struct StateData
+    {
+        id owner;
+        uint64 goal;
+        uint64 raised;
+        uint32 deadlineEpoch;
+        HashMap<id, uint64, 1024> contributions;
+        uint64 paidOut;   // new
+    };
 ```
 
 ```cpp
-        state.mut().paidOut += state.get().raised;
+    PUBLIC_PROCEDURE(Withdraw)
+    {
+        if (qpi.invocator() != state.get().owner || state.get().raised < state.get().goal) return;
+        qpi.transfer(state.get().owner, state.get().raised);
+        state.mut().paidOut += state.get().raised;   // new
+        state.mut().goal = 0;
+        state.mut().raised = 0;
+        state.mut().contributions.reset();
+        output.success = 1;
+    }
 ```
 
 ```bash
@@ -97,6 +114,125 @@ Nothing was deployed, and the 1000 QU campaign is untouched. Describe the layout
         state.mut().deadlineEpoch = oldState.deadlineEpoch;
         state.mut().contributions = oldState.contributions;
     }
+```
+
+```cpp fold The whole Crowdfund.h after this change
+using namespace QPI;
+
+struct Crowdfund2
+{
+};
+
+struct Crowdfund : public ContractBase
+{
+    struct StateData
+    {
+        id owner;
+        uint64 goal;
+        uint64 raised;
+        uint32 deadlineEpoch;
+        HashMap<id, uint64, 1024> contributions;
+        uint64 paidOut;   // new
+    };
+
+    // exactly the StateData that is live now
+    struct OldStateData
+    {
+        id owner;
+        uint64 goal;
+        uint64 raised;
+        uint32 deadlineEpoch;
+        HashMap<id, uint64, 1024> contributions;
+    };
+
+    struct Open_input { uint64 goal; uint32 epochs; };
+    struct Open_output { bit success; };
+    struct Contribute_input {};
+    struct Contribute_output { bit success; };
+    struct Withdraw_input {};
+    struct Withdraw_output { bit success; };
+    struct Refund_input {};
+    struct Refund_output { bit success; };
+    struct Status_input {};
+    struct Status_output { id owner; uint64 goal; uint64 raised; uint32 deadlineEpoch; uint64 contributors; };
+
+    // whoever opens the campaign owns it
+    PUBLIC_PROCEDURE(Open)
+    {
+        if (state.get().goal != 0 || input.goal == 0) return;
+        state.mut().owner = qpi.invocator();
+        state.mut().goal = input.goal;
+        state.mut().deadlineEpoch = qpi.epoch() + input.epochs;
+        output.success = 1;
+    }
+
+    // the QU sent with the call is the contribution; a closed campaign sends it straight back
+    struct Contribute_locals { uint64 given; };
+    PUBLIC_PROCEDURE_WITH_LOCALS(Contribute)
+    {
+        if (state.get().goal == 0 || qpi.epoch() >= state.get().deadlineEpoch)
+        {
+            qpi.transfer(qpi.invocator(), qpi.invocationReward());
+            return;
+        }
+        state.get().contributions.get(qpi.invocator(), locals.given);
+        state.mut().contributions.set(qpi.invocator(), locals.given + qpi.invocationReward());
+        state.mut().raised += qpi.invocationReward();
+        output.success = 1;
+    }
+
+    // owner only, once the goal is met: pays out and closes the campaign
+    PUBLIC_PROCEDURE(Withdraw)
+    {
+        if (qpi.invocator() != state.get().owner || state.get().raised < state.get().goal) return;
+        qpi.transfer(state.get().owner, state.get().raised);
+        state.mut().paidOut += state.get().raised;   // new
+        state.mut().goal = 0;
+        state.mut().raised = 0;
+        state.mut().contributions.reset();
+        output.success = 1;
+    }
+
+    // after the deadline, if the goal was missed, each contributor takes their QU back
+    struct Refund_locals { uint64 given; };
+    PUBLIC_PROCEDURE_WITH_LOCALS(Refund)
+    {
+        if (qpi.epoch() < state.get().deadlineEpoch || state.get().raised >= state.get().goal) return;
+        if (!state.get().contributions.get(qpi.invocator(), locals.given)) return;
+        state.mut().contributions.removeByKey(qpi.invocator());
+        state.mut().raised -= locals.given;
+        if (state.get().raised == 0) state.mut().goal = 0;   // the last refund closes the campaign
+        qpi.transfer(qpi.invocator(), locals.given);
+        output.success = 1;
+    }
+
+    PUBLIC_FUNCTION(Status)
+    {
+        output.owner = state.get().owner;
+        output.goal = state.get().goal;
+        output.raised = state.get().raised;
+        output.deadlineEpoch = state.get().deadlineEpoch;
+        output.contributors = state.get().contributions.population();
+    }
+
+    MIGRATE()
+    {
+        state.mut().owner = oldState.owner;
+        state.mut().goal = oldState.goal;
+        state.mut().raised = oldState.raised;
+        state.mut().deadlineEpoch = oldState.deadlineEpoch;
+        state.mut().contributions = oldState.contributions;
+    }
+
+    REGISTER_USER_FUNCTIONS_AND_PROCEDURES()
+    {
+        REGISTER_USER_PROCEDURE(Open, 1);
+        REGISTER_USER_PROCEDURE(Contribute, 2);
+        REGISTER_USER_PROCEDURE(Withdraw, 3);
+        REGISTER_USER_PROCEDURE(Refund, 4);
+        REGISTER_USER_FUNCTION(Status, 1);
+    }
+};
 ```
 
 ```bash

@@ -8,10 +8,11 @@ const content = new URL("../../src/docs/content/", import.meta.url);
 test("every full contract listing in the tutorial builds", async () => {
   const listings = readdirSync(content)
     .filter((file) => /^tutorial-.*\.md$/.test(file))
-    .flatMap((file) => [...readFileSync(new URL(file, content), "utf8").matchAll(/```cpp\n([\s\S]*?)```/g)].map((block) => ({ file, source: block[1] })))
+    .flatMap((file) => [...readFileSync(new URL(file, content), "utf8").matchAll(/```cpp[^\n]*\n([\s\S]*?)```/g)].map((block) => ({ file, source: block[1] })))
     .filter((listing) => listing.source.includes(": public ContractBase"));
 
-  expect(listings.length).toBeGreaterThan(0);
+  // the contract as first written, and as it stands after the upgrade
+  expect(listings.map((listing) => listing.file)).toEqual(["tutorial-client.md", "tutorial-contract.md"]);
   for (const { file, source } of listings) {
     const name = /struct (\w+) : public ContractBase/.exec(source)![1];
     const built = (await buildContract({ id: 1, kind: "compile", source, name, slot: 30, callees: [] })).res;
