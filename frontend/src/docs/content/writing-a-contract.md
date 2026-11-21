@@ -2,6 +2,7 @@
 title: Write a contract
 group: Guides
 order: 1
+description: How a Qubic contract is laid out in one QPI C++ header: state, procedures, functions, inputs and outputs.
 ---
 
 A Qinit contract is one QPI C++ header. `qinit new counter` creates `contracts/Counter.h`:

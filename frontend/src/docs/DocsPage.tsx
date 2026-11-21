@@ -6,6 +6,7 @@ import type { Components } from "react-markdown";
 import { CodeBlock } from "./CodeBlock";
 import { ThemeToggle } from "./ThemeToggle";
 import { pageHeadings, slugifyHeading } from "./headings";
+import { SITE_TITLE, pageTitle } from "./seo";
 
 const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
 const DOC_ALIASES = new Map([
@@ -24,12 +25,12 @@ function parseFm(raw: string): { meta: Record<string, string>; body: string } {
   return { meta, body: m[2] };
 }
 
-interface Doc { slug: string; title: string; group: string; order: number; body: string }
-const DOCS: Doc[] = Object.entries(files)
+interface Doc { slug: string; title: string; description: string; group: string; order: number; body: string }
+export const DOCS: Doc[] = Object.entries(files)
   .map(([path, raw]) => {
     const slug = path.split("/").pop()!.replace(/\.md$/, "");
     const { meta, body } = parseFm(raw);
-    return { slug, title: meta.title ?? slug, group: meta.group ?? "Docs", order: Number(meta.order ?? 99), body };
+    return { slug, title: meta.title ?? slug, description: meta.description ?? "", group: meta.group ?? "Docs", order: Number(meta.order ?? 99), body };
   })
   .filter((doc) => !DOC_ALIASES.has(doc.slug))
   .sort((a, b) => GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group) || a.order - b.order);
@@ -122,7 +123,15 @@ export function Docs() {
     else window.scrollTo(0, 0);
   }, [slug, hash]);
 
-  if (slug && active !== slug) return <Navigate to={`/docs/${active}`} replace />;
+  // the tab title follows the page; leaving the docs gives the site its own title back
+  const title = bySlug[active]?.title;
+  useEffect(() => {
+    if (title) document.title = pageTitle(title);
+    return () => { document.title = SITE_TITLE; };
+  }, [title]);
+
+  // one address per page: a bare /docs and an alias both move to the page's own
+  if (active !== slug) return <Navigate to={`/docs/${active}`} replace />;
   if (!bySlug[active]) return <Navigate to={`/docs/${fallback}`} replace />;
   const page = bySlug[active];
   const idx = DOCS.findIndex((d) => d.slug === active);

@@ -2,6 +2,7 @@
 title: Ship to Qubic Core
 group: Guides
 order: 13
+description: Take a contract from your local node to Qubic mainnet: qinit integrate, the Core pull request, proposal and IPO.
 ---
 
 Everything so far ran on your own node, where a contract is deployed as Wasm in seconds. Mainnet works differently: every mainnet contract is C++ compiled into the node itself, in the [Qubic Core](https://github.com/qubic/core) repository. Going live means getting your header into that repository by pull request, and getting the computors to vote it in.

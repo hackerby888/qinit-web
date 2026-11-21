@@ -2,6 +2,7 @@
 title: Call values
 group: Reference
 order: 3
+description: How to write input values for qinit call: typed --in values, --out types, --amount and JSON arguments.
 ---
 
 ## Write the values

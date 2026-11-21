@@ -35,6 +35,8 @@ test("developer docs are internally consistent", () => {
       const order = Number(meta.order);
 
       if (!meta.title) errors.push(`${file}: missing title`);
+      // the search result's snippet: one sentence, and no quote that would end the meta attribute early
+      if (!/^[^"]{50,160}$/.test(meta.description ?? "")) errors.push(`${file}: description must be 50-160 characters with no double quote`);
       if (!GROUPS.includes(meta.group)) errors.push(`${file}: unknown group ${meta.group}`);
       if (!Number.isInteger(order) || order < 1) errors.push(`${file}: invalid order ${meta.order}`);
       if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) errors.push(`${file}: invalid slug`);

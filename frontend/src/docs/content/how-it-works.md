@@ -2,6 +2,7 @@
 title: From simulator to Core
 group: Concepts
 order: 1
+description: How Qinit runs one contract through two compilers and two runtimes, and how local Wasm relates to native mainnet code.
 ---
 
 ## One contract, two compilers

@@ -2,6 +2,7 @@
 title: Hot reload
 group: Guides
 order: 3
+description: Run qinit dev to rebuild and redeploy your Qubic contract on every save while its state is kept.
 ---
 
 Start the node once, then let Qinit redeploy after every save.

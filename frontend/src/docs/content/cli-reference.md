@@ -2,6 +2,7 @@
 title: CLI reference
 group: Reference
 order: 2
+description: Every qinit command with its flags and defaults: setup, node, develop, deploy and interact, editor and preferences.
 ---
 
 Every `qinit` command, with its flags and defaults. For a short list grouped by task, see [Commands](/docs/cli).

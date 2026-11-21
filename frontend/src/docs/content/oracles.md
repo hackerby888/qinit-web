@@ -2,6 +2,7 @@
 title: Use oracles
 group: Guides
 order: 8
+description: Query an oracle from a Qubic contract, receive the reply in a notification, and answer it yourself on a local node.
 ---
 
 A contract can't read the internet. An **oracle** fills that gap: the contract asks a question, like "what is BTC/USDT right now?", and an off-chain **oracle machine** answers it. On mainnet the computors run oracle machines and agree on the reply. A local node has none, so you answer the question yourself with `qinit oracle`.

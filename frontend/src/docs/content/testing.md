@@ -2,6 +2,7 @@
 title: Test a contract
 group: Guides
 order: 2
+description: Test a Qubic contract two ways: GoogleTest against the contract, and TypeScript specs against a running node.
 ---
 
 Qinit has two test paths. They test different boundaries, and `qinit new` writes a starter file for each.

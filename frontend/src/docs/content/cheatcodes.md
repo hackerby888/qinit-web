@@ -2,6 +2,7 @@
 title: Debug with cheatcodes
 group: Guides
 order: 9
+description: CC_* macros for contract development: print values, assert, fake a caller or move time, then strip them for production.
 ---
 
 **Cheatcodes** are `CC_*` macros you write straight into contract code while developing: print a value, assert something, fake a caller, or move time forward. Qinit removes them before a contract goes to Qubic Core, so nothing you ship contains them. They work with both compilers and both runtimes.

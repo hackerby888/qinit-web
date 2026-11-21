@@ -2,6 +2,7 @@
 title: Migrate state
 group: Guides
 order: 12
+description: Change a deployed contract's state layout without losing data, using OldStateData and a MIGRATE handler.
 ---
 
 A contract's state outlives its code. Redeploying keeps the state bytes and does not run `INITIALIZE` again, which is what lets you fix a bug without losing data. The moment you change `StateData`, though, the old bytes no longer line up with the new fields. A **migration** is the code that carries them over.

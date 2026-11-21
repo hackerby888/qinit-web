@@ -2,6 +2,7 @@
 title: Typed clients
 group: Guides
 order: 6
+description: Generate a TypeScript client for your Qubic contract with qinit gen and call it from your own code.
 ---
 
 ## Generate a client

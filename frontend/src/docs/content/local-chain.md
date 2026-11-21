@@ -2,6 +2,7 @@
 title: Control the local chain
 group: Guides
 order: 11
+description: Control your local Qubic chain: advance ticks and epochs, set the tick rate, turn fees off and use system contracts.
 ---
 
 Your local node is a small Qubic chain of your own. A **tick** is one block, and an **epoch** is a longer period (about a week on mainnet). Contracts can run code on these boundaries. Locally you can skip ahead instead of waiting.

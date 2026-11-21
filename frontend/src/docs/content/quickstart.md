@@ -2,6 +2,7 @@
 title: Quickstart
 group: Getting Started
 order: 2
+description: Deploy a counter contract to a local Qubic node, increment it and read its state, in a few commands.
 ---
 
 Deploy a counter, increment it, and read its state.

@@ -2,6 +2,7 @@
 title: Deploy & call
 group: Guides
 order: 4
+description: Build and deploy a Qubic contract to your node, then call its procedures and functions with typed values.
 ---
 
 ## Build and deploy

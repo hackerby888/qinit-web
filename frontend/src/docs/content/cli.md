@@ -2,6 +2,7 @@
 title: Commands
 group: Reference
 order: 1
+description: A short list of the qinit commands you use most, grouped by task. Every flag is in the CLI reference.
 ---
 
 The commands you use most, grouped by task. Every flag and default is in the [CLI reference](/docs/cli-reference).

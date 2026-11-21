@@ -2,6 +2,7 @@
 title: Verify signatures
 group: Guides
 order: 10
+description: Verify inside a Qubic contract that a message was signed by a given identity, using qinit sign and a K12 digest.
 ---
 
 A contract can check that a message really comes from a given identity, even when someone else submits it. This is the basis for vouchers, permits and off-chain approvals:

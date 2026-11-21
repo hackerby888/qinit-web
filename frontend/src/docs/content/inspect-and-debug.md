@@ -2,6 +2,7 @@
 title: Inspect & debug
 group: Guides
 order: 5
+description: Read decoded contract state, trace a call step by step and browse the chain with qinit state, debug and explorer.
 ---
 
 ## Read contract state

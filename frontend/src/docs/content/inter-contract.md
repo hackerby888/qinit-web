@@ -2,6 +2,7 @@
 title: Call another contract
 group: Guides
 order: 7
+description: Call another contract's functions and procedures from your Qubic contract, and trace the nested call.
 ---
 
 ## Start from the example

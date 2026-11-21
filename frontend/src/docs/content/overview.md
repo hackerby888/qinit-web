@@ -2,6 +2,7 @@
 title: Start here
 group: Getting Started
 order: 1
+description: Install Qinit, the one CLI for building, testing, deploying and inspecting Qubic contracts on a local node.
 ---
 
 Qinit is one CLI for building, testing, deploying, and inspecting **Qubic contracts**.

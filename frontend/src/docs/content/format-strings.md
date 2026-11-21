@@ -2,6 +2,7 @@
 title: Format strings
 group: Reference
 order: 4
+description: The format strings accepted by --in, --out and oracle replies: value and type syntax, structs, arrays and errors.
 ---
 
 A format string is the text you pass to `--in`, to `qinit oracle resolve --reply`, and to `--out`.
