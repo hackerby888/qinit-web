@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { pageHeadings } from "../../src/docs/headings";
 
-const GROUPS = ["Getting Started", "Tutorial", "Guides", "Reference", "Concepts"];
+const GROUPS = ["Getting Started", "Guides", "Tutorial", "Reference", "Concepts"];
 const ALIASES: Record<string, string> = {
   installation: "overview",
   templates: "writing-a-contract",
