@@ -8,6 +8,7 @@ const content = new URL("../../src/docs/content/", import.meta.url);
 test("every full contract listing in the tutorial builds", async () => {
   const listings = readdirSync(content)
     .filter((file) => /^tutorial-.*\.md$/.test(file))
+    .sort()
     .flatMap((file) => [...readFileSync(new URL(file, content), "utf8").matchAll(/```cpp[^\n]*\n([\s\S]*?)```/g)].map((block) => ({ file, source: block[1] })))
     .filter((listing) => listing.source.includes(": public ContractBase"));
 
