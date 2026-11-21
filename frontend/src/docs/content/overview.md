@@ -55,6 +55,6 @@ Both choices are saved. To switch for one command only, pass `--compiler` or `--
 
 Qinit handles the compiler, local node, deployment protocol, IDL, state decoding, and traces. You stay in the contract code.
 
-> New here? Build the counter in [Quickstart](/docs/quickstart).
+> New here? Build the counter in [Quickstart](/docs/quickstart), then a real app in the [tutorial](/docs/tutorial-contract).
 
 Prefer the browser? Open the [Qinit Web IDE](/ide) to edit and compile a contract without creating a local project.

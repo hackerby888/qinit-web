@@ -8,7 +8,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { pageHeadings, slugifyHeading } from "./headings";
 import { SITE_TITLE, pageTitle } from "./seo";
 
-const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
+const GROUPS = ["Getting Started", "Tutorial", "Guides", "Reference", "Concepts"];
 const DOC_ALIASES = new Map([
   ["installation", "overview"],
   ["templates", "writing-a-contract"],

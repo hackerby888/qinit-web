@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { pageHeadings } from "../../src/docs/headings";
 
-const GROUPS = ["Getting Started", "Guides", "Reference", "Concepts"];
+const GROUPS = ["Getting Started", "Tutorial", "Guides", "Reference", "Concepts"];
 const ALIASES: Record<string, string> = {
   installation: "overview",
   templates: "writing-a-contract",
@@ -47,7 +47,7 @@ test("developer docs are internally consistent", () => {
     })
     .filter((doc) => doc !== null);
 
-  expect(docs).toHaveLength(20);
+  expect(docs).toHaveLength(24);
 
   const slugs = new Set<string>();
   const positions = new Set<string>();

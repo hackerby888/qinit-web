@@ -119,3 +119,5 @@ When you are done:
 ```bash
 qinit node stop
 ```
+
+Next: build a real app in the [tutorial](/docs/tutorial-contract).
