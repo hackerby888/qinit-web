@@ -163,7 +163,7 @@ export function Docs() {
         </label>
 
         <aside className="hidden md:block md:w-60 md:shrink-0">
-          <nav aria-label="Documentation" className="space-y-6 md:sticky md:top-24">
+          <nav aria-label="Documentation" className="space-y-6 md:sticky md:top-24 md:max-h-[calc(100vh-8rem)] md:overflow-y-auto md:pr-2">
             {GROUPS.filter((g) => DOCS.some((d) => d.group === g)).map((g) => (
               <div key={g}>
                 <div className="mb-2 font-mono text-xs font-semibold uppercase tracking-[0.18em] text-faint">{g}</div>
